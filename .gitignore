@@ -1,0 +1,33 @@
+*.py[cod]
+*.bak
+
+# Packages
+*.egg
+*.egg-info
+dist
+build
+eggs
+parts
+bin
+var
+sdist
+temp
+develop-eggs
+
+# C extensions
+*.so
+
+#PyCharm
+.idea
+Result*
+README.html
+make.bat
+log.txt
+*.pickle
+*.doctree
+*.html
+doc/ybuild
+.ipynb_checkpoints
+
+*.nvvp
+/build/
