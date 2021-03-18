@@ -32,7 +32,7 @@ class _types:
 
 _vkfft_cuda.make_config.restype = ctypes.c_void_p
 _vkfft_cuda.make_config.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                                    ctypes.c_void_p]
+                                    ctypes.c_void_p, _types.stream]
 
 _vkfft_cuda.init_app.restype = ctypes.c_void_p
 _vkfft_cuda.init_app.argtypes = [_types.vkfft_config]
@@ -57,13 +57,15 @@ class VkFFTApp:
     """
     VkFFT application interface, similar to a cuFFT plan.
     """
-    def __init__(self, d: cua.GPUArray, ndim=None):
+    def __init__(self, d: cua.GPUArray, ndim=None, stream=None):
         """
 
         :param d: the GPUArray for which the transform will be calculated
         :param ndim: the number of dimensions to use for the FFT. By default,
             uses the array dimensions. Can be smaller, e.g. ndim=2 for a 3D
             array to perform a batched 3D FFT on all the layers.
+        :param stream: the stream to use for the FFT calculation. If None,
+            the default one will be used
         :raises RuntimeError: if the initialisation fails, e.g. if the CUDA
             driver has not been properly initialised.
         """
@@ -72,13 +74,13 @@ class VkFFTApp:
             self.ndim = self.d.ndim
         else:
             self.ndim = ndim
+        self.stream = stream
         self.config = self._make_config()
         if self.config == 0:
-            raise RuntimeError("Error creating VkFFTConfiguration")
+            raise RuntimeError("Error creating VkFFTConfiguration. Was the CUDA context properly initialised ?")
         self.app = _vkfft_cuda.init_app(self.config)
         if self.app == 0:
             raise RuntimeError("Error creating VkFFTApplication. Was the CUDA driver initialised .")
-
 
     def __del__(self):
         """ Takes care of deleting allocated memory in the underlying
@@ -96,7 +98,11 @@ class VkFFTApp:
             ny, nx = self.d.shape
         elif self.d.ndim == 1:
             nx = self.d.shape[0]
-        config = _vkfft_cuda.make_config(nx, ny, nz, self.ndim, int(self.d.gpudata))
+        if self.stream is None:
+            s = 0
+        else:
+            s = self.stream.handle
+        config = _vkfft_cuda.make_config(nx, ny, nz, self.ndim, int(self.d.gpudata), s)
         return config
 
     def fft(self):

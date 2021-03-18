@@ -16,7 +16,7 @@ typedef float2 Complex;
 using namespace std;
 
 extern "C"{
-VkFFTConfiguration* make_config(const int, const int, const int, const int, void*);
+VkFFTConfiguration* make_config(const int, const int, const int, const int, void*, void*);
 
 VkFFTApplication* init_app(const VkFFTConfiguration*);
 
@@ -38,9 +38,11 @@ int test_vkfft_cuda(int);
 * \param fftdim: the dimension of the transform. If nz>1 and fftdim=2, the transform is only made
 * on the x and y axes
 * \param buffer: pointer to the GPU data array.
-* \return: the pointer to the newly created VkFFTConfiguration
+* \param hstream: the stream handle (CUstream)
+* \return: the pointer to the newly created VkFFTConfiguration, or 0 if an error occured
 */
-VkFFTConfiguration* make_config(const int nx, const int ny, const int nz, const int fftdim, void *buffer)
+VkFFTConfiguration* make_config(const int nx, const int ny, const int nz, const int fftdim,
+                                void *buffer, void* hstream)
 {
   VkFFTConfiguration *config = new VkFFTConfiguration({});
   config->FFTdim = fftdim;
@@ -48,12 +50,40 @@ VkFFTConfiguration* make_config(const int nx, const int ny, const int nz, const 
   config->size[1] = ny;
   config->size[2] = nz;
 
-  cudaSetDevice(0);
   CUdevice *dev = new CUdevice;
-	cuDeviceGet(dev, 0);
-  config->device = dev;
+  if(hstream != 0)
+  {
+    // Get context then device from current context
+    CUcontext ctx = nullptr;
+    CUresult res = cuStreamGetCtx ((CUstream)hstream, &ctx);
+    if(res != CUDA_SUCCESS)
+    {
+      cout << "Could not get the current device from given stream"<<endl;
+      return 0;
+    }
+    res = cuCtxPushCurrent (ctx);
+    res = cuCtxGetDevice(dev);
+    if(res != CUDA_SUCCESS)
+    {
+      cout << "Could not get the current device from supplied stream's context."<<endl;
+      return 0;
+    }
+    res = cuCtxPopCurrent (&ctx);
 
-  // TODO: free pbuf and psize when the config is destroyed (auto_ptr?)
+    config->stream = new CUstream((CUstream) hstream);
+    config->num_streams = 1;
+  }
+  else
+  {
+    // Get device from current context
+    CUresult res = cuCtxGetDevice(dev);
+    if(res != CUDA_SUCCESS)
+    {
+      cout << "Could not get the current device. Was a CUDA context created ?"<<endl;
+      return 0;
+    }
+  }
+  config->device = dev;
 
   void ** pbuf = new void*;
   *pbuf = buffer;
@@ -88,7 +118,7 @@ VkFFTApplication* init_app(const VkFFTConfiguration* config)
   */
   if(res!=0)
   {
-    std::cout << "VkFFTApplication initialisation failed: " << res << std::endl;
+    cout << "VkFFTApplication initialisation failed: " << res << endl;
     delete app;
     return 0;
   }
@@ -127,6 +157,7 @@ void free_config(VkFFTConfiguration *config)
   free(config->buffer);
   free(config->bufferSize);
   free(config);
+  if(config->stream != 0) free(config->stream);
 }
 
 /** Basic test function
@@ -171,12 +202,15 @@ int test_vkfft_cuda(const int size)
   configuration.size[1] = 1;
   configuration.size[2] = 1;
 
-  cuInit(0); // Should not be necessary ?
-  int ctdev;cuDeviceGetCount(&ctdev);
-  cudaSetDevice(0);
-  CUdevice dev;
-  cuDeviceGet(&dev, 0);
-  configuration.device = &dev;
+  // cuInit(0); // Should not be necessary ?
+  CUdevice* dev = new CUdevice;
+  CUresult res = cuCtxGetDevice (dev);
+  if(res != CUDA_SUCCESS)
+  {
+    cout << "Could not get the current device. Was a CUDA context created ?"<<endl;
+    return res;
+  }
+  configuration.device = dev;
 
   // CUcontext context;
   // cuCtxCreate(&vkGPU->context, 0, vkGPU->device);
@@ -187,16 +221,17 @@ int test_vkfft_cuda(const int size)
 
   // Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.
   VkFFTApplication app = {};
-  uint32_t res = initializeVkFFT(&app, configuration);  // TODO
-  if(res!=0)
+  uint32_t res1 = initializeVkFFT(&app, configuration);  // TODO
+  if(res1!=0)
   {
     free(arr0);
     free(arr1);
     free(arr2);
     cudaFree(d1);
     cudaFree(d2);
-    std::cout << "Something went wrong intialising the VkFFTApplication !" << std::endl;
-    return res;
+    delete dev;
+    cout << "Something went wrong intialising the VkFFTApplication !" << endl;
+    return res1;
   }
 
   VkFFTAppend(&app, -1, NULL);
@@ -211,12 +246,12 @@ int test_vkfft_cuda(const int size)
   cudaMemcpy(arr2, d2, mem_size, cudaMemcpyDeviceToHost);
 
   /*
-  std::ofstream out("results.dat");
+  ofstream out("results.dat");
   for (unsigned int i = 0; i < size; ++i)
   {
       out << arr0[i].x <<"+"<<arr0[i].x<<"j "
           << arr1[i].x <<"+"<<arr1[i].x<<"j "
-          << arr2[i].x <<"+"<<arr2[i].x<<"j "<<std::endl;
+          << arr2[i].x <<"+"<<arr2[i].x<<"j "<<endl;
   }
   */
 
@@ -226,6 +261,7 @@ int test_vkfft_cuda(const int size)
   free(arr2);
   cudaFree(d1);
   cudaFree(d2);
-  std::cout << "Finished VkFFT basic test"<<std::endl;
+  delete dev;
+  cout << "Finished VkFFT basic test"<<endl;
   return 0;
 }

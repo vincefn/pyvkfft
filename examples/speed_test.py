@@ -5,39 +5,35 @@
 #       authors:
 #         Vincent Favre-Nicolin, favre@esrf.fr
 
-# import pycuda.autoinit
+import pycuda.autoinit
 import pycuda.driver as cu_drv
 import pycuda.gpuarray as cua
-from pyvkfft.cuda import VkFFTApp, _test
+from pyvkfft.cuda import VkFFTApp
 import numpy as np
 import timeit
 
-cu_drv.init()
 
-# TODO For now this is necessary or the following tests will fail
-_test(128)
-
-
-def speed(shape, ndim, nb=10):
+def speed(shape, ndim, nb=10, stream=None):
     """
     Perform a speed test using VkFFT (
     :param shape: array shape to use
     :param ndim: number of dimensions for the FFT (e.g. can be 1, 2 or 3 for a 3D array, etc..)
     :param nb: number of repeats for timing
+    :param stream: the pycuda.driver.Stream to be sued for calculations. If None,
+        the default stream for the active context will be used.
     :return: a tuple with the time per couple of FFT and iFFT, and the idealised memory throughput
         assuming one read and one write of the array per transform axis, in Gbytes/s.
     """
     d = cua.to_gpu(np.random.uniform(0, 1, shape).astype(np.complex64))
     # print(d.shape)
-    app = VkFFTApp(d, ndim=ndim)
+    app = VkFFTApp(d, ndim=ndim, stream=stream)
     app.fft()
-    ctx.synchronize()
-    ctx.synchronize()
+    cu_drv.Context.synchronize()
     t0 = timeit.default_timer()
     for i in range(nb):
         app.ifft()
         app.fft()
-    ctx.synchronize()
+    cu_drv.Context.synchronize()
     dt = timeit.default_timer() - t0
     shape = list(shape)
     if len(shape) < 3:
@@ -48,7 +44,6 @@ def speed(shape, ndim, nb=10):
     return dt, gbps
 
 
-ctx = cu_drv.Device(0).make_context()
 
 speed((256, 256, 256), 3)
 speed((400, 400, 400), 3)
@@ -70,4 +65,6 @@ speed((16, 2400, 2200), 2)
 speed((1, 3080, 3080), 2)
 speed((8, 3072, 3072), 2)
 
-ctx.pop()
+# Also test with a supplied stream
+stream = cu_drv.Stream()
+speed((16, 1000, 1000), 2, stream=stream)

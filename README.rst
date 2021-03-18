@@ -20,8 +20,8 @@ This package should be installed using pip or `python setup.py install`.
 
 ## TODO
 
-- correctly init CUDA
-- allow to pass the CUDevice and CUstream
 - access to the other backends
+- check using multiple plans/VkFFT applications
+- check chaining other calculations and FFT
 - ...
 
