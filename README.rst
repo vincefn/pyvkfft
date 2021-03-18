@@ -14,11 +14,17 @@ Installation
 
 Requirements:
 
-- `vkfft.h` installed in the usual include directories, or in `pyvkfft/src/`
+- `vkfft.h` installed in the usual include directories
 - `pycuda` and CUDA developments tools (`nvcc`)
 - `numpy`
 
 This package should be installed using pip or `python setup.py install`.
+
+Example notebook
+----------------
+You can try a `notebook on google colab
+<https://colab.research.google.com/drive/1YJKtIwM3ZwyXnMZfgFVcpbX7H-h02Iej?usp=sharing>`_.
+Make sure to select a GPU for the runtime.
 
 TODO
 ----
@@ -26,5 +32,13 @@ TODO
 - access to the other backends
 - check using multiple plans/VkFFT applications
 - check chaining other calculations and FFT
-- ...
+- support for:
 
+  - half precision
+  - double precision
+  - out-of-place transforms
+  - normalisation of inverse transform
+  - real<->complex transforms
+  - convolution
+  - using multiple streams
+  - access to tweaking parameters in VkFFTConfiguration
