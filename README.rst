@@ -1,7 +1,7 @@
 pyvkfft - python interface to VkFFT (Vulkan Fast Fourier Transform library)
 ===========================================================================
 
-`VkFFT <https://github.com/DTolm/VkFFT` is a GPU-accelerated Fast Fourier Transform library
+`VkFFT <https://github.com/DTolm/VkFFT`_ is a GPU-accelerated Fast Fourier Transform library
 for Vulkan/CUDA/HIP projects.
 
 pyvkfft offers a basic python interface to the CUDA backend of VkFFT, compatible with pyCUDA.
