@@ -131,4 +131,5 @@ setup(name="pyvkfft",
       # author="XX",
       # url="https://github.com/XX/XX",
       cmdclass={'build_ext': CUDA_build_ext},
-      install_requires=['numpy', 'pycuda'])
+      install_requires=['numpy', 'pycuda'],
+      test_suite="test")

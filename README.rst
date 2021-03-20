@@ -20,25 +20,31 @@ Requirements:
 
 This package should be installed using pip or `python setup.py install`.
 
-Example notebook
-----------------
-You can try a `notebook on google colab
+Examples
+--------
+See the script and notebook in the examples directory.
+The notebook is also `available on google colab
 <https://colab.research.google.com/drive/1YJKtIwM3ZwyXnMZfgFVcpbX7H-h02Iej?usp=sharing>`_.
 Make sure to select a GPU for the runtime.
+
+
+Status
+------
+What works:
+
+- C2C inplace transforms, single and double precision
+- C2C out-of-place transform, single and double precision (NB: the input array is overwritten)
+- normalisation=0 (array L2 norm * array size on each transform) and 1 (the backward
+  transform divides the L2 norm by the array size, so FFT*iFFT restores the orginal array)
+- R2C inplace implemented, but gives incorrect results compared to numpy (R2C+C2R normalised
+  returns the original array, but R2C is different from numpy). Possible memory issues.
+- small testsuite: use `python setup.py test`
 
 TODO
 ----
 
-- access to the other backends
-- check using multiple plans/VkFFT applications
-- check chaining other calculations and FFT
-- support for:
-
-  - half precision
-  - double precision
-  - out-of-place transforms
-  - normalisation of inverse transform
-  - real<->complex transforms
-  - convolution
-  - using multiple streams
-  - access to tweaking parameters in VkFFTConfiguration
+- access to the other backends ? Not useful unless combined to a pycuda equivalent.
+- half precision
+- real<->complex transforms
+- convolution ?
+- access to tweaking parameters in VkFFTConfiguration ?

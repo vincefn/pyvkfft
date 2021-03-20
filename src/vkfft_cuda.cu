@@ -16,13 +16,14 @@ typedef float2 Complex;
 using namespace std;
 
 extern "C"{
-VkFFTConfiguration* make_config(const int, const int, const int, const int, void*, void*);
+VkFFTConfiguration* make_config(const int, const int, const int, const int, void*, void*, void*,
+                                const int, const int, const int);
 
 VkFFTApplication* init_app(const VkFFTConfiguration*);
 
-void fft(VkFFTApplication* app);
+void fft(VkFFTApplication* app, void*, void*);
 
-void ifft(VkFFTApplication* app);
+void ifft(VkFFTApplication* app, void*, void*);
 
 void free_app(VkFFTApplication* app);
 
@@ -37,18 +38,31 @@ int test_vkfft_cuda(int);
 * this corresponds to a shape of (nz, ny, nx)
 * \param fftdim: the dimension of the transform. If nz>1 and fftdim=2, the transform is only made
 * on the x and y axes
-* \param buffer: pointer to the GPU data array.
+* \param buffer, buffer_out: pointer to the GPU data source and destination arrays. These
+*  can be fake and the actual buffers supplied in fft() and ifft. However buffer should be non-zero,
+*  and buffer_out should be non-zero only for an out-of-place transform.
 * \param hstream: the stream handle (CUstream)
+* \param norm: 0, the L2 norm is multiplied by the size on each transform, 1, the inverse transform
+*   divides the L2 norm by the size.
+* \param precision: number of bits per float, 16=half, 32=single, 64=double precision
 * \return: the pointer to the newly created VkFFTConfiguration, or 0 if an error occured
 */
 VkFFTConfiguration* make_config(const int nx, const int ny, const int nz, const int fftdim,
-                                void *buffer, void* hstream)
+                                void *buffer, void *buffer_out, void* hstream,
+                                const int norm, const int precision, const int r2c)
 {
   VkFFTConfiguration *config = new VkFFTConfiguration({});
   config->FFTdim = fftdim;
   config->size[0] = nx;
   config->size[1] = ny;
   config->size[2] = nz;
+  config->normalize = norm;
+  config->performR2C = r2c;
+  switch(precision)
+  {
+      case 16 : config->halfPrecision = 1;
+      case 64 : config->doublePrecision = 1;
+  };
 
   CUdevice *dev = new CUdevice;
   if(hstream != 0)
@@ -93,6 +107,22 @@ VkFFTConfiguration* make_config(const int nx, const int ny, const int nz, const 
   *psize = (uint64_t)(nx * ny * nz * 8);
   config->bufferSize = psize;
 
+  if(buffer_out != NULL)
+  {
+    config->inputBuffer = pbuf;
+
+    void ** pbufout = new void*;
+    *pbufout = buffer_out;
+    config->outputBuffer = pbufout;
+
+    config->inputBufferSize = psize;
+    config->outputBufferSize = psize;
+
+    config->isInputFormatted = 1;
+    config->isOutputFormatted = 1;
+  }
+
+
   /*
   cout << "make_config: "<<config<<" "<<endl<< config->buffer<<", "<< *(config->buffer)<<", "
        << config->size[0] << " " << config->size[1] << " " << config->size[2] << " "<< config->FFTdim
@@ -125,13 +155,19 @@ VkFFTApplication* init_app(const VkFFTConfiguration* config)
   return app;
 }
 
-void fft(VkFFTApplication* app)
+void fft(VkFFTApplication* app, void *in, void *out)
 {
+  *(app->configuration.buffer) = in;
+  *(app->configuration.inputBuffer) = in;
+  *(app->configuration.outputBuffer) = out;
   VkFFTAppend(app, -1, NULL);
 }
 
-void ifft(VkFFTApplication* app)
+void ifft(VkFFTApplication* app, void *in, void *out)
 {
+  *(app->configuration.buffer) = in;
+  *(app->configuration.inputBuffer) = in;
+  *(app->configuration.outputBuffer) = out;
   VkFFTAppend(app, 1, NULL);
 }
 

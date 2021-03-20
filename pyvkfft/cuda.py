@@ -9,7 +9,11 @@ import os
 import platform
 import sysconfig
 import ctypes
+import numpy as np
 import pycuda.gpuarray as cua
+
+# np.complex32 does not exist yet https://github.com/numpy/numpy/issues/14753
+complex64 = np.dtype([('re', np.float16), ('im', np.float16)])
 
 
 def load_library(basename):
@@ -32,7 +36,8 @@ class _types:
 
 _vkfft_cuda.make_config.restype = ctypes.c_void_p
 _vkfft_cuda.make_config.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                                    ctypes.c_void_p, _types.stream]
+                                    ctypes.c_void_p, ctypes.c_void_p, _types.stream, ctypes.c_int,
+                                    ctypes.c_int, ctypes.c_int]
 
 _vkfft_cuda.init_app.restype = ctypes.c_void_p
 _vkfft_cuda.init_app.argtypes = [_types.vkfft_config]
@@ -41,10 +46,10 @@ _vkfft_cuda.test_vkfft_cuda.restype = ctypes.c_int
 _vkfft_cuda.test_vkfft_cuda.argtypes = [ctypes.c_int]
 
 _vkfft_cuda.fft.restype = None
-_vkfft_cuda.fft.argtypes = [_types.vkfft_app]
+_vkfft_cuda.fft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p]
 
 _vkfft_cuda.ifft.restype = None
-_vkfft_cuda.ifft.argtypes = [_types.vkfft_app]
+_vkfft_cuda.ifft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p]
 
 _vkfft_cuda.free_app.restype = None
 _vkfft_cuda.free_app.argtypes = [_types.vkfft_app]
@@ -57,24 +62,47 @@ class VkFFTApp:
     """
     VkFFT application interface, similar to a cuFFT plan.
     """
-    def __init__(self, d: cua.GPUArray, ndim=None, stream=None):
+
+    def __init__(self, shape, dtype: type, ndim=None, inplace=True, stream=None, norm=1, r2c=False):
         """
 
-        :param d: the GPUArray for which the transform will be calculated
+        :param shape: the shape of the array to be transformed
+        :param dtype: the numpy dtype of the source array (can be complex64 or complex128)
         :param ndim: the number of dimensions to use for the FFT. By default,
             uses the array dimensions. Can be smaller, e.g. ndim=2 for a 3D
             array to perform a batched 3D FFT on all the layers.
+        :param inplace: if True (the default), performs an inplace transform and
+            the destination array should not be given in fft() and ifft().
         :param stream: the stream to use for the FFT calculation. If None,
             the default one will be used
+        :param norm: if 0, every transform multiplies the L2 norm of the array
+            by its size (or the size of the transformed array if ndim<d.ndim).
+            if 1 (the default), the inverse transform divides the L2 norm
+            by the array size, so FFT+iFFT will keep the array norm.
+        :param r2c: if True, will perform a real->complex transform, where the
+            complex destination is a half-hermitian array.
+            For an inplace transform, if the input data size iz ny*nx, the input
+            float array should have a shape of (ny, nx+2), and the resulting
+            complex array (use pycuda's GPUArray.view(dtype=np.complex64) to
+            reinterpret the type) will have a shape (ny, nx//2 + 1).
         :raises RuntimeError: if the initialisation fails, e.g. if the CUDA
             driver has not been properly initialised.
         """
-        self.d = d
+        self.shape = shape
         if ndim is None:
             self.ndim = self.d.ndim
         else:
             self.ndim = ndim
+        self.inplace = inplace
+        self.r2c = r2c
         self.stream = stream
+        self.norm = norm
+        if dtype in [np.float16, complex64]:
+            self.precision = 16
+        elif dtype in [np.float32, np.complex64]:
+            self.precision = 32
+        elif dtype in [np.float64, np.complex128]:
+            self.precision = 64
         self.config = self._make_config()
         if self.config == 0:
             raise RuntimeError("Error creating VkFFTConfiguration. Was the CUDA context properly initialised ?")
@@ -92,32 +120,83 @@ class VkFFTApp:
     def _make_config(self):
         """ Create a vkfft configuration for a FFT transform"""
         nx, ny, nz = 1, 1, 1
-        if self.d.ndim == 3:
-            nz, ny, nx = self.d.shape
-        elif self.d.ndim == 2:
-            ny, nx = self.d.shape
-        elif self.d.ndim == 1:
-            nx = self.d.shape[0]
+        if len(self.shape) == 3:
+            nz, ny, nx = self.shape
+        elif len(self.shape) == 2:
+            ny, nx = self.shape
+        elif len(self.shape) == 1:
+            nx = self.shape[0]
+        if self.r2c:
+            if not self.inplace:
+                raise RuntimeError("VkFFTApp: out-of-place R2C transform is not supported")
+            # the last two columns are ignored in the R array, and will be used
+            # in the C array with a size nx//2+1
+            nx -= 2
         if self.stream is None:
             s = 0
         else:
             s = self.stream.handle
-        config = _vkfft_cuda.make_config(nx, ny, nz, self.ndim, int(self.d.gpudata), s)
+        # We pass fake buffer pointer addresses to VkFFT. The real ones will be
+        # given when performing the actual FFT.
+        if self.inplace:
+            config = _vkfft_cuda.make_config(nx, ny, nz, self.ndim, 1, 0, s,
+                                             self.norm, self.precision, int(self.r2c))
+        else:
+            config = _vkfft_cuda.make_config(nx, ny, nz, self.ndim, 1, 2, s,
+                                             self.norm, self.precision, int(self.r2c))
         return config
 
-    def fft(self):
+    def fft(self, src: cua.GPUArray, dest: cua.GPUArray = None):
         """
-        COmpute the forward FFT
-        :return: nothing
+        Compute the forward FFT
+        :param src: the source GPUarray
+        :param dest: the destination GPUarray. Should be None for an inplace transform
+        :return: the transformed array. For a R2C inplace transform, the complex view of the
+            array is returned.
         """
-        _vkfft_cuda.fft(self.app)
+        if self.inplace:
+            if dest is not None:
+                raise RuntimeError("VkFFTApp.fft: dest is not None but this is an inplace transform")
+            _vkfft_cuda.fft(self.app, int(src.gpudata), int(src.gpudata))
+            if self.r2c:
+                if src.dtype == np.float32:
+                    return src.view(dtype=np.complex64)
+                elif src.dtype == np.float64:
+                    return src.view(dtype=np.complex128)
+            return src
+        else:
+            if dest is None:
+                raise RuntimeError("VkFFTApp.fft: dest is None but this is an out-of-place transform")
+            elif src.gpudata == dest.gpudata:
+                raise RuntimeError("VkFFTApp.fft: dest and src are identical but this is an inplace transform")
+            _vkfft_cuda.fft(self.app, int(src.gpudata), int(dest.gpudata))
+            return dest
 
-    def ifft(self):
+    def ifft(self, src: cua.GPUArray, dest: cua.GPUArray = None):
         """
         Compute the backward FFT
-        :return: nothing
+        :param src: the source GPUarray
+        :param dest: the destination GPUarray. Should be None for an inplace transform
+        :return: the transformed array. For a C2R inplace transform, the float view of the
+            array is returned.
         """
-        _vkfft_cuda.ifft(self.app)
+        if self.inplace:
+            if dest is not None:
+                raise RuntimeError("VkFFTApp.fft: dest is not None but this is an inplace transform")
+            _vkfft_cuda.ifft(self.app, int(src.gpudata), int(src.gpudata))
+            if self.r2c:
+                if src.dtype == np.complex64:
+                    return src.view(dtype=np.float32)
+                elif src.dtype == np.complex128:
+                    return src.view(dtype=np.float64)
+            return src
+        if not self.inplace:
+            if dest is None:
+                raise RuntimeError("VkFFTApp.ifft: dest is None but this is an out-of-place transform")
+            elif src.gpudata == dest.gpudata:
+                raise RuntimeError("VkFFTApp.ifft: dest and src are identical but this is an inplace transform")
+            _vkfft_cuda.ifft(self.app, int(src.gpudata), int(dest.gpudata))
+            return dest
 
 
 def _test(size):
