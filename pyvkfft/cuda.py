@@ -97,16 +97,17 @@ class VkFFTApp:
         self.inplace = inplace
         self.r2c = r2c
         if r2c:
-            warnings.warn("You are using the R2C transform, which is not validated and likely "
-                          "has a memory error", stacklevel=2)
+            warnings.warn("You are using the R2C transform, which is not validated and may "
+                          "have a memory error from the python API", stacklevel=2)
         self.stream = stream
         self.norm = norm
+        # Precision: number of bytes per
         if dtype in [np.float16, complex64]:
-            self.precision = 16
+            self.precision = 2
         elif dtype in [np.float32, np.complex64]:
-            self.precision = 32
+            self.precision = 4
         elif dtype in [np.float64, np.complex128]:
-            self.precision = 64
+            self.precision = 8
         self.config = self._make_config()
         if self.config == 0:
             raise RuntimeError("Error creating VkFFTConfiguration. Was the CUDA context properly initialised ?")

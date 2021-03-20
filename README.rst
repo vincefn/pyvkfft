@@ -37,7 +37,7 @@ What works:
 - normalisation=0 (array L2 norm * array size on each transform) and 1 (the backward
   transform divides the L2 norm by the array size, so FFT*iFFT restores the orginal array)
 - R2C inplace implemented, but gives incorrect results compared to numpy (R2C+C2R normalised
-  returns the original array, but R2C is different from numpy). Possible memory issues.
+  returns the original array, but R2C is different from numpy).
 - small testsuite: use `python setup.py test`
 
 TODO
@@ -45,6 +45,6 @@ TODO
 
 - access to the other backends ? Not useful unless combined to a pycuda equivalent.
 - half precision
-- real<->complex transforms
+- Validate real<->complex transforms
 - convolution ?
 - access to tweaking parameters in VkFFTConfiguration ?

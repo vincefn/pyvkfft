@@ -60,8 +60,8 @@ VkFFTConfiguration* make_config(const int nx, const int ny, const int nz, const 
   config->performR2C = r2c;
   switch(precision)
   {
-      case 16 : config->halfPrecision = 1;
-      case 64 : config->doublePrecision = 1;
+      case 2 : config->halfPrecision = 1;
+      case 8 : config->doublePrecision = 1;
   };
 
   CUdevice *dev = new CUdevice;
@@ -104,7 +104,8 @@ VkFFTConfiguration* make_config(const int nx, const int ny, const int nz, const 
   config->buffer = pbuf;
 
   uint64_t* psize = new uint64_t;
-  *psize = (uint64_t)(nx * ny * nz * 8);
+  if(r2c) *psize = (uint64_t)((nx / 2 + 1) * ny * nz * precision * 2);
+  else *psize = (uint64_t)(nx * ny * nz * precision * 2);
   config->bufferSize = psize;
 
   if(buffer_out != NULL)
@@ -193,6 +194,7 @@ void free_config(VkFFTConfiguration *config)
   free(config->buffer);
   free(config->bufferSize);
   free(config);
+  if(config->isOutputFormatted) free(config->outputBuffer);
   if(config->stream != 0) free(config->stream);
 }
 
