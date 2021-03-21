@@ -62,14 +62,14 @@ class TestVkFFTCUDA(unittest.TestCase):
 
             d2 = fftn(d1)
             app.fft(d1_cu, d2_cu)
-            # The source array is overwritten :-(
-            # self.assertTrue(np.allclose(d1, d1_cu.get(), rtol=1e-6, atol=abs(d1).max() * 1e-6))
+            # Check original array is unchanged and compare result with numpy.fft
+            self.assertTrue(np.allclose(d1, d1_cu.get(), rtol=rtol, atol=abs(d1).max() * rtol))
             self.assertTrue(np.allclose(d2, d2_cu.get(), rtol=rtol, atol=abs(d2).max() * rtol))
 
             d1 = ifftn(d2)
             app.ifft(d2_cu, d1_cu)
             self.assertTrue(np.allclose(d1, d1_cu.get(), rtol=rtol, atol=abs(d1).max() * rtol))
-            # self.assertTrue(np.allclose(d2, d2_cu.get(), rtol=1e-6, atol=abs(d2).max() * 1e-6))
+            self.assertTrue(np.allclose(d2, d2_cu.get(), rtol=rtol, atol=abs(d2).max() * rtol))
             n1 = (abs(d1_cu.get()) ** 2).sum()
             self.assertTrue(np.isclose(n0, n1, rtol=rtol))
 

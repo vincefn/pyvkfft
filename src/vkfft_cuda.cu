@@ -101,7 +101,6 @@ VkFFTConfiguration* make_config(const int nx, const int ny, const int nz, const 
 
   void ** pbuf = new void*;
   *pbuf = buffer;
-  config->buffer = pbuf;
 
   uint64_t* psize = new uint64_t;
   if(r2c) *psize = (uint64_t)((nx / 2 + 1) * ny * nz * precision * 2);
@@ -110,17 +109,20 @@ VkFFTConfiguration* make_config(const int nx, const int ny, const int nz, const 
 
   if(buffer_out != NULL)
   {
-    config->inputBuffer = pbuf;
-
+    // Calculations are made in buffer, so with buffer != inputBuffer we keep the original data
     void ** pbufout = new void*;
     *pbufout = buffer_out;
-    config->outputBuffer = pbufout;
+
+    config->buffer = pbufout;
+    config->inputBuffer = pbuf;
 
     config->inputBufferSize = psize;
-    config->outputBufferSize = psize;
 
     config->isInputFormatted = 1;
-    config->isOutputFormatted = 1;
+  }
+  else
+  {
+    config->buffer = pbuf;
   }
 
 
@@ -158,7 +160,7 @@ VkFFTApplication* init_app(const VkFFTConfiguration* config)
 
 void fft(VkFFTApplication* app, void *in, void *out)
 {
-  *(app->configuration.buffer) = in;
+  *(app->configuration.buffer) = out;  // unnnecessary ?
   *(app->configuration.inputBuffer) = in;
   *(app->configuration.outputBuffer) = out;
   VkFFTAppend(app, -1, NULL);
@@ -166,7 +168,7 @@ void fft(VkFFTApplication* app, void *in, void *out)
 
 void ifft(VkFFTApplication* app, void *in, void *out)
 {
-  *(app->configuration.buffer) = in;
+  *(app->configuration.buffer) = out;  // unnnecessary ?
   *(app->configuration.inputBuffer) = in;
   *(app->configuration.outputBuffer) = out;
   VkFFTAppend(app, 1, NULL);
