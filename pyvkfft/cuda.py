@@ -161,7 +161,8 @@ class VkFFTApp:
         """
         if self.inplace:
             if dest is not None:
-                raise RuntimeError("VkFFTApp.fft: dest is not None but this is an inplace transform")
+                if src.gpudata != dest.gpudata:
+                    raise RuntimeError("VkFFTApp.fft: dest is not None but this is an inplace transform")
             _vkfft_cuda.fft(self.app, int(src.gpudata), int(src.gpudata))
             if self.r2c:
                 if src.dtype == np.float32:
@@ -187,7 +188,8 @@ class VkFFTApp:
         """
         if self.inplace:
             if dest is not None:
-                raise RuntimeError("VkFFTApp.fft: dest is not None but this is an inplace transform")
+                if src.gpudata != dest.gpudata:
+                    raise RuntimeError("VkFFTApp.fft: dest!=src but this is an inplace transform")
             _vkfft_cuda.ifft(self.app, int(src.gpudata), int(src.gpudata))
             if self.r2c:
                 if src.dtype == np.complex64:
