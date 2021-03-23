@@ -36,8 +36,8 @@ What works:
 - C2C out-of-place transform, single and double precision (now keeps the original data)
 - normalisation=0 (array L2 norm * array size on each transform) and 1 (the backward
   transform divides the L2 norm by the array size, so FFT*iFFT restores the original array)
-- R2C inplace implemented, but gives incorrect results compared to numpy (R2C+C2R normalised
-  returns the original array, but R2C is different from numpy).
+- R2C inplace, single and double precision
+- now testing the FFT size does not exceed the allowed maximum prime number decomposition (13)
 - small testsuite: use `python setup.py test`
 
 TODO
@@ -45,7 +45,6 @@ TODO
 
 - access to the other backends (vulkan, rocm) ? Not useful unless combined to a pycuda equivalent.
 - half precision
-- Validate real<->complex transforms
 - convolution ?
 - access to tweaking parameters in VkFFTConfiguration ?
 - access to the code of the generated kernels ?

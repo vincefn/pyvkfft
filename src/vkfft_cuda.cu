@@ -160,7 +160,7 @@ VkFFTApplication* init_app(const VkFFTConfiguration* config)
 
 void fft(VkFFTApplication* app, void *in, void *out)
 {
-  *(app->configuration.buffer) = out;  // unnnecessary ?
+  *(app->configuration.buffer) = out;  // unnecessary ?
   *(app->configuration.inputBuffer) = in;
   *(app->configuration.outputBuffer) = out;
   VkFFTAppend(app, -1, NULL);
@@ -168,7 +168,7 @@ void fft(VkFFTApplication* app, void *in, void *out)
 
 void ifft(VkFFTApplication* app, void *in, void *out)
 {
-  *(app->configuration.buffer) = out;  // unnnecessary ?
+  *(app->configuration.buffer) = out;  // unnecessary ?
   *(app->configuration.inputBuffer) = in;
   *(app->configuration.outputBuffer) = out;
   VkFFTAppend(app, 1, NULL);
@@ -195,9 +195,18 @@ void free_config(VkFFTConfiguration *config)
   // Only frees the pointer to the buffer pointer, not the buffer itself.
   free(config->buffer);
   free(config->bufferSize);
-  free(config);
-  if(config->isOutputFormatted) free(config->outputBuffer);
+
+  if((config->outputBuffer != NULL) && (config->buffer != config->outputBuffer)) free(config->outputBuffer);
+  if((config->inputBuffer != NULL) && (config->buffer != config->inputBuffer)
+     && (config->outputBuffer != config->inputBuffer)) free(config->inputBuffer);
+
+  if((config->inputBufferSize != NULL) && (config->inputBufferSize != config->bufferSize))
+    free(config->inputBufferSize);
+  if((config->outputBufferSize != NULL) && (config->outputBufferSize != config->bufferSize)
+     && (config->outputBufferSize != config->inputBufferSize)) free(config->outputBufferSize);
+
   if(config->stream != 0) free(config->stream);
+  free(config);
 }
 
 /** Basic test function

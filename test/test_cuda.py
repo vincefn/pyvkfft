@@ -73,59 +73,37 @@ class TestVkFFTCUDA(unittest.TestCase):
             n1 = (abs(d1_cu.get()) ** 2).sum()
             self.assertTrue(np.isclose(n0, n1, rtol=rtol))
 
-    def text_R2C_C2R_inplace(self):
+    def test_R2C_C2R_inplace(self):
         """
         Test real <-> complex (half-hermitian) for a couple of R2C and C2R transforms
         :return:
         """
-        for dtype in [np.float32, np.complex64]:
+        for dtype in [np.float32, np.float64]:
             if dtype == np.float32:
                 rtol = 1e-6
             else:
                 rtol = 1e-12
 
-            d = ascent().astype(dtype)
+            d = np.zeros((512, 514), dtype=dtype)
+            d[:, :512] = ascent()
             ny, nx = d.shape
             d_cu = cua.to_gpu(d)
-            app = VkFFTApp(d.shape, d.dtype, ndim=2, norm=1, r2c=True)
+            app = VkFFTApp(d.shape, d.dtype, ndim=2, r2c=True)
             d_cu = app.fft(d_cu)
 
             if dtype == np.float32:
                 self.assertTrue(d_cu.dtype == np.complex64)
-            if dtype == np.float64:
-                self.assertTrue(d_cu.dtype == np.complex128)
-            self.assertTrue(d_cu.shape == (ny, (nx - 2) // 2 + 1))
-
-            d_cu = app.ifft(d_cu)
-            self.assertTrue(np.allclose(d_cu.get()[:, :-2], d[:, :-2], rtol=rtol, atol=d.max() * rtol),
-                            "Compare VkFFT R2C+C2R transform")
-
-    def test_R2C_inplace(self):
-        """
-        Test real -> complex (half-hermitian) transform
-        :return:
-        """
-        for dtype in [np.float32, np.complex64]:
-            if dtype == np.float32:
-                rtol = 1e-6
-            else:
-                rtol = 1e-12
-
-            d = ascent().astype(dtype)
-            ny, nx = d.shape
-            d_cu = cua.to_gpu(d)
-            app = VkFFTApp(d.shape, d.dtype, ndim=2, norm=1, r2c=True)
-            d_cu = app.fft(d_cu)
-
-            if dtype == np.float32:
-                self.assertTrue(d_cu.dtype == np.complex64)
-            if dtype == np.float64:
+            elif dtype == np.float64:
                 self.assertTrue(d_cu.dtype == np.complex128)
             self.assertTrue(d_cu.shape == (ny, (nx - 2) // 2 + 1))
 
             dn = rfftn(d[:, :-2])
-            self.assertTrue(np.allclose(d_cu.get()[:, :-2], dn[:, :-2], rtol=rtol, atol=d.max() * rtol),
+            self.assertTrue(np.allclose(d_cu.get(), dn, rtol=rtol, atol=dn.max() * rtol),
                             "Compare VkFFT R2C transform with numpy rfftn")
+
+            d_cu = app.ifft(d_cu)
+            self.assertTrue(np.allclose(d_cu.get()[:, :-2], d[:, :-2], rtol=rtol, atol=d.max() * rtol),
+                            "Compare VkFFT R2C+C2R transform")
 
     def test_streams(self):
         """

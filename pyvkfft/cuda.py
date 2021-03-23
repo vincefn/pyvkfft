@@ -12,6 +12,24 @@ import sysconfig
 import ctypes
 import numpy as np
 import pycuda.gpuarray as cua
+import pycuda.driver as cu_drv
+
+
+def primes(n):
+    """ Returns the prime decomposition of n as a list
+    """
+    v = [1]
+    assert (n > 0)
+    i = 2
+    while i * i <= n:
+        while n % i == 0:
+            v.append(i)
+            n //= i
+        i += 1
+    if n > 1:
+        v.append(n)
+    return v
+
 
 # np.complex32 does not exist yet https://github.com/numpy/numpy/issues/14753
 complex64 = np.dtype([('re', np.float16), ('im', np.float16)])
@@ -114,6 +132,11 @@ class VkFFTApp:
         self.app = _vkfft_cuda.init_app(self.config)
         if self.app == 0:
             raise RuntimeError("Error creating VkFFTApplication. Was the CUDA driver initialised .")
+        # TODO: This is a kludge to keep a reference to the context, so that it is deleted
+        #  after the app in __delete__, which throws an error if the context does not exist
+        #  anymore. Except that we cannot be sure this is the right context, if a stream
+        #  has been given because we don't have access to cuStreamGetCtx from python...
+        self._ctx = cu_drv.Context.get_current()
 
     def __del__(self):
         """ Takes care of deleting allocated memory in the underlying
@@ -137,6 +160,9 @@ class VkFFTApp:
             # the last two columns are ignored in the R array, and will be used
             # in the C array with a size nx//2+1
             nx -= 2
+        if max(primes(nx)) > 13 or (max(primes(ny)) > 13 and self.ndim>=2) \
+                or (self.ndim>=3 and max(primes(nz)) > 13):
+            raise RuntimeError("The prime numbers of the FFT size is larger than 13")
         if self.stream is None:
             s = 0
         else:
