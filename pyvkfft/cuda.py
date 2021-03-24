@@ -114,9 +114,6 @@ class VkFFTApp:
             self.ndim = ndim
         self.inplace = inplace
         self.r2c = r2c
-        if r2c:
-            warnings.warn("You are using the R2C transform, which is not validated and may "
-                          "have a memory error from the python API", stacklevel=2)
         self.stream = stream
         self.norm = norm
         # Precision: number of bytes per

@@ -13,7 +13,7 @@ import numpy as np
 import timeit
 
 
-def speed(shape, ndim, nb=10, stream=None):
+def speed(shape, ndim, nb=10, stream=None, inplace=True, norm=0):
     """
     Perform a speed test using VkFFT (
     :param shape: array shape to use
@@ -21,28 +21,39 @@ def speed(shape, ndim, nb=10, stream=None):
     :param nb: number of repeats for timing
     :param stream: the pycuda.driver.Stream to be sued for calculations. If None,
         the default stream for the active context will be used.
+    :param inplace: if True (default), do an in-place FFT
+    :param norm: norm=0 will have the L2 norm multiplied by the FT size for each transform,
+        whereas norm=1 will divide the L2 norm by the FT size for a backwards transform,
+        similarly to numpy's fft norm='backwards'.
     :return: a tuple with the time per couple of FFT and iFFT, and the idealised memory throughput
         assuming one read and one write of the array per transform axis, in Gbytes/s.
     """
     d = cua.to_gpu(np.random.uniform(0, 1, shape).astype(np.complex64))
+    if not inplace:
+        d1 = cua.empty_like(d)
     # print(d.shape)
-    app = VkFFTApp(d, ndim=ndim, stream=stream)
-    app.fft()
+    app = VkFFTApp(d.shape, d.dtype, ndim=ndim, stream=stream, inplace=inplace, norm=norm)
     cu_drv.Context.synchronize()
     t0 = timeit.default_timer()
     for i in range(nb):
-        app.ifft()
-        app.fft()
+        if inplace:
+            d = app.ifft(d)
+            d = app.fft(d)
+        else:
+            d1 = app.ifft(d, d1)
+            d = app.fft(d1, d)
     cu_drv.Context.synchronize()
     dt = timeit.default_timer() - t0
     shape = list(shape)
     if len(shape) < 3:
         shape += [1] * (3 - len(shape))
-    gbps = d.nbytes * nb * 2 * 2 * 2 / dt / 1024 ** 3
-    print("(%4d %4d %4d)[%dD] dt=%6.2f ms %7.2f Gbytes/s" %
-          (shape[2], shape[1], shape[0], ndim, dt / nb * 1000, gbps))
+    gbps = d.nbytes * nb * ndim * 2 * 2 / dt / 1024 ** 3
+    s = ""
+    if not inplace:
+        s= "[out-of-place]"
+    print("(%4d %4d %4d)[%dD] dt=%6.2f ms %7.2f Gbytes/s %s [norm=%d]" %
+          (shape[2], shape[1], shape[0], ndim, dt / nb * 1000, gbps, s, norm))
     return dt, gbps
-
 
 
 speed((256, 256, 256), 3)
