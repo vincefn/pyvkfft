@@ -103,8 +103,23 @@ VkFFTConfiguration* make_config(const int nx, const int ny, const int nz, const 
   *pbuf = buffer;
 
   uint64_t* psize = new uint64_t;
-  if(r2c) *psize = (uint64_t)((nx / 2 + 1) * ny * nz * precision * 2);
+  uint64_t* psizein = psize;
+
+  if(r2c)
+  {
+    *psize = (uint64_t)((nx / 2 + 1) * ny * nz * precision * 2);
+    if(buffer_out != NULL)
+    {
+      psizein = new uint64_t;
+      *psizein = (uint64_t)(nx * ny * nz * precision);
+      config->inverseReturnToInputBuffer = 1;
+			config->inputBufferStride[0] = nx;
+			config->inputBufferStride[1] = nx * ny;
+			config->inputBufferStride[2] = nx * ny * nz;
+    }
+  }
   else *psize = (uint64_t)(nx * ny * nz * precision * 2);
+
   config->bufferSize = psize;
 
   if(buffer_out != NULL)
@@ -116,7 +131,7 @@ VkFFTConfiguration* make_config(const int nx, const int ny, const int nz, const 
     config->buffer = pbufout;
     config->inputBuffer = pbuf;
 
-    config->inputBufferSize = psize;
+    config->inputBufferSize = psizein;
 
     config->isInputFormatted = 1;
   }

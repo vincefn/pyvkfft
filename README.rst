@@ -32,13 +32,13 @@ Status
 ------
 What works:
 
-- C2C inplace transforms, single and double precision
-- C2C out-of-place transform, single and double precision (now keeps the original data)
+- C2C, R2C/C2R for inplace and out-of-place transforms
+- single and double precision for all transforms
+- all transforms accept 1D, 2D and 3D arrays, with the FT dimension <= array dimension
 - normalisation=0 (array L2 norm * array size on each transform) and 1 (the backward
   transform divides the L2 norm by the array size, so FFT*iFFT restores the original array)
-- R2C inplace, single and double precision
 - now testing the FFT size does not exceed the allowed maximum prime number decomposition (13)
-- small testsuite: use `python setup.py test`
+- unit tests for all transforms: use `python setup.py test`
 
 TODO
 ----

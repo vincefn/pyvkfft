@@ -100,10 +100,13 @@ class VkFFTApp:
             by the array size, so FFT+iFFT will keep the array norm.
         :param r2c: if True, will perform a real->complex transform, where the
             complex destination is a half-hermitian array.
-            For an inplace transform, if the input data size iz ny*nx, the input
-            float array should have a shape of (ny, nx+2), and the resulting
-            complex array (use pycuda's GPUArray.view(dtype=np.complex64) to
-            reinterpret the type) will have a shape (ny, nx//2 + 1).
+            For an inplace transform, if the input data shape is (...,nx), the input
+            float array should have a shape of (..., nx+2), the last two columns
+            being ignored in the input data, and the resulting
+            complex array (using pycuda's GPUArray.view(dtype=np.complex64) to
+            reinterpret the type) will have a shape (..., nx//2 + 1).
+            For an out-of-place transform, if the input shape is (..., nx),
+            the output shape should be (..., nx//2+1)
         :raises RuntimeError: if the initialisation fails, e.g. if the CUDA
             driver has not been properly initialised.
         """
@@ -152,13 +155,15 @@ class VkFFTApp:
         elif len(self.shape) == 1:
             nx = self.shape[0]
         if self.r2c:
-            if not self.inplace:
-                raise RuntimeError("VkFFTApp: out-of-place R2C transform is not supported")
-            # the last two columns are ignored in the R array, and will be used
-            # in the C array with a size nx//2+1
-            nx -= 2
-        if max(primes(nx)) > 13 or (max(primes(ny)) > 13 and self.ndim>=2) \
-                or (self.ndim>=3 and max(primes(nz)) > 13):
+            if self.inplace:
+                # the last two columns are ignored in the R array, and will be used
+                # in the C array with a size nx//2+1
+                nx -= 2
+            else:
+                # raise RuntimeError("VkFFTApp: out-of-place R2C transform is not supported")
+                pass
+        if max(primes(nx)) > 13 or (max(primes(ny)) > 13 and self.ndim >= 2) \
+                or (self.ndim >= 3 and max(primes(nz)) > 13):
             raise RuntimeError("The prime numbers of the FFT size is larger than 13")
         if self.stream is None:
             s = 0
@@ -198,6 +203,8 @@ class VkFFTApp:
                 raise RuntimeError("VkFFTApp.fft: dest is None but this is an out-of-place transform")
             elif src.gpudata == dest.gpudata:
                 raise RuntimeError("VkFFTApp.fft: dest and src are identical but this is an inplace transform")
+            if self.r2c:
+                assert (src.size == dest.size // dest.shape[-1] * 2 * (dest.shape[-1] - 1))
             _vkfft_cuda.fft(self.app, int(src.gpudata), int(dest.gpudata))
             return dest
 
@@ -225,7 +232,13 @@ class VkFFTApp:
                 raise RuntimeError("VkFFTApp.ifft: dest is None but this is an out-of-place transform")
             elif src.gpudata == dest.gpudata:
                 raise RuntimeError("VkFFTApp.ifft: dest and src are identical but this is an inplace transform")
-            _vkfft_cuda.ifft(self.app, int(src.gpudata), int(dest.gpudata))
+            if self.r2c:
+                assert (dest.size == src.size // src.shape[-1] * 2 * (src.shape[-1] - 1))
+                # Special case, src and dest buffer sizes are different,
+                # VkFFT is configured to go back to the source buffer
+                _vkfft_cuda.ifft(self.app, int(dest.gpudata), int(src.gpudata))
+            else:
+                _vkfft_cuda.ifft(self.app, int(src.gpudata), int(dest.gpudata))
             return dest
 
 
