@@ -45,7 +45,7 @@ int test_vkfft_cuda(int);
 * \param norm: 0, the L2 norm is multiplied by the size on each transform, 1, the inverse transform
 *   divides the L2 norm by the size.
 * \param precision: number of bits per float, 16=half, 32=single, 64=double precision
-* \return: the pointer to the newly created VkFFTConfiguration, or 0 if an error occured
+* \return: the pointer to the newly created VkFFTConfiguration, or 0 if an error occurred.
 */
 VkFFTConfiguration* make_config(const int nx, const int ny, const int nz, const int fftdim,
                                 void *buffer, void *buffer_out, void* hstream,
