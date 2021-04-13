@@ -43,7 +43,11 @@ What works:
 TODO
 ----
 
-- access to the other backends: **OpenCL !**. As for vulkan and rocm this only makes sense combined to a pycuda/cupy/pyopencl equivalent. 
+- access to the other backends:
+
+  - **OpenCL !** (now also available in VkFFT)
+  - for vulkan and rocm this only makes sense combined to a pycuda/cupy/pyopencl equivalent.
+- support cupy arrays
 - half precision
 - convolution ?
 - access to tweaking parameters in VkFFTConfiguration ?
