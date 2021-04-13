@@ -47,9 +47,10 @@ TODO
 
   - **OpenCL !** (now also available in VkFFT)
   - for vulkan and rocm this only makes sense combined to a pycuda/cupy/pyopencl equivalent.
-- support cupy arrays
+- support cupy arrays (this probably requires little change so a cupy user/developer contribution is welcome)
 - out-of-place C2R transform without modifying the C array ? This would require using a R array padded with two wolumns as for the inplace transform
-- half precision
+- half precision ?
 - convolution ?
+- zero-padding ?
 - access to tweaking parameters in VkFFTConfiguration ?
 - access to the code of the generated kernels ?
