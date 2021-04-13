@@ -1,13 +1,12 @@
-pyvkfft - python interface to VkFFT (Vulkan Fast Fourier Transform library)
-===========================================================================
+pyvkfft - python interface to the CUDA backend of VkFFT (Vulkan Fast Fourier Transform library)
+===============================================================================================
 
 `VkFFT <https://github.com/DTolm/VkFFT>`_ is a GPU-accelerated Fast Fourier Transform library
 for Vulkan/CUDA/HIP projects.
 
-pyvkfft offers a basic python interface to the CUDA backend of VkFFT, compatible with pyCUDA.
+pyvkfft offers a basic python interface to the **CUDA backend of VkFFT**, compatible with pyCUDA.
 
-*This is very preliminary, mostly a proof-of concept, and may be unrelaible or prone to
-errors or memory leaks. Use at your own risks.*
+*The code should now be in a working state, and passes all unit tests, and no errors are reported by either valgrind or cuda-memcheck.*
 
 Installation
 ------------
@@ -43,7 +42,7 @@ What works:
 TODO
 ----
 
-- access to the other backends (vulkan, rocm) ? Not useful unless combined to a pycuda equivalent.
+- access to the other backends: OpenCL. As for vulkan and rocm this only makes sense combined to a pycuda/cupy/pyopencl equivalent. 
 - half precision
 - convolution ?
 - access to tweaking parameters in VkFFTConfiguration ?
