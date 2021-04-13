@@ -175,7 +175,7 @@ VkFFTApplication* init_app(const VkFFTConfiguration* config)
 
 void fft(VkFFTApplication* app, void *in, void *out)
 {
-  *(app->configuration.buffer) = out;  // unnecessary ?
+  *(app->configuration.buffer) = out;
   *(app->configuration.inputBuffer) = in;
   *(app->configuration.outputBuffer) = out;
   VkFFTAppend(app, -1, NULL);
@@ -183,7 +183,7 @@ void fft(VkFFTApplication* app, void *in, void *out)
 
 void ifft(VkFFTApplication* app, void *in, void *out)
 {
-  *(app->configuration.buffer) = out;  // unnecessary ?
+  *(app->configuration.buffer) = out;
   *(app->configuration.inputBuffer) = in;
   *(app->configuration.outputBuffer) = out;
   VkFFTAppend(app, 1, NULL);

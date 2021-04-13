@@ -105,8 +105,10 @@ class VkFFTApp:
             being ignored in the input data, and the resulting
             complex array (using pycuda's GPUArray.view(dtype=np.complex64) to
             reinterpret the type) will have a shape (..., nx//2 + 1).
-            For an out-of-place transform, if the input shape is (..., nx),
-            the output shape should be (..., nx//2+1)
+            For an out-of-place transform, if the input (real) shape is (..., nx),
+            the output (complex) shape should be (..., nx//2+1).
+            Note that for C2R transforms with ndim>=2, the source (complex) array
+            is modified.
         :raises RuntimeError: if the initialisation fails, e.g. if the CUDA
             driver has not been properly initialised.
         """
@@ -202,7 +204,7 @@ class VkFFTApp:
             if dest is None:
                 raise RuntimeError("VkFFTApp.fft: dest is None but this is an out-of-place transform")
             elif src.gpudata == dest.gpudata:
-                raise RuntimeError("VkFFTApp.fft: dest and src are identical but this is an inplace transform")
+                raise RuntimeError("VkFFTApp.fft: dest and src are identical but this is an out-of-place transform")
             if self.r2c:
                 assert (src.size == dest.size // dest.shape[-1] * 2 * (dest.shape[-1] - 1))
             _vkfft_cuda.fft(self.app, int(src.gpudata), int(dest.gpudata))
@@ -231,7 +233,7 @@ class VkFFTApp:
             if dest is None:
                 raise RuntimeError("VkFFTApp.ifft: dest is None but this is an out-of-place transform")
             elif src.gpudata == dest.gpudata:
-                raise RuntimeError("VkFFTApp.ifft: dest and src are identical but this is an inplace transform")
+                raise RuntimeError("VkFFTApp.ifft: dest and src are identical but this is an out-of-place transform")
             if self.r2c:
                 assert (dest.size == src.size // src.shape[-1] * 2 * (src.shape[-1] - 1))
                 # Special case, src and dest buffer sizes are different,

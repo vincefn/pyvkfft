@@ -604,12 +604,17 @@ class TestVkFFTCUDA(unittest.TestCase):
             d2_cu = app.fft(d1_cu, d2_cu)
 
             dn = rfftn(d)
-            self.assertTrue(np.allclose(d2_cu.get(), dn, rtol=rtol, atol=dn.max() * rtol),
+            d2 = d2_cu.get()
+            self.assertTrue(np.allclose(d2, dn, rtol=rtol, atol=dn.max() * rtol),
                             "Compare VkFFT R2C out-of-place transform with numpy rfftn")
+            self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=dn.max() * rtol),
+                            "R2C out-of-place: check original array is unchanged")
 
             d1_cu = app.ifft(d2_cu, d1_cu)
             self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=d.max() * rtol),
                             "Compare VkFFT R2C+C2R out-of-place transform")
+            self.assertTrue(np.allclose(d2_cu.get(), d2, rtol=rtol, atol=dn.max() * rtol),
+                            "C2R out-of-place: check original array is unchanged")
 
     def test_R2C_C2R_outofplace_1d_2d(self):
         """
@@ -631,12 +636,17 @@ class TestVkFFTCUDA(unittest.TestCase):
             d2_cu = app.fft(d1_cu, d2_cu)
 
             dn = rfftn(d, axes=(-1,))
-            self.assertTrue(np.allclose(d2_cu.get(), dn, rtol=rtol, atol=dn.max() * rtol),
+            d2 = d2_cu.get()
+            self.assertTrue(np.allclose(d2, dn, rtol=rtol, atol=dn.max() * rtol),
                             "Compare VkFFT R2C out-of-place transform with numpy rfftn")
+            self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=dn.max() * rtol),
+                            "R2C out-of-place: check original array is unchanged")
 
             d1_cu = app.ifft(d2_cu, d1_cu)
             self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=d.max() * rtol),
                             "Compare VkFFT R2C+C2R out-of-place transform")
+            self.assertTrue(np.allclose(d2_cu.get(), d2, rtol=rtol, atol=dn.max() * rtol),
+                            "C2R out-of-place: check original array is unchanged")
 
     def test_R2C_C2R_outofplace_1d_3d(self):
         """
@@ -661,12 +671,17 @@ class TestVkFFTCUDA(unittest.TestCase):
             d2_cu = app.fft(d1_cu, d2_cu)
 
             dn = rfftn(d, axes=(-1,))
-            self.assertTrue(np.allclose(d2_cu.get(), dn, rtol=rtol, atol=dn.max() * rtol),
+            d2 = d2_cu.get()
+            self.assertTrue(np.allclose(d2, dn, rtol=rtol, atol=dn.max() * rtol),
                             "Compare VkFFT R2C out-of-place transform with numpy rfftn")
+            self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=dn.max() * rtol),
+                            "R2C out-of-place: check original array is unchanged")
 
             d1_cu = app.ifft(d2_cu, d1_cu)
             self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=d.max() * rtol),
                             "Compare VkFFT R2C+C2R out-of-place transform")
+            self.assertTrue(np.allclose(d2_cu.get(), d2, rtol=rtol, atol=dn.max() * rtol),
+                            "C2R out-of-place: check original array is unchanged")
 
     def test_R2C_C2R_outofplace_2d(self):
         """
@@ -688,12 +703,18 @@ class TestVkFFTCUDA(unittest.TestCase):
             d2_cu = app.fft(d1_cu, d2_cu)
 
             dn = rfftn(d)
-            self.assertTrue(np.allclose(d2_cu.get(), dn, rtol=rtol, atol=dn.max() * rtol),
+            d2 = d2_cu.get()
+            self.assertTrue(np.allclose(d2, dn, rtol=rtol, atol=dn.max() * rtol),
                             "Compare VkFFT R2C out-of-place transform with numpy rfftn")
+            self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=dn.max() * rtol),
+                            "R2C out-of-place: check original array is unchanged")
 
             d1_cu = app.ifft(d2_cu, d1_cu)
             self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=d.max() * rtol),
                             "Compare VkFFT R2C+C2R out-of-place transform")
+            # For C2R and ndim >1, the original array is always modified
+            # self.assertTrue(np.allclose(d2_cu.get(), d2, rtol=rtol, atol=dn.max() * rtol),
+            #                 "C2R out-of-place: check original array is unchanged")
 
     def test_R2C_C2R_outofplace_2d_n(self):
         """
@@ -718,12 +739,18 @@ class TestVkFFTCUDA(unittest.TestCase):
             d2_cu = app.fft(d1_cu, d2_cu)
 
             dn = rfftn(d, axes=(1, 2))
-            self.assertTrue(np.allclose(d2_cu.get(), dn, rtol=rtol, atol=dn.max() * rtol),
+            d2 = d2_cu.get()
+            self.assertTrue(np.allclose(d2, dn, rtol=rtol, atol=dn.max() * rtol),
                             "Compare VkFFT R2C out-of-place transform with numpy rfftn")
+            self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=dn.max() * rtol),
+                            "R2C out-of-place: check original array is unchanged")
 
             d1_cu = app.ifft(d2_cu, d1_cu)
             self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=d.max() * rtol),
                             "Compare VkFFT R2C+C2R out-of-place transform")
+            # For C2R and ndim >1, the original array is always modified
+            # self.assertTrue(np.allclose(d2_cu.get(), d2, rtol=rtol, atol=dn.max() * rtol),
+            #                 "C2R out-of-place: check original array is unchanged")
 
     def test_R2C_C2R_outofplace_3d(self):
         """
@@ -748,12 +775,18 @@ class TestVkFFTCUDA(unittest.TestCase):
             d2_cu = app.fft(d1_cu, d2_cu)
 
             dn = rfftn(d)
-            self.assertTrue(np.allclose(d2_cu.get(), dn, rtol=rtol, atol=dn.max() * rtol),
+            d2 = d2_cu.get()
+            self.assertTrue(np.allclose(d2, dn, rtol=rtol, atol=dn.max() * rtol),
                             "Compare VkFFT R2C out-of-place transform with numpy rfftn")
+            self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=dn.max() * rtol),
+                            "R2C out-of-place: check original array is unchanged")
 
             d1_cu = app.ifft(d2_cu, d1_cu)
             self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=d.max() * rtol),
                             "Compare VkFFT R2C+C2R out-of-place transform")
+            # For C2R and ndim >1, the original array is always modified
+            # self.assertTrue(np.allclose(d2_cu.get(), d2, rtol=rtol, atol=dn.max() * rtol),
+            #                 "C2R out-of-place: check original array is unchanged")
 
     def test_streams(self):
         """
