@@ -38,7 +38,7 @@ What works:
   transform divides the L2 norm by the array size, so FFT*iFFT restores the original array)
 - now testing the FFT size does not exceed the allowed maximum prime number decomposition (13)
 - unit tests for all transforms: use `python setup.py test`
-- Note that out-of-place C2R transform currently destroys the 
+- Note that out-of-place C2R transform currently destroys the complex array for FFT dimensions >=2
 
 TODO
 ----
