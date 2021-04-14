@@ -114,7 +114,7 @@ class VkFFTApp:
         """
         self.shape = shape
         if ndim is None:
-            self.ndim = self.d.ndim
+            self.ndim = len(shape)
         else:
             self.ndim = ndim
         self.inplace = inplace
@@ -129,10 +129,10 @@ class VkFFTApp:
         elif dtype in [np.float64, np.complex128]:
             self.precision = 8
         self.config = self._make_config()
-        if self.config == 0:
+        if self.config is None:
             raise RuntimeError("Error creating VkFFTConfiguration. Was the CUDA context properly initialised ?")
         self.app = _vkfft_cuda.init_app(self.config)
-        if self.app == 0:
+        if self.app is None:
             raise RuntimeError("Error creating VkFFTApplication. Was the CUDA driver initialised .")
         # TODO: This is a kludge to keep a reference to the context, so that it is deleted
         #  after the app in __delete__, which throws an error if the context does not exist
