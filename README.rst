@@ -6,7 +6,7 @@ for Vulkan/CUDA/HIP projects.
 
 pyvkfft offers a basic python interface to the **CUDA backend of VkFFT**, compatible with pyCUDA.
 
-*The code should now be in a working state, and passes all unit tests, and no errors are reported by either valgrind or cuda-memcheck.*
+*The code is now in a working state, and passes all unit tests ; no errors are reported by either valgrind or cuda-memcheck.*
 
 Installation
 ------------
