@@ -24,7 +24,7 @@ Examples
 See the script and notebook in the examples directory.
 The notebook is also `available on google colab
 <https://colab.research.google.com/drive/1YJKtIwM3ZwyXnMZfgFVcpbX7H-h02Iej?usp=sharing>`_.
-Make sure to select a GPU for the runtime.
+Make sure to select a GPU for the runtime. This may fail on old architectures (Kepler- to be confirmed)
 
 
 Status
@@ -39,16 +39,18 @@ What works:
 - now testing the FFT size does not exceed the allowed maximum prime number decomposition (13)
 - unit tests for all transforms: use `python setup.py test`
 - Note that out-of-place C2R transform currently destroys the complex array for FFT dimensions >=2
+- tested on macOS (10.13.6) and Linux.
 
 TODO
 ----
 
 - access to the other backends:
 
-  - **OpenCL !** (now also available in VkFFT)
+  - **OpenCL !** (now also available in VkFFT): preliminary version in the opencl branch
   - for vulkan and rocm this only makes sense combined to a pycuda/cupy/pyopencl equivalent.
 - support cupy arrays (this probably requires little change so a cupy user/developer contribution is welcome)
-- out-of-place C2R transform without modifying the C array ? This would require using a R array padded with two wolumns as for the inplace transform
+- support array dimensions >3 when the FFT dimension is up to 2 (by collapsing the 3rd dimension)
+- out-of-place C2R transform without modifying the C array ? This would require using a R array padded with two wolumns, as for the inplace transform
 - half precision ?
 - convolution ?
 - zero-padding ?
