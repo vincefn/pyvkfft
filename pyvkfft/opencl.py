@@ -55,17 +55,16 @@ class _types:
 _vkfft_opencl.make_config.restype = ctypes.c_void_p
 _vkfft_opencl.make_config.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
                                       ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
-                                      ctypes.c_void_p, ctypes.c_void_p,
-                                      ctypes.c_int, ctypes.c_int, ctypes.c_int]
+                                      ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int]
 
 _vkfft_opencl.init_app.restype = ctypes.c_void_p
 _vkfft_opencl.init_app.argtypes = [_types.vkfft_config, ctypes.c_void_p]
 
 _vkfft_opencl.fft.restype = None
-_vkfft_opencl.fft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p]
+_vkfft_opencl.fft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
 
 _vkfft_opencl.ifft.restype = None
-_vkfft_opencl.ifft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p]
+_vkfft_opencl.ifft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
 
 _vkfft_opencl.free_app.restype = None
 _vkfft_opencl.free_app.argtypes = [_types.vkfft_app]
@@ -165,11 +164,11 @@ class VkFFTApp:
         platform = device.platform
         if self.inplace:
             config = _vkfft_opencl.make_config(nx, ny, nz, self.ndim, 1, 0, platform.int_ptr,
-                                               device.int_ptr, ctx.int_ptr, self.queue.int_ptr,
+                                               device.int_ptr, ctx.int_ptr,
                                                self.norm, self.precision, int(self.r2c))
         else:
             config = _vkfft_opencl.make_config(nx, ny, nz, self.ndim, 1, 2, platform.int_ptr,
-                                               device.int_ptr, ctx.int_ptr, self.queue.int_ptr,
+                                               device.int_ptr, ctx.int_ptr,
                                                self.norm, self.precision, int(self.r2c))
         return config
 
@@ -185,7 +184,7 @@ class VkFFTApp:
             if dest is not None:
                 if src.data.int_ptr != dest.data.int_ptr:
                     raise RuntimeError("VkFFTApp.fft: dest is not None but this is an inplace transform")
-            _vkfft_opencl.fft(self.app, int(src.data.int_ptr), int(src.data.int_ptr))
+            _vkfft_opencl.fft(self.app, int(src.data.int_ptr), int(src.data.int_ptr), int(self.queue.int_ptr))
             if self.r2c:
                 if src.dtype == np.float32:
                     return src.view(dtype=np.complex64)
@@ -199,7 +198,7 @@ class VkFFTApp:
                 raise RuntimeError("VkFFTApp.fft: dest and src are identical but this is an out-of-place transform")
             if self.r2c:
                 assert (src.size == dest.size // dest.shape[-1] * 2 * (dest.shape[-1] - 1))
-            _vkfft_opencl.fft(self.app, int(src.data.int_ptr), int(dest.data.int_ptr))
+            _vkfft_opencl.fft(self.app, int(src.data.int_ptr), int(dest.data.int_ptr), int(self.queue.int_ptr))
             return dest
 
     def ifft(self, src: cla.Array, dest: cla.Array = None):
@@ -214,7 +213,7 @@ class VkFFTApp:
             if dest is not None:
                 if src.data.int_ptr != dest.data.int_ptr:
                     raise RuntimeError("VkFFTApp.fft: dest!=src but this is an inplace transform")
-            _vkfft_opencl.ifft(self.app, int(src.data.int_ptr), int(src.data.int_ptr))
+            _vkfft_opencl.ifft(self.app, int(src.data.int_ptr), int(src.data.int_ptr), int(self.queue.int_ptr))
             if self.r2c:
                 if src.dtype == np.complex64:
                     return src.view(dtype=np.float32)
@@ -230,7 +229,7 @@ class VkFFTApp:
                 assert (dest.size == src.size // src.shape[-1] * 2 * (src.shape[-1] - 1))
                 # Special case, src and dest buffer sizes are different,
                 # VkFFT is configured to go back to the source buffer
-                _vkfft_opencl.ifft(self.app, int(dest.data.int_ptr), int(src.data.int_ptr))
+                _vkfft_opencl.ifft(self.app, int(dest.data.int_ptr), int(src.data.int_ptr), int(self.queue.int_ptr))
             else:
-                _vkfft_opencl.ifft(self.app, int(src.data.int_ptr), int(dest.data.int_ptr))
+                _vkfft_opencl.ifft(self.app, int(src.data.int_ptr), int(dest.data.int_ptr), int(self.queue.int_ptr))
             return dest
