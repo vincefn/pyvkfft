@@ -127,7 +127,7 @@ class VkFFTApp:
         if self.config is None:
             raise RuntimeError("Error creating VkFFTConfiguration. Was the OpenCL context properly initialised ?")
         self.app = _vkfft_opencl.init_app(self.config, queue.int_ptr)
-        if self.app == 0:
+        if self.app is None:
             raise RuntimeError("Error creating VkFFTApplication. Was the OpenCL context properly initialised ?")
 
     def __del__(self):
