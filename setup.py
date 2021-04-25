@@ -65,7 +65,7 @@ def locate_opencl():
     """
     if 'darwin' in sys.platform:
         libraries = None
-        extra_link_args = ['-Wl,-framework,OpenCL']
+        extra_link_args = ['-Wl,-framework,OpenCL', '--shared']
     else:
         libraries = ['OpenCL']
         extra_link_args = None
@@ -145,7 +145,7 @@ install_requires.append('pyopencl')
 # OpenCL extension
 vkfft_opencl_ext = Extension('pyvkfft._vkfft_opencl',
                              sources=['src/vkfft_opencl.cpp'],
-                             extra_compile_args=['-std=c++11 -Wno-format-security'],
+                             extra_compile_args=['-std=c++11', '-Wno-format-security'],
                              libraries=OPENCL['libraries'],
                              extra_link_args=OPENCL['extra_link_args']
                              )

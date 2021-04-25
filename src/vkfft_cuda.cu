@@ -10,10 +10,10 @@
 #include <iostream>
 #include <fstream>
 #include <memory>
+using namespace std;
 #include "vkFFT.h"
 typedef float2 Complex;
 
-using namespace std;
 
 extern "C"{
 VkFFTConfiguration* make_config(const int, const int, const int, const int, void*, void*, void*,
@@ -31,6 +31,21 @@ void free_config(VkFFTConfiguration *config);
 
 int test_vkfft_cuda(int);
 }
+
+class PyVkFFT
+{
+  public:
+    PyVkFFT(const int nx, const int ny, const int nz, const int fftdim, void* hstream,
+            const int norm, const int precision, const int r2c)
+    {
+
+    };
+  private:
+    VkFFTConfiguration mConf;
+    VkFFTApplication mApp;
+    VkFFTApplication mLaunchParams;
+};
+
 
 /** Create the VkFFTConfiguration from the array parameters
 *

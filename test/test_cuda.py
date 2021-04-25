@@ -22,771 +22,193 @@ class TestVkFFTCUDA(unittest.TestCase):
     def test_pycuda(self):
         self.assertTrue(cua is not None, "pycuda is not available")
 
-    def test_c2c_inplace_1d(self):
-        """
-        Test inplace C2C 1D transform
-        :return:
-        """
-        for dtype in [np.complex64, np.complex128]:
-            if dtype == np.complex64:
-                rtol = 1e-6
-            else:
-                rtol = 1e-12
-
-            d = ascent()[0].astype(dtype)
-            n0 = (abs(d) ** 2).sum()
-            d_cu = cua.to_gpu(d)
-            app = VkFFTApp(d.shape, d.dtype, ndim=1, norm=1)
-
-            d = fftn(d)
-            app.fft(d_cu)
-            self.assertTrue(np.allclose(d, d_cu.get(), rtol=rtol, atol=abs(d).max() * rtol))
-
-            d = ifftn(d)
-            app.ifft(d_cu)
-            self.assertTrue(np.allclose(d, d_cu.get(), rtol=rtol, atol=abs(d).max() * rtol))
-            n1 = (abs(d_cu.get()) ** 2).sum()
-            self.assertTrue(np.isclose(n0, n1, rtol=rtol))
-
-    def test_c2c_inplace_1d_2d(self):
-        """
-        Test inplace C2C 1D transform for a 2D array
-        :return:
-        """
-        for dtype in [np.complex64, np.complex128]:
-            if dtype == np.complex64:
-                rtol = 1e-6
-            else:
-                rtol = 1e-12
-
-            d = ascent().astype(dtype)
-            n0 = (abs(d) ** 2).sum()
-            d_cu = cua.to_gpu(d)
-            app = VkFFTApp(d.shape, d.dtype, ndim=1, norm=1)
-
-            d = fftn(d, axes=(-1,))
-            app.fft(d_cu)
-            self.assertTrue(np.allclose(d, d_cu.get(), rtol=rtol, atol=abs(d).max() * rtol))
-
-            d = ifftn(d, axes=(-1,))
-            app.ifft(d_cu)
-            self.assertTrue(np.allclose(d, d_cu.get(), rtol=rtol, atol=abs(d).max() * rtol))
-            n1 = (abs(d_cu.get()) ** 2).sum()
-            self.assertTrue(np.isclose(n0, n1, rtol=rtol))
-
-    def test_c2c_inplace_1d_3d(self):
-        """
-        Test inplace C2C 1D transform for a 2D array
-        :return:
-        """
-        for dtype in [np.complex64, np.complex128]:
-            if dtype == np.complex64:
-                rtol = 1e-6
-            else:
-                rtol = 1e-12
-
-            a = ascent().astype(dtype)
-            ny, nx = a.shape
-            d = np.empty((17, ny, nx), dtype=dtype)
-            for i in range(len(d)):
-                d[i] = np.roll(a, np.random.randint(0, 100, 2)) * \
-                       np.exp(0.01j * np.roll(a, np.random.randint(0, 100, 2)))
-            n0 = (abs(d) ** 2).sum()
-            d_cu = cua.to_gpu(d)
-            app = VkFFTApp(d.shape, d.dtype, ndim=1, norm=1)
-
-            d = fftn(d, axes=(-1,))
-            app.fft(d_cu)
-            self.assertTrue(np.allclose(d, d_cu.get(), rtol=rtol, atol=abs(d).max() * rtol))
-
-            d = ifftn(d, axes=(-1,))
-            app.ifft(d_cu)
-            self.assertTrue(np.allclose(d, d_cu.get(), rtol=rtol, atol=abs(d).max() * rtol))
-            n1 = (abs(d_cu.get()) ** 2).sum()
-            self.assertTrue(np.isclose(n0, n1, rtol=rtol))
-
-    def test_c2c_inplace_2d(self):
+    @unittest.skipIf(cua is None, "cuda or pycuda is not available")
+    def test_c2c(self):
         """
         Test inplace C2C transforms
-        :return:
         """
-        for dtype in [np.complex64, np.complex128]:
-            if dtype == np.complex64:
-                rtol = 1e-6
-            else:
-                rtol = 1e-12
+        n = 64
+        for dims in range(1, 4):
+            for ndim in range(1, dims + 1):
+                for dtype in [np.complex64, np.complex128]:
+                    with self.subTest(dims=dims, ndim=ndim, dtype=dtype):
+                        if dtype == np.complex64:
+                            rtol = 1e-6
+                        else:
+                            rtol = 1e-12
 
-            d = ascent().astype(dtype)
-            n0 = (abs(d) ** 2).sum()
-            d_cu = cua.to_gpu(d)
-            app = VkFFTApp(d.shape, d.dtype, ndim=2, norm=1)
+                        d = np.random.uniform(0, 1, [n] * dims).astype(dtype)
+                        # A pure random array may not be a very good test (too random),
+                        # so add a Gaussian
+                        xx = [np.fft.fftshift(np.fft.fftfreq(n))] * dims
+                        v = np.zeros_like(d)
+                        for x in np.meshgrid(*xx, indexing='ij'):
+                            v += x ** 2
+                        d += 10 * np.exp(-v * 2)
+                        n0 = (abs(d) ** 2).sum()
+                        d_gpu = cua.to_gpu(d)
+                        app = VkFFTApp(d.shape, d.dtype, ndim=ndim, norm=1)
+                        # base FFT scale
+                        s = np.sqrt(np.prod(d.shape[-ndim:]))
 
-            d = fftn(d)
-            app.fft(d_cu)
-            self.assertTrue(np.allclose(d, d_cu.get(), rtol=rtol, atol=abs(d).max() * rtol))
+                        d = fftn(d, axes=list(range(dims))[-ndim:]) / s
+                        app.fft(d_gpu)
+                        self.assertTrue(np.allclose(d, d_gpu.get() / s, rtol=rtol, atol=abs(d).max() * rtol))
 
-            d = ifftn(d)
-            app.ifft(d_cu)
-            self.assertTrue(np.allclose(d, d_cu.get(), rtol=rtol, atol=abs(d).max() * rtol))
-            n1 = (abs(d_cu.get()) ** 2).sum()
-            self.assertTrue(np.isclose(n0, n1, rtol=rtol))
+                        d = ifftn(d, axes=list(range(dims))[-ndim:]) * s
+                        app.ifft(d_gpu)
+                        self.assertTrue(np.allclose(d, d_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
+                        n1 = (abs(d_gpu.get()) ** 2).sum()
+                        self.assertTrue(np.isclose(n0, n1, rtol=rtol))
 
-    def test_c2c_inplace_2d_n(self):
-        """
-        Test inplace C2C 2D FFT transforms on a 3D array.
-        :return:
-        """
-        for dtype in [np.complex64, np.complex128]:
-            if dtype == np.complex64:
-                rtol = 1e-6
-            else:
-                rtol = 1e-12
-            a = ascent().astype(dtype)
-            ny, nx = a.shape
-            d = np.empty((17, ny, nx), dtype=dtype)
-            for i in range(len(d)):
-                d[i] = np.roll(a, np.random.randint(0, 100, 2)) * \
-                       np.exp(0.01j * np.roll(a, np.random.randint(0, 100, 2)))
-            n0 = (abs(d) ** 2).sum()
-            d_cu = cua.to_gpu(d)
-            app = VkFFTApp(d.shape, d.dtype, ndim=2, norm=1)
-
-            d = fftn(d, axes=(1, 2))
-            app.fft(d_cu)
-            self.assertTrue(np.allclose(d, d_cu.get(), rtol=rtol, atol=abs(d).max() * rtol))
-
-            d = ifftn(d, axes=(1, 2))
-            app.ifft(d_cu)
-            self.assertTrue(np.allclose(d, d_cu.get(), rtol=rtol, atol=abs(d).max() * rtol))
-            n1 = (abs(d_cu.get()) ** 2).sum()
-            self.assertTrue(np.isclose(n0, n1, rtol=rtol))
-
-    def test_c2c_inplace_3d(self):
-        """
-        Test inplace C2C 3D transforms
-        :return:
-        """
-        for dtype in [np.complex64, np.complex128]:
-            if dtype == np.complex64:
-                rtol = 1e-6
-            else:
-                rtol = 1e-12
-
-            a = ascent().astype(dtype)
-            ny, nx = a.shape
-            d = np.empty((3 * 13, ny, nx), dtype=dtype)
-            for i in range(len(d)):
-                d[i] = np.roll(a, np.random.randint(0, 100, 2)) * \
-                       np.exp(0.01j * np.roll(a, np.random.randint(0, 100, 2)))
-            n0 = (abs(d) ** 2).sum()
-            d_cu = cua.to_gpu(d)
-            app = VkFFTApp(d.shape, d.dtype, ndim=3, norm=1)
-
-            d = fftn(d)
-            app.fft(d_cu)
-            self.assertTrue(np.allclose(d, d_cu.get(), rtol=rtol, atol=abs(d).max() * rtol))
-
-            d = ifftn(d)
-            app.ifft(d_cu)
-            self.assertTrue(np.allclose(d, d_cu.get(), rtol=rtol, atol=abs(d).max() * rtol))
-            n1 = (abs(d_cu.get()) ** 2).sum()
-            self.assertTrue(np.isclose(n0, n1, rtol=rtol))
-
-    def test_c2c_outofplace_1d(self):
+    @unittest.skipIf(cua is None, "cuda or pycuda is not available")
+    def test_c2c_outofplace(self):
         """
         Test out-of-place C2C transforms
-        :return:
         """
-        for dtype in [np.complex64, np.complex128]:
-            if dtype == np.complex64:
-                rtol = 1e-6
-            else:
-                rtol = 1e-12
+        n = 64
+        for dims in range(1, 4):
+            for ndim in range(1, dims + 1):
+                for dtype in [np.complex64, np.complex128]:
+                    with self.subTest(dims=dims, ndim=ndim, dtype=dtype):
+                        if dtype == np.complex64:
+                            rtol = 1e-6
+                        else:
+                            rtol = 1e-12
 
-            d1 = ascent()[0].astype(dtype)
-            n0 = (abs(d1) ** 2).sum()
-            d1_cu = cua.to_gpu(d1)
-            d2_cu = cua.empty_like(d1_cu)
-            app = VkFFTApp(d1.shape, d1.dtype, ndim=1, norm=1, inplace=False)
+                        d = np.random.uniform(0, 1, [n] * dims).astype(dtype)
+                        # A pure random array may not be a very good test (too random),
+                        # so add a Gaussian
+                        xx = [np.fft.fftshift(np.fft.fftfreq(n))] * dims
+                        v = np.zeros_like(d)
+                        for x in np.meshgrid(*xx, indexing='ij'):
+                            v += x ** 2
+                        d += 10 * np.exp(-v * 2)
+                        n0 = (abs(d) ** 2).sum()
+                        d_gpu = cua.to_gpu(d)
+                        d1_gpu = cua.empty_like(d_gpu)
+                        app = VkFFTApp(d.shape, d.dtype, ndim=ndim, norm=1, inplace=False)
+                        # base FFT scale
+                        s = np.sqrt(np.prod(d.shape[-ndim:]))
 
-            d2 = fftn(d1)
-            app.fft(d1_cu, d2_cu)
-            # Check original array is unchanged and compare result with numpy.fft
-            self.assertTrue(np.allclose(d1, d1_cu.get(), rtol=rtol, atol=abs(d1).max() * rtol))
-            self.assertTrue(np.allclose(d2, d2_cu.get(), rtol=rtol, atol=abs(d2).max() * rtol))
+                        d = fftn(d, axes=list(range(dims))[-ndim:]) / s
+                        app.fft(d_gpu, d1_gpu)
+                        self.assertTrue(np.allclose(d, d1_gpu.get() / s, rtol=rtol, atol=abs(d).max() * rtol))
 
-            d1 = ifftn(d2)
-            app.ifft(d2_cu, d1_cu)
-            self.assertTrue(np.allclose(d1, d1_cu.get(), rtol=rtol, atol=abs(d1).max() * rtol))
-            self.assertTrue(np.allclose(d2, d2_cu.get(), rtol=rtol, atol=abs(d2).max() * rtol))
-            n1 = (abs(d1_cu.get()) ** 2).sum()
-            self.assertTrue(np.isclose(n0, n1, rtol=rtol))
+                        d = ifftn(d, axes=list(range(dims))[-ndim:]) * s
+                        app.ifft(d1_gpu, d_gpu)
+                        self.assertTrue(np.allclose(d, d_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
+                        n1 = (abs(d_gpu.get()) ** 2).sum()
+                        self.assertTrue(np.isclose(n0, n1, rtol=rtol))
 
-    def test_c2c_outofplace_1d_2d(self):
+    @unittest.skipIf(cua is None, "cuda or pycuda is not available")
+    def test_r2c(self):
         """
-        Test out-of-place C2C transforms
-        :return:
+        Test inplace R2C transforms
         """
-        for dtype in [np.complex64, np.complex128]:
-            if dtype == np.complex64:
-                rtol = 1e-6
-            else:
-                rtol = 1e-12
+        n = 64
+        for dims in range(1, 4):
+            for ndim in range(1, dims + 1):
+                for dtype in [np.float32, np.float64]:
+                    with self.subTest(dims=dims, ndim=ndim, dtype=dtype):
+                        if dtype == np.float32:
+                            rtol = 1e-6
+                        else:
+                            rtol = 1e-12
 
-            d1 = ascent().astype(dtype)
-            n0 = (abs(d1) ** 2).sum()
-            d1_cu = cua.to_gpu(d1)
-            d2_cu = cua.empty_like(d1_cu)
-            app = VkFFTApp(d1.shape, d1.dtype, ndim=1, norm=1, inplace=False)
+                        sh = [n] * dims
+                        sh[-1] += 2
+                        shc = [n] * dims
+                        shc[-1] = n // 2 + 1
 
-            d2 = fftn(d1, axes=(-1,))
-            app.fft(d1_cu, d2_cu)
-            # Check original array is unchanged and compare result with numpy.fft
-            self.assertTrue(np.allclose(d1, d1_cu.get(), rtol=rtol, atol=abs(d1).max() * rtol))
-            self.assertTrue(np.allclose(d2, d2_cu.get(), rtol=rtol, atol=abs(d2).max() * rtol))
+                        d = np.random.uniform(0, 1, sh).astype(dtype)
+                        # A pure random array may not be a very good test (too random),
+                        # so add a Gaussian
+                        xx = [np.fft.fftshift(np.fft.fftfreq(nn)) for nn in sh]
+                        v = np.zeros_like(d)
+                        for x in np.meshgrid(*xx, indexing='ij'):
+                            v += x ** 2
+                        d += 10 * np.exp(-v * 2)
+                        n0 = (abs(d[..., :-2]) ** 2).sum()
+                        d_gpu = cua.to_gpu(d)
+                        app = VkFFTApp(d.shape, d.dtype, ndim=ndim, norm=1, r2c=True)
+                        # base FFT scale
+                        s = np.sqrt(np.prod(d.shape[-ndim:]))
 
-            d1 = ifftn(d2, axes=(-1,))
-            app.ifft(d2_cu, d1_cu)
-            self.assertTrue(np.allclose(d1, d1_cu.get(), rtol=rtol, atol=abs(d1).max() * rtol))
-            self.assertTrue(np.allclose(d2, d2_cu.get(), rtol=rtol, atol=abs(d2).max() * rtol))
-            n1 = (abs(d1_cu.get()) ** 2).sum()
-            self.assertTrue(np.isclose(n0, n1, rtol=rtol))
+                        d = rfftn(d[..., :-2], axes=list(range(dims))[-ndim:]) / s
+                        d_gpu = app.fft(d_gpu)
+                        self.assertTrue(d_gpu.shape == tuple(shc))
 
-    def test_c2c_outofplace_1d_3d(self):
+                        if dtype == np.float32:
+                            self.assertTrue(d_gpu.dtype == np.complex64)
+                        elif dtype == np.float64:
+                            self.assertTrue(d_gpu.dtype == np.complex128)
+
+                        self.assertTrue(np.allclose(d, d_gpu.get() / s, rtol=rtol, atol=abs(d).max() * rtol))
+
+                        d = irfftn(d, axes=list(range(dims))[-ndim:]) * s
+                        d_gpu = app.ifft(d_gpu)
+                        self.assertTrue(d_gpu.shape == tuple(sh))
+
+                        self.assertTrue(np.allclose(d, d_gpu.get()[..., :-2], rtol=rtol, atol=abs(d).max() * rtol))
+                        n1 = (abs(d_gpu.get()[..., :-2]) ** 2).sum()
+                        self.assertTrue(np.isclose(n0, n1, rtol=rtol))
+
+    @unittest.skipIf(cua is None, "cuda or pycuda is not available")
+    def test_r2c_outofplace(self):
         """
-        Test out-of-place C2C 2D FFT transforms on a 3D array
-        :return:
+        Test out-of-place R2C transforms
         """
-        for dtype in [np.complex64, np.complex128]:
-            if dtype == np.complex64:
-                rtol = 1e-6
-            else:
-                rtol = 1e-12
-            a = ascent().astype(dtype)
-            ny, nx = a.shape
-            d1 = np.empty((17, ny, nx), dtype=dtype)
-            for i in range(len(d1)):
-                d1[i] = np.roll(a, np.random.randint(0, 100, 2)) * \
-                        np.exp(0.01j * np.roll(a, np.random.randint(0, 100, 2)))
+        n = 64
+        for dims in range(1, 4):
+            for ndim in range(1, dims + 1):
+                for dtype in [np.float32, np.float64]:
+                    with self.subTest(dims=dims, ndim=ndim, dtype=dtype):
+                        if dtype == np.float32:
+                            rtol = 1e-6
+                        else:
+                            rtol = 1e-12
+                        if dtype == np.float32:
+                            dtype_c = np.complex64
+                        elif dtype == np.float64:
+                            dtype_c = np.complex128
 
-            n0 = (abs(d1) ** 2).sum()
-            d1_cu = cua.to_gpu(d1)
-            d2_cu = cua.empty_like(d1_cu)
-            app = VkFFTApp(d1.shape, d1.dtype, ndim=1, norm=1, inplace=False)
+                        sh = [n] * dims
+                        sh = tuple(sh)
+                        shc = [n] * dims
+                        shc[-1] = n // 2 + 1
+                        shc = tuple(shc)
 
-            d2 = fftn(d1, axes=(-1,))
-            app.fft(d1_cu, d2_cu)
-            # Check original array is unchanged and compare result with numpy.fft
-            self.assertTrue(np.allclose(d1, d1_cu.get(), rtol=rtol, atol=abs(d1).max() * rtol))
-            self.assertTrue(np.allclose(d2, d2_cu.get(), rtol=rtol, atol=abs(d2).max() * rtol))
+                        d = np.random.uniform(0, 1, sh).astype(dtype)
+                        # A pure random array may not be a very good test (too random),
+                        # so add a Gaussian
+                        xx = [np.fft.fftshift(np.fft.fftfreq(nn)) for nn in sh]
+                        v = np.zeros_like(d)
+                        for x in np.meshgrid(*xx, indexing='ij'):
+                            v += x ** 2
+                        d += 10 * np.exp(-v * 2)
+                        n0 = (abs(d) ** 2).sum()
+                        d_gpu = cua.to_gpu(d)
+                        d1_gpu = cua.empty(shc, dtype=dtype_c)
 
-            d1 = ifftn(d2, axes=(-1,))
-            app.ifft(d2_cu, d1_cu)
-            self.assertTrue(np.allclose(d1, d1_cu.get(), rtol=rtol, atol=abs(d1).max() * rtol))
-            self.assertTrue(np.allclose(d2, d2_cu.get(), rtol=rtol, atol=abs(d2).max() * rtol))
-            n1 = (abs(d1_cu.get()) ** 2).sum()
-            self.assertTrue(np.isclose(n0, n1, rtol=rtol))
+                        app = VkFFTApp(d.shape, d.dtype, ndim=ndim, norm=1, r2c=True, inplace=False)
+                        # base FFT scale
+                        s = np.sqrt(np.prod(d.shape[-ndim:]))
 
-    def test_c2c_outofplace_2d(self):
-        """
-        Test out-of-place C2C transforms
-        :return:
-        """
-        for dtype in [np.complex64, np.complex128]:
-            if dtype == np.complex64:
-                rtol = 1e-6
-            else:
-                rtol = 1e-12
+                        d = rfftn(d, axes=list(range(dims))[-ndim:]) / s
+                        d1_gpu = app.fft(d_gpu, d1_gpu)
+                        self.assertTrue(d1_gpu.shape == tuple(shc))
+                        self.assertTrue(d1_gpu.dtype == dtype_c)
 
-            d1 = ascent().astype(dtype)
-            n0 = (abs(d1) ** 2).sum()
-            d1_cu = cua.to_gpu(d1)
-            d2_cu = cua.empty_like(d1_cu)
-            app = VkFFTApp(d1.shape, d1.dtype, ndim=2, norm=1, inplace=False)
+                        self.assertTrue(np.allclose(d, d1_gpu.get() / s, rtol=rtol, atol=abs(d).max() * rtol))
 
-            d2 = fftn(d1)
-            app.fft(d1_cu, d2_cu)
-            # Check original array is unchanged and compare result with numpy.fft
-            self.assertTrue(np.allclose(d1, d1_cu.get(), rtol=rtol, atol=abs(d1).max() * rtol))
-            self.assertTrue(np.allclose(d2, d2_cu.get(), rtol=rtol, atol=abs(d2).max() * rtol))
+                        d = irfftn(d, axes=list(range(dims))[-ndim:]) * s
+                        d_gpu = app.ifft(d1_gpu, d_gpu)
+                        self.assertTrue(d_gpu.shape == tuple(sh))
 
-            d1 = ifftn(d2)
-            app.ifft(d2_cu, d1_cu)
-            self.assertTrue(np.allclose(d1, d1_cu.get(), rtol=rtol, atol=abs(d1).max() * rtol))
-            self.assertTrue(np.allclose(d2, d2_cu.get(), rtol=rtol, atol=abs(d2).max() * rtol))
-            n1 = (abs(d1_cu.get()) ** 2).sum()
-            self.assertTrue(np.isclose(n0, n1, rtol=rtol))
-
-    def test_c2c_outofplace_2d_n(self):
-        """
-        Test out-of-place C2C 2D FFT transforms on a 3D array
-        :return:
-        """
-        for dtype in [np.complex64, np.complex128]:
-            if dtype == np.complex64:
-                rtol = 1e-6
-            else:
-                rtol = 1e-12
-            a = ascent().astype(dtype)
-            ny, nx = a.shape
-            d1 = np.empty((17, ny, nx), dtype=dtype)
-            for i in range(len(d1)):
-                d1[i] = np.roll(a, np.random.randint(0, 100, 2)) * \
-                        np.exp(0.01j * np.roll(a, np.random.randint(0, 100, 2)))
-
-            n0 = (abs(d1) ** 2).sum()
-            d1_cu = cua.to_gpu(d1)
-            d2_cu = cua.empty_like(d1_cu)
-            app = VkFFTApp(d1.shape, d1.dtype, ndim=2, norm=1, inplace=False)
-
-            d2 = fftn(d1, axes=(1, 2))
-            app.fft(d1_cu, d2_cu)
-            # Check original array is unchanged and compare result with numpy.fft
-            self.assertTrue(np.allclose(d1, d1_cu.get(), rtol=rtol, atol=abs(d1).max() * rtol))
-            self.assertTrue(np.allclose(d2, d2_cu.get(), rtol=rtol, atol=abs(d2).max() * rtol))
-
-            d1 = ifftn(d2, axes=(1, 2))
-            app.ifft(d2_cu, d1_cu)
-            self.assertTrue(np.allclose(d1, d1_cu.get(), rtol=rtol, atol=abs(d1).max() * rtol))
-            self.assertTrue(np.allclose(d2, d2_cu.get(), rtol=rtol, atol=abs(d2).max() * rtol))
-            n1 = (abs(d1_cu.get()) ** 2).sum()
-            self.assertTrue(np.isclose(n0, n1, rtol=rtol))
-
-    def test_c2c_outofplace_3d(self):
-        """
-        Test out-of-place C2C 3D FFT transforms
-        :return:
-        """
-        for dtype in [np.complex64, np.complex128]:
-            if dtype == np.complex64:
-                rtol = 1e-6
-            else:
-                rtol = 1e-12
-            a = ascent().astype(dtype)
-            ny, nx = a.shape
-            d1 = np.empty((3 * 13, ny, nx), dtype=dtype)
-            for i in range(len(d1)):
-                d1[i] = np.roll(a, np.random.randint(0, 100, 2)) * \
-                        np.exp(0.01j * np.roll(a, np.random.randint(0, 100, 2)))
-
-            n0 = (abs(d1) ** 2).sum()
-            d1_cu = cua.to_gpu(d1)
-            d2_cu = cua.empty_like(d1_cu)
-            app = VkFFTApp(d1.shape, d1.dtype, ndim=3, norm=1, inplace=False)
-
-            d2 = fftn(d1)
-            app.fft(d1_cu, d2_cu)
-            # Check original array is unchanged and compare result with numpy.fft
-            self.assertTrue(np.allclose(d1, d1_cu.get(), rtol=rtol, atol=abs(d1).max() * rtol))
-            self.assertTrue(np.allclose(d2, d2_cu.get(), rtol=rtol, atol=abs(d2).max() * rtol))
-
-            d1 = ifftn(d2)
-            app.ifft(d2_cu, d1_cu)
-            self.assertTrue(np.allclose(d1, d1_cu.get(), rtol=rtol, atol=abs(d1).max() * rtol))
-            self.assertTrue(np.allclose(d2, d2_cu.get(), rtol=rtol, atol=abs(d2).max() * rtol))
-            n1 = (abs(d1_cu.get()) ** 2).sum()
-            self.assertTrue(np.isclose(n0, n1, rtol=rtol))
-
-    def test_R2C_C2R_inplace_1d(self):
-        """
-        Test real <-> complex (half-hermitian) 1D FFT for a couple of R2C and C2R transforms
-        :return:
-        """
-        for dtype in [np.float32, np.float64]:
-            if dtype == np.float32:
-                rtol = 1e-6
-            else:
-                rtol = 1e-12
-
-            d = np.zeros(514, dtype=dtype)
-            d[:512] = ascent()[0]
-            nx = d.shape[0]
-            d_cu = cua.to_gpu(d)
-            app = VkFFTApp(d.shape, d.dtype, ndim=1, r2c=True)
-            d_cu = app.fft(d_cu)
-
-            if dtype == np.float32:
-                self.assertTrue(d_cu.dtype == np.complex64)
-            elif dtype == np.float64:
-                self.assertTrue(d_cu.dtype == np.complex128)
-            self.assertTrue(d_cu.shape == ((nx - 2) // 2 + 1,))
-
-            dn = rfftn(d[:-2])
-            self.assertTrue(np.allclose(d_cu.get(), dn, rtol=rtol, atol=dn.max() * rtol),
-                            "Compare VkFFT R2C transform with numpy rfftn")
-
-            d_cu = app.ifft(d_cu)
-            self.assertTrue(np.allclose(d_cu.get()[:-2], d[:-2], rtol=rtol, atol=d.max() * rtol),
-                            "Compare VkFFT R2C+C2R transform")
-
-    def test_R2C_C2R_inplace_1d_2d(self):
-        """
-        Test real <-> complex (half-hermitian) for a couple of R2C and C2R transforms
-        :return:
-        """
-        for dtype in [np.float32, np.float64]:
-            if dtype == np.float32:
-                rtol = 1e-6
-            else:
-                rtol = 1e-12
-
-            d = np.zeros((512, 514), dtype=dtype)
-            d[:, :512] = ascent()
-            ny, nx = d.shape
-            d_cu = cua.to_gpu(d)
-            app = VkFFTApp(d.shape, d.dtype, ndim=1, r2c=True)
-            d_cu = app.fft(d_cu)
-
-            if dtype == np.float32:
-                self.assertTrue(d_cu.dtype == np.complex64)
-            elif dtype == np.float64:
-                self.assertTrue(d_cu.dtype == np.complex128)
-            self.assertTrue(d_cu.shape == (ny, (nx - 2) // 2 + 1))
-
-            dn = rfftn(d[:, :-2], axes=(-1,))
-            self.assertTrue(np.allclose(d_cu.get(), dn, rtol=rtol, atol=dn.max() * rtol),
-                            "Compare VkFFT R2C transform with numpy rfftn")
-
-            d_cu = app.ifft(d_cu)
-            self.assertTrue(np.allclose(d_cu.get()[:, :-2], d[:, :-2], rtol=rtol, atol=d.max() * rtol),
-                            "Compare VkFFT R2C+C2R transform")
-
-    def test_R2C_C2R_inplace_1d_3d(self):
-        """
-        Test real <-> complex (half-hermitian) 2D FFT for a couple of R2C and C2R transforms,
-        in a 3D array
-        :return:
-        """
-        for dtype in [np.float32, np.float64]:
-            if dtype == np.float32:
-                rtol = 1e-6
-            else:
-                rtol = 1e-12
-
-            d = np.zeros((17, 512, 514), dtype=dtype)
-            for i in range(len(d)):
-                d[i, :, :512] = ascent()
-            ny, nx = d.shape[-2:]
-            d_cu = cua.to_gpu(d)
-            app = VkFFTApp(d.shape, d.dtype, ndim=1, r2c=True)
-            d_cu = app.fft(d_cu)
-
-            if dtype == np.float32:
-                self.assertTrue(d_cu.dtype == np.complex64)
-            elif dtype == np.float64:
-                self.assertTrue(d_cu.dtype == np.complex128)
-            self.assertTrue(d_cu.shape == (len(d), ny, (nx - 2) // 2 + 1))
-
-            dn = rfftn(d[..., :-2], axes=(-1,))
-            self.assertTrue(np.allclose(d_cu.get(), dn, rtol=rtol, atol=dn.max() * rtol),
-                            "Compare VkFFT R2C transform with numpy rfftn")
-
-            d_cu = app.ifft(d_cu)
-            self.assertTrue(np.allclose(d_cu.get()[..., :-2], d[..., :-2], rtol=rtol, atol=d.max() * rtol),
-                            "Compare VkFFT R2C+C2R transform")
-
-    def test_R2C_C2R_inplace_2d(self):
-        """
-        Test real <-> complex (half-hermitian) for a couple of R2C and C2R transforms
-        :return:
-        """
-        for dtype in [np.float32, np.float64]:
-            if dtype == np.float32:
-                rtol = 1e-6
-            else:
-                rtol = 1e-12
-
-            d = np.zeros((512, 514), dtype=dtype)
-            d[:, :512] = ascent()
-            ny, nx = d.shape
-            d_cu = cua.to_gpu(d)
-            app = VkFFTApp(d.shape, d.dtype, ndim=2, r2c=True)
-            d_cu = app.fft(d_cu)
-
-            if dtype == np.float32:
-                self.assertTrue(d_cu.dtype == np.complex64)
-            elif dtype == np.float64:
-                self.assertTrue(d_cu.dtype == np.complex128)
-            self.assertTrue(d_cu.shape == (ny, (nx - 2) // 2 + 1))
-
-            dn = rfftn(d[:, :-2])
-            self.assertTrue(np.allclose(d_cu.get(), dn, rtol=rtol, atol=dn.max() * rtol),
-                            "Compare VkFFT R2C transform with numpy rfftn")
-
-            d_cu = app.ifft(d_cu)
-            self.assertTrue(np.allclose(d_cu.get()[:, :-2], d[:, :-2], rtol=rtol, atol=d.max() * rtol),
-                            "Compare VkFFT R2C+C2R transform")
-
-    def test_R2C_C2R_inplace_2d_n(self):
-        """
-        Test real <-> complex (half-hermitian) 2D FFT for a couple of R2C and C2R transforms,
-        in a 3D array
-        :return:
-        """
-        for dtype in [np.float32, np.float64]:
-            if dtype == np.float32:
-                rtol = 1e-6
-            else:
-                rtol = 1e-12
-
-            d = np.zeros((17, 512, 514), dtype=dtype)
-            for i in range(len(d)):
-                d[i, :, :512] = ascent()
-            ny, nx = d.shape[-2:]
-            d_cu = cua.to_gpu(d)
-            app = VkFFTApp(d.shape, d.dtype, ndim=2, r2c=True)
-            d_cu = app.fft(d_cu)
-
-            if dtype == np.float32:
-                self.assertTrue(d_cu.dtype == np.complex64)
-            elif dtype == np.float64:
-                self.assertTrue(d_cu.dtype == np.complex128)
-            self.assertTrue(d_cu.shape == (len(d), ny, (nx - 2) // 2 + 1))
-
-            dn = rfftn(d[..., :-2], axes=(1, 2))
-            self.assertTrue(np.allclose(d_cu.get(), dn, rtol=rtol, atol=dn.max() * rtol),
-                            "Compare VkFFT R2C transform with numpy rfftn")
-
-            d_cu = app.ifft(d_cu)
-            self.assertTrue(np.allclose(d_cu.get()[..., :-2], d[..., :-2], rtol=rtol, atol=d.max() * rtol),
-                            "Compare VkFFT R2C+C2R transform")
-
-    def test_R2C_C2R_inplace_3d(self):
-        """
-        Test real <-> complex (half-hermitian) 3D FFT for a couple of R2C and C2R transforms
-        :return:
-        """
-        for dtype in [np.float32, np.float64]:
-            if dtype == np.float32:
-                rtol = 1e-6
-            else:
-                rtol = 1e-12
-
-            d = np.zeros((3 * 13, 512, 514), dtype=dtype)
-            for i in range(len(d)):
-                d[i, :, :512] = ascent()
-            ny, nx = d.shape[-2:]
-            d_cu = cua.to_gpu(d)
-            app = VkFFTApp(d.shape, d.dtype, ndim=3, r2c=True)
-            d_cu = app.fft(d_cu)
-
-            if dtype == np.float32:
-                self.assertTrue(d_cu.dtype == np.complex64)
-            elif dtype == np.float64:
-                self.assertTrue(d_cu.dtype == np.complex128)
-            self.assertTrue(d_cu.shape == (len(d), ny, (nx - 2) // 2 + 1))
-
-            dn = rfftn(d[..., :-2])
-            self.assertTrue(np.allclose(d_cu.get(), dn, rtol=rtol, atol=dn.max() * rtol),
-                            "Compare VkFFT R2C 3D transform with numpy rfftn")
-
-            d_cu = app.ifft(d_cu)
-            self.assertTrue(np.allclose(d_cu.get()[..., :-2], d[..., :-2], rtol=rtol, atol=d.max() * rtol),
-                            "Compare VkFFT R2C+C2R 3D transform")
-
-    def test_R2C_C2R_outofplace_1d(self):
-        """
-        Test real <-> complex (half-hermitian) for a couple of R2C and C2R transforms
-        :return:
-        """
-        for dtype in [np.float32, np.float64]:
-            if dtype == np.float32:
-                rtol = 1e-6
-                dtype_out = np.complex64
-            else:
-                rtol = 1e-12
-                dtype_out = np.complex128
-            d = ascent()[0].astype(dtype)
-            nx = d.shape[0]
-            d1_cu = cua.to_gpu(d)
-            d2_cu = cua.empty(nx // 2 + 1, dtype=dtype_out)
-            app = VkFFTApp(d.shape, d.dtype, ndim=1, r2c=True, inplace=False)
-            d2_cu = app.fft(d1_cu, d2_cu)
-
-            dn = rfftn(d)
-            d2 = d2_cu.get()
-            self.assertTrue(np.allclose(d2, dn, rtol=rtol, atol=dn.max() * rtol),
-                            "Compare VkFFT R2C out-of-place transform with numpy rfftn")
-            self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=dn.max() * rtol),
-                            "R2C out-of-place: check original array is unchanged")
-
-            d1_cu = app.ifft(d2_cu, d1_cu)
-            self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=d.max() * rtol),
-                            "Compare VkFFT R2C+C2R out-of-place transform")
-            self.assertTrue(np.allclose(d2_cu.get(), d2, rtol=rtol, atol=dn.max() * rtol),
-                            "C2R out-of-place: check original array is unchanged")
-
-    def test_R2C_C2R_outofplace_1d_2d(self):
-        """
-        Test real <-> complex (half-hermitian) for a couple of R2C and C2R transforms
-        :return:
-        """
-        for dtype in [np.float32, np.float64]:
-            if dtype == np.float32:
-                rtol = 1e-6
-                dtype_out = np.complex64
-            else:
-                rtol = 1e-12
-                dtype_out = np.complex128
-            d = ascent().astype(dtype)
-            ny, nx = d.shape
-            d1_cu = cua.to_gpu(d)
-            d2_cu = cua.empty((ny, nx // 2 + 1), dtype=dtype_out)
-            app = VkFFTApp(d.shape, d.dtype, ndim=1, r2c=True, inplace=False)
-            d2_cu = app.fft(d1_cu, d2_cu)
-
-            dn = rfftn(d, axes=(-1,))
-            d2 = d2_cu.get()
-            self.assertTrue(np.allclose(d2, dn, rtol=rtol, atol=dn.max() * rtol),
-                            "Compare VkFFT R2C out-of-place transform with numpy rfftn")
-            self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=dn.max() * rtol),
-                            "R2C out-of-place: check original array is unchanged")
-
-            d1_cu = app.ifft(d2_cu, d1_cu)
-            self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=d.max() * rtol),
-                            "Compare VkFFT R2C+C2R out-of-place transform")
-            self.assertTrue(np.allclose(d2_cu.get(), d2, rtol=rtol, atol=dn.max() * rtol),
-                            "C2R out-of-place: check original array is unchanged")
-
-    def test_R2C_C2R_outofplace_1d_3d(self):
-        """
-        Test real <-> complex (half-hermitian) 2D FFT for a couple of R2C and C2R transforms,
-        in a 3D array
-        :return:
-        """
-        for dtype in [np.float32, np.float64]:
-            if dtype == np.float32:
-                rtol = 1e-6
-                dtype_out = np.complex64
-            else:
-                rtol = 1e-12
-                dtype_out = np.complex128
-            d = np.zeros((17, 512, 512), dtype=dtype)
-            for i in range(len(d)):
-                d[i] = ascent()
-            ny, nx = d.shape[-2:]
-            d1_cu = cua.to_gpu(d)
-            d2_cu = cua.empty((len(d), ny, nx // 2 + 1), dtype=dtype_out)
-            app = VkFFTApp(d.shape, d.dtype, ndim=1, r2c=True, inplace=False)
-            d2_cu = app.fft(d1_cu, d2_cu)
-
-            dn = rfftn(d, axes=(-1,))
-            d2 = d2_cu.get()
-            self.assertTrue(np.allclose(d2, dn, rtol=rtol, atol=dn.max() * rtol),
-                            "Compare VkFFT R2C out-of-place transform with numpy rfftn")
-            self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=dn.max() * rtol),
-                            "R2C out-of-place: check original array is unchanged")
-
-            d1_cu = app.ifft(d2_cu, d1_cu)
-            self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=d.max() * rtol),
-                            "Compare VkFFT R2C+C2R out-of-place transform")
-            self.assertTrue(np.allclose(d2_cu.get(), d2, rtol=rtol, atol=dn.max() * rtol),
-                            "C2R out-of-place: check original array is unchanged")
-
-    def test_R2C_C2R_outofplace_2d(self):
-        """
-        Test real <-> complex (half-hermitian) for a couple of R2C and C2R transforms
-        :return:
-        """
-        for dtype in [np.float32, np.float64]:
-            if dtype == np.float32:
-                rtol = 1e-6
-                dtype_out = np.complex64
-            else:
-                rtol = 1e-12
-                dtype_out = np.complex128
-            d = ascent().astype(dtype)
-            ny, nx = d.shape
-            d1_cu = cua.to_gpu(d)
-            d2_cu = cua.empty((ny, nx // 2 + 1), dtype=dtype_out)
-            app = VkFFTApp(d.shape, d.dtype, ndim=2, r2c=True, inplace=False)
-            d2_cu = app.fft(d1_cu, d2_cu)
-
-            dn = rfftn(d)
-            d2 = d2_cu.get()
-            self.assertTrue(np.allclose(d2, dn, rtol=rtol, atol=dn.max() * rtol),
-                            "Compare VkFFT R2C out-of-place transform with numpy rfftn")
-            self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=dn.max() * rtol),
-                            "R2C out-of-place: check original array is unchanged")
-
-            d1_cu = app.ifft(d2_cu, d1_cu)
-            self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=d.max() * rtol),
-                            "Compare VkFFT R2C+C2R out-of-place transform")
-            # For C2R and ndim >1, the original array is always modified
-            # self.assertTrue(np.allclose(d2_cu.get(), d2, rtol=rtol, atol=dn.max() * rtol),
-            #                 "C2R out-of-place: check original array is unchanged")
-
-    def test_R2C_C2R_outofplace_2d_n(self):
-        """
-        Test real <-> complex (half-hermitian) 2D FFT for a couple of R2C and C2R transforms,
-        in a 3D array
-        :return:
-        """
-        for dtype in [np.float32, np.float64]:
-            if dtype == np.float32:
-                rtol = 1e-6
-                dtype_out = np.complex64
-            else:
-                rtol = 1e-12
-                dtype_out = np.complex128
-            d = np.zeros((17, 512, 512), dtype=dtype)
-            for i in range(len(d)):
-                d[i] = ascent()
-            ny, nx = d.shape[-2:]
-            d1_cu = cua.to_gpu(d)
-            d2_cu = cua.empty((len(d), ny, nx // 2 + 1), dtype=dtype_out)
-            app = VkFFTApp(d.shape, d.dtype, ndim=2, r2c=True, inplace=False)
-            d2_cu = app.fft(d1_cu, d2_cu)
-
-            dn = rfftn(d, axes=(1, 2))
-            d2 = d2_cu.get()
-            self.assertTrue(np.allclose(d2, dn, rtol=rtol, atol=dn.max() * rtol),
-                            "Compare VkFFT R2C out-of-place transform with numpy rfftn")
-            self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=dn.max() * rtol),
-                            "R2C out-of-place: check original array is unchanged")
-
-            d1_cu = app.ifft(d2_cu, d1_cu)
-            self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=d.max() * rtol),
-                            "Compare VkFFT R2C+C2R out-of-place transform")
-            # For C2R and ndim >1, the original array is always modified
-            # self.assertTrue(np.allclose(d2_cu.get(), d2, rtol=rtol, atol=dn.max() * rtol),
-            #                 "C2R out-of-place: check original array is unchanged")
-
-    def test_R2C_C2R_outofplace_3d(self):
-        """
-        Test real <-> complex (half-hermitian) 2D FFT for a couple of R2C and C2R transforms,
-        in a 3D array
-        :return:
-        """
-        for dtype in [np.float32, np.float64]:
-            if dtype == np.float32:
-                rtol = 1e-6
-                dtype_out = np.complex64
-            else:
-                rtol = 1e-12
-                dtype_out = np.complex128
-            d = np.zeros((3 * 13, 512, 512), dtype=dtype)
-            for i in range(len(d)):
-                d[i] = ascent()
-            ny, nx = d.shape[-2:]
-            d1_cu = cua.to_gpu(d)
-            d2_cu = cua.empty((len(d), ny, nx // 2 + 1), dtype=dtype_out)
-            app = VkFFTApp(d.shape, d.dtype, ndim=3, r2c=True, inplace=False)
-            d2_cu = app.fft(d1_cu, d2_cu)
-
-            dn = rfftn(d)
-            d2 = d2_cu.get()
-            self.assertTrue(np.allclose(d2, dn, rtol=rtol, atol=dn.max() * rtol),
-                            "Compare VkFFT R2C out-of-place transform with numpy rfftn")
-            self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=dn.max() * rtol),
-                            "R2C out-of-place: check original array is unchanged")
-
-            d1_cu = app.ifft(d2_cu, d1_cu)
-            self.assertTrue(np.allclose(d1_cu.get(), d, rtol=rtol, atol=d.max() * rtol),
-                            "Compare VkFFT R2C+C2R out-of-place transform")
-            # For C2R and ndim >1, the original array is always modified
-            # self.assertTrue(np.allclose(d2_cu.get(), d2, rtol=rtol, atol=dn.max() * rtol),
-            #                 "C2R out-of-place: check original array is unchanged")
+                        self.assertTrue(np.allclose(d, d_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
+                        n1 = (abs(d_gpu.get()) ** 2).sum()
+                        self.assertTrue(np.isclose(n0, n1, rtol=rtol))
 
     def test_streams(self):
         """

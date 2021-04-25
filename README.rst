@@ -1,10 +1,10 @@
-pyvkfft - python interface to the CUDA backend of VkFFT (Vulkan Fast Fourier Transform library)
-===============================================================================================
+pyvkfft - python interface to the CUDA and OpenCL backends of VkFFT (Vulkan Fast Fourier Transform library)
+===========================================================================================================
 
 `VkFFT <https://github.com/DTolm/VkFFT>`_ is a GPU-accelerated Fast Fourier Transform library
-for Vulkan/CUDA/HIP projects.
+for Vulkan/CUDA/HIP/OpenCL.
 
-pyvkfft offers a basic python interface to the **CUDA backend of VkFFT**, compatible with pyCUDA.
+pyvkfft offers a simple python interface to the **CUDA** and **OpenCL** backends of VkFFT, compatible with pyCUDA and pyOpenCL.
 
 *The code is now in a working state, and passes all unit tests ; no errors are reported by either valgrind or cuda-memcheck.*
 
@@ -14,7 +14,8 @@ Installation
 Requirements:
 
 - `vkfft.h` installed in the usual include directories
-- `pycuda` and CUDA developments tools (`nvcc`)
+- `pyopencl` and the opencl libraries for the opencl backend
+- `pycuda` and CUDA developments tools (`nvcc`) for the cuda backend (optional)
 - `numpy`
 
 This package should be installed using pip or `python setup.py install`.
@@ -31,9 +32,11 @@ Status
 ------
 What works:
 
+- CUDA and OpenCL backends
 - C2C, R2C/C2R for inplace and out-of-place transforms
 - single and double precision for all transforms
 - all transforms accept 1D, 2D and 3D arrays, with the FT dimension <= array dimension
+- allowed prime factors (radix) of the transform axes are 2, 3, 5, 7, 11 and 13
 - normalisation=0 (array L2 norm * array size on each transform) and 1 (the backward
   transform divides the L2 norm by the array size, so FFT*iFFT restores the original array)
 - now testing the FFT size does not exceed the allowed maximum prime number decomposition (13)
@@ -41,12 +44,16 @@ What works:
 - Note that out-of-place C2R transform currently destroys the complex array for FFT dimensions >=2
 - tested on macOS (10.13.6) and Linux.
 
+Performance
+-----------
+See the benchmark notebook, which allows to plot OpenCL and CUDA backend throughput, as well as compare
+with cuFFT (using scikit-cuda) and clFFT (using gpyfft).
+
 TODO
 ----
 
 - access to the other backends:
 
-  - **OpenCL !** (now also available in VkFFT): preliminary version in the opencl branch
   - for vulkan and rocm this only makes sense combined to a pycuda/cupy/pyopencl equivalent.
 - support cupy arrays (this probably requires little change so a cupy user/developer contribution is welcome)
 - support array dimensions >3 when the FFT dimension is up to 2 (by collapsing the 3rd dimension)

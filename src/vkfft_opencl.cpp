@@ -17,14 +17,14 @@ using namespace std;
 
 extern "C"{
 VkFFTConfiguration* make_config(const int, const int, const int, const int,
-                                void*, void*, void*, void*, void*, void*,
+                                void*, void*, void*, void*, void*,
                                 const int, const int, const int);
 
 VkFFTApplication* init_app(const VkFFTConfiguration*, void*);
 
-void fft(VkFFTApplication* app, void*, void*);
+void fft(VkFFTApplication* app, void*, void*, void*);
 
-void ifft(VkFFTApplication* app, void*, void*);
+void ifft(VkFFTApplication* app, void*, void*, void*);
 
 void free_app(VkFFTApplication* app);
 
@@ -42,15 +42,18 @@ int test_vkfft_cuda(int);
 * \param buffer, buffer_out: pointer to the GPU data source and destination arrays. These
 *  can be fake and the actual buffers supplied in fft() and ifft. However buffer should be non-zero,
 *  and buffer_out should be non-zero only for an out-of-place transform.
-* \param hstream: the stream handle (CUstream)
+* \param platform: the cl_platform
+* \param device: the cl_device
+* \param ctx: the cl_context
 * \param norm: 0, the L2 norm is multiplied by the size on each transform, 1, the inverse transform
 *   divides the L2 norm by the size.
 * \param precision: number of bits per float, 16=half, 32=single, 64=double precision
+* \param r2c: if True, create a configuration for a real<->complex transform
 * \return: the pointer to the newly created VkFFTConfiguration, or 0 if an error occurred.
 */
 VkFFTConfiguration* make_config(const int nx, const int ny, const int nz, const int fftdim,
                                 void *buffer, void *buffer_out,
-                                void* platform, void* device, void* ctx, void* queue,
+                                void* platform, void* device, void* ctx,
                                 const int norm, const int precision, const int r2c)
 {
   VkFFTConfiguration *config = new VkFFTConfiguration({});
@@ -77,10 +80,6 @@ VkFFTConfiguration* make_config(const int nx, const int ny, const int nz, const 
   cl_context * pctx = new cl_context;
   *pctx = (cl_context) ctx;
   config->context = pctx;
-
-  cl_command_queue* pqueue = new cl_command_queue;
-  *pqueue = (cl_command_queue) queue;
-  config->commandQueue = pqueue;
 
   void ** pbuf = new void*;
   *pbuf = buffer;
@@ -123,36 +122,20 @@ VkFFTConfiguration* make_config(const int nx, const int ny, const int nz, const 
     config->buffer = (cl_mem*)pbuf;
   }
 
-
-  /*
-  cout << "make_config: "<<config<<" "<<endl<< config->buffer<<", "<< *(config->buffer)<<", "
-       << config->size[0] << " " << config->size[1] << " " << config->size[2] << " "<< config->FFTdim
-       << " " << *(config->bufferSize) << endl;
-  */
-
   return config;
 }
 
 /** Initialise the VkFFTApplication from the given configuration.
 *
 * \param config: the pointer to the VkFFTConfiguration
+* \param queue: the cl_command_queue
 * \return: the pointer to the newly created VkFFTApplication
 */
-VkFFTApplication* init_app(const VkFFTConfiguration* config, void* queue)
+VkFFTApplication* init_app(const VkFFTConfiguration* config, void *queue)
 {
   VkFFTApplication* app = new VkFFTApplication({});
   const int res = initializeVkFFT(app, *config);
 
-  cl_command_queue* pqueue = new cl_command_queue;
-  *pqueue = (cl_command_queue) queue;
-  app->configuration.commandQueue = pqueue;
-
-  /*
-  cout << "init_app: "<<config<<endl<< config->buffer<<", "<< *(config->buffer)<<", "
-       << config->size[0] << " " << config->size[1] << " " << config->size[2] << " "<< config->FFTdim
-       << " " << *(config->bufferSize) << endl<<endl;
-  cout<<res<<endl<<endl;
-  */
   if(res!=0)
   {
     cout << "VkFFTApplication initialisation failed: " << res << endl;
@@ -162,50 +145,55 @@ VkFFTApplication* init_app(const VkFFTConfiguration* config, void* queue)
   return app;
 }
 
-void fft(VkFFTApplication* app, void *in, void *out)
+void fft(VkFFTApplication* app, void *in, void *out, void* queue)
 {
+  cl_command_queue q = (cl_command_queue) queue;
+
   *(app->configuration.buffer) = (cl_mem)out;
   *(app->configuration.inputBuffer) = (cl_mem)in;
   *(app->configuration.outputBuffer) = (cl_mem)out;
+  app->configuration.commandQueue = &q;
 
-  VkFFTLaunchParams par;
-  par.commandQueue = app->configuration.commandQueue;
+  VkFFTLaunchParams par = {};
+  par.commandQueue = &q;
   par.buffer =  app->configuration.buffer;
   par.inputBuffer = app->configuration.inputBuffer;
   par.outputBuffer = app->configuration.outputBuffer;
 
-  VkFFTAppend(app, -1, &par);
+  const int res = VkFFTAppend(app, -1, &par);
 }
 
-void ifft(VkFFTApplication* app, void *in, void *out)
+void ifft(VkFFTApplication* app, void *in, void *out, void* queue)
 {
+  cl_command_queue q = (cl_command_queue) queue;
+
   *(app->configuration.buffer) = (cl_mem)out;
   *(app->configuration.inputBuffer) = (cl_mem)in;
   *(app->configuration.outputBuffer) = (cl_mem)out;
+  app->configuration.commandQueue = &q;
 
-  VkFFTLaunchParams par;
-  par.commandQueue = app->configuration.commandQueue;
+  VkFFTLaunchParams par = {};
+  par.commandQueue = &q;
   par.buffer =  app->configuration.buffer;
   par.inputBuffer = app->configuration.inputBuffer;
   par.outputBuffer = app->configuration.outputBuffer;
 
-  VkFFTAppend(app, 1, &par);
+  const int res = VkFFTAppend(app, 1, &par);
 }
 
-/** Free memory allocated during make_config()
+/** Free memory associated to the vkFFT app
 *
 */
 void free_app(VkFFTApplication* app)
 {
   if(app != NULL)
   {
-    free(app->configuration.commandQueue);
     deleteVkFFT(app);
     free(app);
   }
 }
 
-/** Free memory associated to the vkFFT app
+/** Free memory allocated during make_config()
 *
 */
 void free_config(VkFFTConfiguration *config)
@@ -213,7 +201,6 @@ void free_config(VkFFTConfiguration *config)
   free(config->platform);
   free(config->device);
   free(config->context);
-  free(config->commandQueue);
   // Only frees the pointer to the buffer pointer, not the buffer itself.
   free(config->buffer);
   free(config->bufferSize);
