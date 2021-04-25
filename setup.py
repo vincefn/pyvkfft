@@ -1,135 +1,169 @@
-# Most of the setup used here is copied from cudamat (https://github.com/cudamat/cudamat/blob/master/setup.py)
-# License: BSD-3 clause
+# Most of the setup used here is derived from https://github.com/rmcgibbo/npcuda-example
+# License: BSD-2 clause
 
 import os
-
-# on Windows, we need the original PATH without Anaconda's compiler in it:
-PATH = os.environ.get('PATH')
-from distutils.spawn import spawn, find_executable
-from setuptools import setup, find_packages, Extension
-from setuptools.command.build_ext import build_ext
 import sys
-
-# CUDA specific config
-# nvcc is assumed to be in user's PATH
-nvcc_compile_args = ['-O3', '--ptxas-options=-v', '-std=c++11', '--compiler-options=-fPIC']
-nvcc_link_args = []
-if sys.platform == 'darwin':
-    nvcc_link_args.append('-L/usr/local/cuda/lib')
-
-nvcc_compile_args = os.environ.get('NVCCFLAGS', '').split() + nvcc_compile_args
-cuda_libs = ['cuda', 'cufft', 'nvrtc']
-
-vkfft_cuda_ext = Extension('pyvkfft._vkfft_cuda',
-                           sources=['src/vkfft_cuda.cu'],
-                           libraries=cuda_libs,
-                           extra_compile_args=nvcc_compile_args,
-                           extra_link_args=nvcc_link_args)
+from os.path import join as pjoin
+import warnings
+from setuptools import setup, find_packages
+from distutils.extension import Extension
+from Cython.Distutils import build_ext
 
 
-class CUDA_build_ext(build_ext):
+def find_in_path(name, path):
+    """Find a file in a search path"""
+
+    # Adapted fom http://code.activestate.com/recipes/52224
+    for dir in path.split(os.pathsep):
+        binpath = pjoin(dir, name)
+        if os.path.exists(binpath):
+            return os.path.abspath(binpath)
+    return None
+
+
+def locate_cuda():
+    """Locate the CUDA environment on the system
+
+    Returns a dict with keys 'home', 'nvcc', 'include', and 'lib64'
+    and values giving the absolute path to each directory.
+
+    Starts by looking for the CUDAHOME env variable. If not found,
+    everything is based on finding 'nvcc' in the PATH.
     """
-    Custom build_ext command that compiles CUDA files.
-    Note that all extension source files will be processed with this compiler.
+
+    # First check if the CUDAHOME env variable is in use
+    if 'CUDAHOME' in os.environ:
+        home = os.environ['CUDAHOME']
+        nvcc = pjoin(home, 'bin', 'nvcc')
+    else:
+        # Otherwise, search the PATH for NVCC
+        nvcc = find_in_path('nvcc', os.environ['PATH'])
+        if nvcc is None:
+            raise EnvironmentError('The nvcc binary could not be '
+                                   'located in your $PATH. Either add it to your path, '
+                                   'or set $CUDAHOME')
+        home = os.path.dirname(os.path.dirname(nvcc))
+    if os.path.exists(pjoin(home, 'lib64')):
+        libdir = 'lib64'
+    else:
+        libdir = 'lib'
+    cudaconfig = {'home': home, 'nvcc': nvcc,
+                  'include': pjoin(home, 'include'),
+                  'lib64': pjoin(home, libdir)}
+    for k, v in iter(cudaconfig.items()):
+        if not os.path.exists(v):
+            raise EnvironmentError('The CUDA %s path could not be '
+                                   'located in %s' % (k, v))
+
+    return cudaconfig
+
+
+def locate_opencl():
+    """
+    Get the opencl configuration
+    :return:
+    """
+    if 'darwin' in sys.platform:
+        libraries = None
+        extra_link_args = ['-Wl,-framework,OpenCL', '--shared']
+    else:
+        libraries = ['OpenCL']
+        extra_link_args = ['--shared']
+
+    return {'libraries': libraries, 'extra_link_args': extra_link_args}
+
+
+def customize_compiler_for_nvcc(self):
+    """Inject deep into distutils to customize how the dispatch
+    to gcc/nvcc works.
+
+    If you subclass UnixCCompiler, it's not trivial to get your subclass
+    injected in, and still have the right customizations (i.e.
+    distutils.sysconfig.customize_compiler) run on it. So instead of going
+    the OO route, I have this. Note, it's kindof like a wierd functional
+    subclassing going on.
     """
 
+    # Tell the compiler it can processes .cu
+    self.src_extensions.append('.cu')
+
+    # Save references to the default compiler_so and _compile methods
+    default_compiler_so = self.compiler_so
+    super = self._compile
+
+    # Now redefine the _compile method. This gets executed for each
+    # object but distutils doesn't have the ability to change compilers
+    # based on source extension: we add it.
+    def _compile(obj, src, ext, cc_args, postargs, pp_opts):
+        if os.path.splitext(src)[1] == '.cu':
+            # use the cuda for .cu files
+            self.set_executable('compiler_so', CUDA['nvcc'])
+            self.set_executable('linker_so', CUDA['nvcc'])
+
+        super(obj, src, ext, cc_args, postargs, pp_opts)
+        # Reset the default compiler_so, which we might have changed for cuda
+        self.compiler_so = default_compiler_so
+
+    # Inject our redefined _compile method into the class
+    self._compile = _compile
+
+
+# Run the customize_compiler
+class custom_build_ext(build_ext):
     def build_extensions(self):
-        self.compiler.src_extensions.append('.cu')
-        self.compiler.set_executable('compiler_so', 'nvcc')
-        self.compiler.set_executable('linker_so', 'nvcc --shared')
-        if hasattr(self.compiler, '_c_extensions'):
-            self.compiler._c_extensions.append('.cu')  # needed for Windows
-        self.compiler.spawn = self.spawn
+        customize_compiler_for_nvcc(self.compiler)
         build_ext.build_extensions(self)
 
-    def spawn(self, cmd, search_path=1, verbose=0, dry_run=0):
-        """
-        Perform any CUDA specific customizations before actually launching
-        compile/link etc. commands.
-        """
-        if (sys.platform == 'darwin' and len(cmd) >= 2 and cmd[0] == 'nvcc' and
-                cmd[1] == '--shared' and cmd.count('-arch') > 0):
-            # Versions of distutils on OSX earlier than 2.7.9 inject
-            # '-arch x86_64' which we need to strip while using nvcc for
-            # linking
-            while True:
-                try:
-                    index = cmd.index('-arch')
-                    del cmd[index:index + 2]
-                except ValueError:
-                    break
-        elif self.compiler.compiler_type == 'msvc':
-            # There are several things we need to do to change the commands
-            # issued by MSVCCompiler into one that works with nvcc. In the end,
-            # it might have been easier to write our own CCompiler class for
-            # nvcc, as we're only interested in creating a shared library to
-            # load with ctypes, not in creating an importable Python extension.
-            # - First, we replace the cl.exe or link.exe call with an nvcc
-            #   call. In case we're running Anaconda, we search cl.exe in the
-            #   original search path we captured further above -- Anaconda
-            #   inserts a MSVC version into PATH that is too old for nvcc.
-            cmd[:1] = ['nvcc', '--compiler-bindir',
-                       os.path.dirname(find_executable("cl.exe", PATH))
-                       or cmd[0]]
-            # - Secondly, we fix a bunch of command line arguments.
-            for idx, c in enumerate(cmd):
-                # create .dll instead of .pyd files
-                if '.pyd' in c: cmd[idx] = c = c.replace('.pyd', '.dll')
-                # replace /c by -c
-                if c == '/c':
-                    cmd[idx] = '-c'
-                # replace /DLL by --shared
-                elif c == '/DLL':
-                    cmd[idx] = '--shared'
-                # remove --compiler-options=-fPIC
-                elif '-fPIC' in c:
-                    del cmd[idx]
-                # replace /Tc... by ...
-                elif c.startswith('/Tc'):
-                    cmd[idx] = c[3:]
-                # replace /Fo... by -o ...
-                elif c.startswith('/Fo'):
-                    cmd[idx:idx + 1] = ['-o', c[3:]]
-                # replace /LIBPATH:... by -L...
-                elif c.startswith('/LIBPATH:'):
-                    cmd[idx] = '-L' + c[9:]
-                # replace /OUT:... by -o ...
-                elif c.startswith('/OUT:'):
-                    cmd[idx:idx + 1] = ['-o', c[5:]]
-                # remove /EXPORT:initlibcudamat or /EXPORT:initlibcudalearn
-                elif c.startswith('/EXPORT:'):
-                    del cmd[idx]
-                # replace cublas.lib by -lcublas
-                elif c == 'cublas.lib':
-                    cmd[idx] = '-lcublas'
-            # - Finally, we pass on all arguments starting with a '/' to the
-            #   compiler or linker, and have nvcc handle all other arguments
-            if '--shared' in cmd:
-                pass_on = '--linker-options='
-                # we only need MSVCRT for a .dll, remove CMT if it sneaks in:
-                cmd.append('/NODEFAULTLIB:libcmt.lib')
-            else:
-                pass_on = '--compiler-options='
-            cmd = ([c for c in cmd if c[0] != '/'] +
-                   [pass_on + ','.join(c for c in cmd if c[0] == '/')])
-            # For the future: Apart from the wrongly set PATH by Anaconda, it
-            # would suffice to run the following for compilation on Windows:
-            # nvcc -c -O -o <file>.obj <file>.cu
-            # And the following for linking:
-            # nvcc --shared -o <file>.dll <file1>.obj <file2>.obj -lcublas
-            # This could be done by a NVCCCompiler class for all platforms.
-        spawn(cmd, search_path, verbose, dry_run)
 
+ext_modules = []
+install_requires = ['numpy']
+exclude_packages = ['examples', 'test']
+try:
+    CUDA = locate_cuda()
+    vkfft_cuda_ext = Extension('pyvkfft._vkfft_cuda',
+                               sources=['src/vkfft_cuda.cu'],
+                               libraries=['nvrtc', 'cuda'],
+                               # This syntax is specific to this build system
+                               # we're only going to use certain compiler args with nvcc
+                               # and not with gcc the implementation of this trick is in
+                               # customize_compiler()
+                               extra_compile_args=['-O3', '--ptxas-options=-v', '-std=c++11',
+                                                   '--compiler-options=-fPIC']
+                               ,
+                               include_dirs=[CUDA['include'], 'src'],
+                               extra_link_args=['--shared', '-L%s' % CUDA['lib64']]
+                               )
+    ext_modules.append(vkfft_cuda_ext)
+    install_requires.append('pycuda')
+except:
+    CUDA = None
+    exclude_packages.append('cuda')
+
+OPENCL = locate_opencl()
+install_requires.append('pyopencl')
+
+# OpenCL extension
+vkfft_opencl_ext = Extension('pyvkfft._vkfft_opencl',
+                             sources=['src/vkfft_opencl.cpp'],
+                             extra_compile_args=['-std=c++11', '-Wno-format-security'],
+                             libraries=OPENCL['libraries'],
+                             extra_link_args=OPENCL['extra_link_args']
+                             )
+
+ext_modules.append(vkfft_opencl_ext)
 
 setup(name="pyvkfft",
       version="0.0.1a",
       description="vkFFT library",
-      ext_modules=[vkfft_cuda_ext],
-      packages=find_packages(exclude=['examples', 'test']),
+      ext_modules=ext_modules,
+      packages=find_packages(exclude=exclude_packages),
       include_package_data=True,
-      # package_data={'pyvkfft': ['rnd_multipliers_32bit.txt']},
-      # author="XX",
-      # url="https://github.com/XX/XX",
-      cmdclass={'build_ext': CUDA_build_ext},
-      install_requires=['numpy', 'pycuda'],
+      author="Vincent Favre-Nicolin",
+      url="https://github.com/vincefn/pyvkfft",
+      cmdclass={'build_ext': custom_build_ext},
+      install_requires=install_requires,
       test_suite="test")
+
+if CUDA is None:
+    warnings.warn("CUDA not available ($CUDAHOME variable missing and nvcc not in path. "
+                  "Skipping pyvkfft.cuda module installation.", UserWarning)

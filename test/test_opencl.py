@@ -1,4 +1,5 @@
 import unittest
+import os
 import numpy as np
 from numpy.fft import fftn, ifftn, fftshift, rfftn, irfftn
 
@@ -7,22 +8,38 @@ try:
 except ImportError:
     def ascent():
         return np.random.randint(0, 255, (512, 512))
-from pyvkfft.cuda import VkFFTApp
+from pyvkfft.opencl import VkFFTApp
 
 try:
-    import pycuda.autoinit
-    import pycuda.driver as cu_drv
-    import pycuda.gpuarray as cua
-except:
-    cua = None
+    import pyopencl as cl
+    import pyopencl.array as cla
+except ImportError:
+    cla = None
 
 
-class TestVkFFTCUDA(unittest.TestCase):
+class TestVkFFTOpenCL(unittest.TestCase):
 
-    def test_pycuda(self):
-        self.assertTrue(cua is not None, "pycuda is not available")
+    @classmethod
+    def setUpClass(cls) -> None:
+        if 'PYOPENCL_CTX' in os.environ:
+            cls.ctx = cl.create_some_context()
+        else:
+            cls.ctx = None
+            # Find the first OpenCL GPU available and use it, unless
+            for p in cl.get_platforms():
+                for d in p.get_devices():
+                    if d.type & cl.device_type.GPU == 0:
+                        continue
+                    cls.ctx = cl.Context(devices=(d,))
+                    break
+                if cls.ctx is not None:
+                    break
+        cls.queue = cl.CommandQueue(cls.ctx)
 
-    @unittest.skipIf(cua is None, "cuda or pycuda is not available")
+    def test_pyopencl(self):
+        self.assertTrue(cla is not None, "pyopencl is not available")
+
+    @unittest.skipIf(cla is None, "pyopencl us not available")
     def test_c2c(self):
         """
         Test inplace C2C transforms
@@ -46,8 +63,8 @@ class TestVkFFTCUDA(unittest.TestCase):
                             v += x ** 2
                         d += 10 * np.exp(-v * 2)
                         n0 = (abs(d) ** 2).sum()
-                        d_gpu = cua.to_gpu(d)
-                        app = VkFFTApp(d.shape, d.dtype, ndim=ndim, norm=1)
+                        d_gpu = cla.to_device(self.queue, d)
+                        app = VkFFTApp(d.shape, d.dtype, self.queue, ndim=ndim, norm=1)
                         # base FFT scale
                         s = np.sqrt(np.prod(d.shape[-ndim:]))
 
@@ -61,7 +78,7 @@ class TestVkFFTCUDA(unittest.TestCase):
                         n1 = (abs(d_gpu.get()) ** 2).sum()
                         self.assertTrue(np.isclose(n0, n1, rtol=rtol))
 
-    @unittest.skipIf(cua is None, "cuda or pycuda is not available")
+    @unittest.skipIf(cla is None, "pyopencl us not available")
     def test_c2c_outofplace(self):
         """
         Test out-of-place C2C transforms
@@ -85,9 +102,9 @@ class TestVkFFTCUDA(unittest.TestCase):
                             v += x ** 2
                         d += 10 * np.exp(-v * 2)
                         n0 = (abs(d) ** 2).sum()
-                        d_gpu = cua.to_gpu(d)
-                        d1_gpu = cua.empty_like(d_gpu)
-                        app = VkFFTApp(d.shape, d.dtype, ndim=ndim, norm=1, inplace=False)
+                        d_gpu = cla.to_device(self.queue, d)
+                        d1_gpu = cla.zeros_like(d_gpu)
+                        app = VkFFTApp(d.shape, d.dtype, self.queue, ndim=ndim, norm=1, inplace=False)
                         # base FFT scale
                         s = np.sqrt(np.prod(d.shape[-ndim:]))
 
@@ -101,7 +118,7 @@ class TestVkFFTCUDA(unittest.TestCase):
                         n1 = (abs(d_gpu.get()) ** 2).sum()
                         self.assertTrue(np.isclose(n0, n1, rtol=rtol))
 
-    @unittest.skipIf(cua is None, "cuda or pycuda is not available")
+    @unittest.skipIf(cla is None, "pyopencl us not available")
     def test_r2c(self):
         """
         Test inplace R2C transforms
@@ -130,8 +147,8 @@ class TestVkFFTCUDA(unittest.TestCase):
                             v += x ** 2
                         d += 10 * np.exp(-v * 2)
                         n0 = (abs(d[..., :-2]) ** 2).sum()
-                        d_gpu = cua.to_gpu(d)
-                        app = VkFFTApp(d.shape, d.dtype, ndim=ndim, norm=1, r2c=True)
+                        d_gpu = cla.to_device(self.queue, d)
+                        app = VkFFTApp(d.shape, d.dtype, self.queue, ndim=ndim, norm=1, r2c=True)
                         # base FFT scale
                         s = np.sqrt(np.prod(d.shape[-ndim:]))
 
@@ -154,7 +171,7 @@ class TestVkFFTCUDA(unittest.TestCase):
                         n1 = (abs(d_gpu.get()[..., :-2]) ** 2).sum()
                         self.assertTrue(np.isclose(n0, n1, rtol=rtol))
 
-    @unittest.skipIf(cua is None, "cuda or pycuda is not available")
+    @unittest.skipIf(cla is None, "pyopencl us not available")
     def test_r2c_outofplace(self):
         """
         Test out-of-place R2C transforms
@@ -188,10 +205,10 @@ class TestVkFFTCUDA(unittest.TestCase):
                             v += x ** 2
                         d += 10 * np.exp(-v * 2)
                         n0 = (abs(d) ** 2).sum()
-                        d_gpu = cua.to_gpu(d)
-                        d1_gpu = cua.empty(shc, dtype=dtype_c)
+                        d_gpu = cla.to_device(self.queue, d)
+                        d1_gpu = cla.empty(self.queue, shc, dtype=dtype_c)
 
-                        app = VkFFTApp(d.shape, d.dtype, ndim=ndim, norm=1, r2c=True, inplace=False)
+                        app = VkFFTApp(d.shape, d.dtype, self.queue, ndim=ndim, norm=1, r2c=True, inplace=False)
                         # base FFT scale
                         s = np.sqrt(np.prod(d.shape[-ndim:]))
 
@@ -210,41 +227,11 @@ class TestVkFFTCUDA(unittest.TestCase):
                         n1 = (abs(d_gpu.get()) ** 2).sum()
                         self.assertTrue(np.isclose(n0, n1, rtol=rtol))
 
-    def test_streams(self):
-        """
-        Test multiple FFT in // with different streams.
-        :return:
-        """
-        for dtype in [np.complex64, np.complex128]:
-            if dtype == np.complex64:
-                rtol = 1e-6
-            else:
-                rtol = 1e-12
-            d = ascent().astype(dtype)
-            n_streams = 5
-            vd = []
-            vapp = []
-            for i in range(n_streams):
-                vd.append(cua.to_gpu(np.roll(d, i * 7, axis=1)))
-                vapp.append(VkFFTApp(d.shape, d.dtype, ndim=2, norm=1, stream=cu_drv.Stream()))
-
-            for i in range(n_streams):
-                vapp[i].fft(vd[i])
-            for i in range(n_streams):
-                dn = fftn(np.roll(d, i * 7, axis=1))
-                self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
-
-            for i in range(n_streams):
-                vapp[i].ifft(vd[i])
-            for i in range(n_streams):
-                dn = np.roll(d, i * 7, axis=1)
-                self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
-
 
 def suite():
     test_suite = unittest.TestSuite()
     load_tests = unittest.defaultTestLoader.loadTestsFromTestCase
-    test_suite.addTest(load_tests(TestVkFFTCUDA))
+    test_suite.addTest(load_tests(TestVkFFTOpenCL))
     return test_suite
 
 
