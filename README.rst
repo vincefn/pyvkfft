@@ -49,6 +49,27 @@ Performance
 See the benchmark notebook, which allows to plot OpenCL and CUDA backend throughput, as well as compare
 with cuFFT (using scikit-cuda) and clFFT (using gpyfft).
 
+Example result for 2D FFT with array dimensions of 16xNxN using a Titan V:
+
+.. image:: doc/benchmark-2DFFT-TITAN_V-Linux.png
+  :alt: Alternative text
+
+Note that in this plot the computed throughput is theoretical, as if each transform axis for the
+couple (FFT, iFFT) required exactly one read and one write. This is obviously not true,
+and explains the drop after N=1024 for cuFFT and (in a smaller extent) vkFFT.
+
+The general results are:
+
+* vkFFT throughput is similar to cuFFT up to N=150, then slightly lower up to N=1024. For N>1024
+  vkFFT is much more efficient than cuFFT due to the smaller number of read and write per FFT axis
+* the OpenCL and CUDA backends of vkFFT perform similarly, as expected
+* clFFT (via gpyfft) generally performs much worse than the other transforms. (Note that
+  the clFFT/gpyfft benchmark tries all FFT axis permutations to find the fastest combination)
+
+Finally one important advantage of vkFFT is that inplace transforms are truely in-place,
+and do not require an extra buffer/staging area contarry to cuFFT, which makes larger FFT
+transforms possible (even for R2C !).
+
 TODO
 ----
 
