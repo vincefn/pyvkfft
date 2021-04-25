@@ -68,7 +68,7 @@ def locate_opencl():
         extra_link_args = ['-Wl,-framework,OpenCL', '--shared']
     else:
         libraries = ['OpenCL']
-        extra_link_args = None
+        extra_link_args = ['--shared']
 
     return {'libraries': libraries, 'extra_link_args': extra_link_args}
 
