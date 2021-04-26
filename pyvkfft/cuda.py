@@ -54,15 +54,12 @@ class _types:
 
 
 _vkfft_cuda.make_config.restype = ctypes.c_void_p
-_vkfft_cuda.make_config.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+_vkfft_cuda.make_config.argtypes = [ctypes.c_size_t, ctypes.c_size_t, ctypes.c_size_t, ctypes.c_size_t,
                                     ctypes.c_void_p, ctypes.c_void_p, _types.stream, ctypes.c_int,
-                                    ctypes.c_int, ctypes.c_int]
+                                    ctypes.c_size_t, ctypes.c_int]
 
 _vkfft_cuda.init_app.restype = ctypes.c_void_p
 _vkfft_cuda.init_app.argtypes = [_types.vkfft_config]
-
-_vkfft_cuda.test_vkfft_cuda.restype = ctypes.c_int
-_vkfft_cuda.test_vkfft_cuda.argtypes = [ctypes.c_int]
 
 _vkfft_cuda.fft.restype = None
 _vkfft_cuda.fft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p]
@@ -243,8 +240,3 @@ class VkFFTApp:
                 _vkfft_cuda.ifft(self.app, int(src.gpudata), int(dest.gpudata))
             return dest
 
-
-def _test(size):
-    """ This will launch a simple 1D FFT test
-    """
-    return _vkfft_cuda.test_vkfft_cuda(size)

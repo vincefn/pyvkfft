@@ -16,9 +16,9 @@ using namespace std;
 
 
 extern "C"{
-VkFFTConfiguration* make_config(const int, const int, const int, const int,
+VkFFTConfiguration* make_config(const size_t, const size_t, const size_t, const size_t,
                                 void*, void*, void*, void*, void*,
-                                const int, const int, const int);
+                                const int, const size_t, const int);
 
 VkFFTApplication* init_app(const VkFFTConfiguration*, void*);
 
@@ -30,7 +30,7 @@ void free_app(VkFFTApplication* app);
 
 void free_config(VkFFTConfiguration *config);
 
-int test_vkfft_cuda(int);
+uint32_t vkfft_version();
 }
 
 /** Create the VkFFTConfiguration from the array parameters
@@ -51,10 +51,10 @@ int test_vkfft_cuda(int);
 * \param r2c: if True, create a configuration for a real<->complex transform
 * \return: the pointer to the newly created VkFFTConfiguration, or 0 if an error occurred.
 */
-VkFFTConfiguration* make_config(const int nx, const int ny, const int nz, const int fftdim,
+VkFFTConfiguration* make_config(const size_t nx, const size_t ny, const size_t nz, const size_t fftdim,
                                 void *buffer, void *buffer_out,
                                 void* platform, void* device, void* ctx,
-                                const int norm, const int precision, const int r2c)
+                                const int norm, const size_t precision, const int r2c)
 {
   VkFFTConfiguration *config = new VkFFTConfiguration({});
   config->FFTdim = fftdim;
@@ -89,7 +89,7 @@ VkFFTConfiguration* make_config(const int nx, const int ny, const int nz, const 
 
   if(r2c)
   {
-    *psize = (uint64_t)((nx / 2 + 1) * ny * nz * precision * 2);
+    *psize = (uint64_t)((nx / 2 + 1) * ny * nz * precision * (size_t)2);
     if(buffer_out != NULL)
     {
       psizein = new uint64_t;
@@ -100,7 +100,7 @@ VkFFTConfiguration* make_config(const int nx, const int ny, const int nz, const 
 			config->inputBufferStride[2] = nx * ny * nz;
     }
   }
-  else *psize = (uint64_t)(nx * ny * nz * precision * 2);
+  else *psize = (uint64_t)(nx * ny * nz * precision * (size_t)2);
 
   config->bufferSize = psize;
 
@@ -216,3 +216,9 @@ void free_config(VkFFTConfiguration *config)
 
   free(config);
 }
+
+/// Get VkFFT version
+uint32_t vkfft_version()
+{
+  return VkFFTGetVersion();
+};

@@ -8,6 +8,7 @@ import warnings
 from setuptools import setup, find_packages
 from distutils.extension import Extension
 from Cython.Distutils import build_ext
+from pyvkfft.version import __version__
 
 
 def find_in_path(name, path):
@@ -153,8 +154,8 @@ vkfft_opencl_ext = Extension('pyvkfft._vkfft_opencl',
 ext_modules.append(vkfft_opencl_ext)
 
 setup(name="pyvkfft",
-      version="0.0.1a",
-      description="vkFFT library",
+      version=__version__,
+      description="Python wrapper for the CUDA and OpenCL backend of VkFFT",
       ext_modules=ext_modules,
       packages=find_packages(exclude=exclude_packages),
       include_package_data=True,

@@ -53,9 +53,9 @@ class _types:
 
 
 _vkfft_opencl.make_config.restype = ctypes.c_void_p
-_vkfft_opencl.make_config.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+_vkfft_opencl.make_config.argtypes = [ctypes.c_size_t, ctypes.c_size_t, ctypes.c_size_t, ctypes.c_size_t,
                                       ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
-                                      ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+                                      ctypes.c_void_p, ctypes.c_int, ctypes.c_size_t, ctypes.c_int]
 
 _vkfft_opencl.init_app.restype = ctypes.c_void_p
 _vkfft_opencl.init_app.argtypes = [_types.vkfft_config, ctypes.c_void_p]
@@ -71,6 +71,9 @@ _vkfft_opencl.free_app.argtypes = [_types.vkfft_app]
 
 _vkfft_opencl.free_config.restype = None
 _vkfft_opencl.free_config.argtypes = [_types.vkfft_config]
+
+_vkfft_opencl.vkfft_version.restype = ctypes.c_uint32
+_vkfft_opencl.vkfft_version.argtypes = None
 
 
 class VkFFTApp:
@@ -233,3 +236,12 @@ class VkFFTApp:
             else:
                 _vkfft_opencl.ifft(self.app, int(src.data.int_ptr), int(dest.data.int_ptr), int(self.queue.int_ptr))
             return dest
+
+
+def vkfft_version():
+    """
+    Get VkFFT version
+    :return: version as X.Y.Z
+    """
+    int_ver = _vkfft_opencl.vkfft_version()
+    return "%d.%d.%d" % (int_ver // 10000, (int_ver % 10000) // 100, int_ver % 100)
