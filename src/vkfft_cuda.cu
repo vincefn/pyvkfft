@@ -17,7 +17,7 @@ typedef float2 Complex;
 
 extern "C"{
 VkFFTConfiguration* make_config(const size_t, const size_t, const size_t, const size_t, void*, void*, void*,
-                                const int, const size_t, const int);
+                                const int, const size_t, const int, const int, const int);
 
 VkFFTApplication* init_app(const VkFFTConfiguration*);
 
@@ -62,7 +62,8 @@ class PyVkFFT
 */
 VkFFTConfiguration* make_config(const size_t nx, const size_t ny, const size_t nz, const size_t fftdim,
                                 void *buffer, void *buffer_out, void* hstream,
-                                const int norm, const size_t precision, const int r2c)
+                                const int norm, const size_t precision, const int r2c,
+                                const int disableReorderFourStep, const int registerBoost)
 {
   VkFFTConfiguration *config = new VkFFTConfiguration({});
   config->FFTdim = fftdim;
@@ -71,6 +72,11 @@ VkFFTConfiguration* make_config(const size_t nx, const size_t ny, const size_t n
   config->size[2] = nz;
   config->normalize = norm;
   config->performR2C = r2c;
+  if(disableReorderFourStep>=0)
+    config->disableReorderFourStep = disableReorderFourStep;
+   if(registerBoost>=0)
+    config->registerBoost = registerBoost;
+
   switch(precision)
   {
       case 2 : config->halfPrecision = 1;

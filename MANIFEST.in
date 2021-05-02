@@ -1,0 +1,2 @@
+include src/vkFFT.h
+include LICENSE LICENSE_VkFFT README_VkFFT.md

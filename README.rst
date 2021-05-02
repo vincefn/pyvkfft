@@ -13,8 +13,8 @@ Installation
 
 Requirements:
 
-- `vkfft.h` installed in the usual include directories
-- `pyopencl` and the opencl libraries for the opencl backend
+- `vkfft.h` installed in the usual include directories, or in the 'src' directory
+- `pyopencl` and the opencl libraries/development tools for the opencl backend
 - `pycuda` and CUDA developments tools (`nvcc`) for the cuda backend (optional)
 - `numpy`
 
@@ -35,14 +35,21 @@ What works:
 - CUDA and OpenCL backends
 - C2C, R2C/C2R for inplace and out-of-place transforms
 - single and double precision for all transforms
-- all transforms accept 1D, 2D and 3D arrays, with the FT dimension <= array dimension
+- 1D, 2D and 3D transforms (always performed from the last axes).
+- 1D and 2D FFT accept arrays of any number of dimensions (batch transforms), 3D FFT
+  only accepts 3D arrays.
 - allowed prime factors (radix) of the transform axes are 2, 3, 5, 7, 11 and 13
 - normalisation=0 (array L2 norm * array size on each transform) and 1 (the backward
   transform divides the L2 norm by the array size, so FFT*iFFT restores the original array)
 - now testing the FFT size does not exceed the allowed maximum prime number decomposition (13)
-- unit tests for all transforms: use `python setup.py test`
+- unit tests for all transforms: see test sub-directory.
 - Note that out-of-place C2R transform currently destroys the complex array for FFT dimensions >=2
 - tested on macOS (10.13.6) and Linux.
+- inplace transforms do not require an extra buffer or work area (as in cuFFT), unless the x
+size is larger than 8192, or if the y and z FFT size are larger than 2048. In that case
+a buffer of a size equal to the array is necessary. This makes larger FFT transforms possible
+based on memory requiremnts (even for R2C !) compared to cuFFT. For example you can compute
+the 3D FFT for a 1600**3 complex64 array withon 32GB of memory.
 
 Performance
 -----------
@@ -64,12 +71,9 @@ The general results are:
   vkFFT is much more efficient than cuFFT due to the smaller number of read and write per FFT axis
   (apart from isolated power-of-2 or power-of-3 sizes)
 * the OpenCL and CUDA backends of vkFFT perform similarly, as expected
-* clFFT (via gpyfft) generally performs much worse than the other transforms. (Note that
-  the clFFT/gpyfft benchmark tries all FFT axis permutations to find the fastest combination)
-
-Finally one important advantage of vkFFT is that inplace transforms are truely in-place,
-and do not require an extra buffer/staging area contarry to cuFFT, which makes larger FFT
-transforms possible (even for R2C !).
+* clFFT (via gpyfft) generally performs much worse than the other transforms, though this was
+  tested using nVidia cards. (Note that the clFFT/gpyfft benchmark tries all FFT axis permutations
+  to find the fastest combination)
 
 TODO
 ----
@@ -78,8 +82,8 @@ TODO
 
   - for vulkan and rocm this only makes sense combined to a pycuda/cupy/pyopencl equivalent.
 - support cupy arrays (this probably requires little change so a cupy user/developer contribution is welcome)
-- support array dimensions >3 when the FFT dimension is up to 2 (by collapsing the 3rd dimension)
-- out-of-place C2R transform without modifying the C array ? This would require using a R array padded with two wolumns, as for the inplace transform
+- out-of-place C2R transform without modifying the C array ? This would require using a R
+  array padded with two wolumns, as for the inplace transform
 - half precision ?
 - convolution ?
 - zero-padding ?

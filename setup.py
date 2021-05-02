@@ -6,6 +6,7 @@ import sys
 from os.path import join as pjoin
 import warnings
 from setuptools import setup, find_packages
+from setuptools.command.sdist import sdist, sdist_add_defaults
 from distutils.extension import Extension
 from Cython.Distutils import build_ext
 from pyvkfft.version import __version__
@@ -109,6 +110,18 @@ def customize_compiler_for_nvcc(self):
     self._compile = _compile
 
 
+class sdist_vkfft(sdist):
+    """
+    Sdist overloaded to get vkfft header, readme and license from VkFFT's git
+    """
+    def run(self):
+        # Get the latest vkFFT.h from github
+        os.system('curl -L https://raw.githubusercontent.com/DTolm/VkFFT/master/vkFFT/vkFFT.h -o src/vkFFT.h')
+        os.system('curl -L https://raw.githubusercontent.com/DTolm/VkFFT/master/LICENSE -o LICENSE_VkFFT')
+        os.system('curl -L https://raw.githubusercontent.com/DTolm/VkFFT/master/README.md -o README_VkFFT.md')
+        super(sdist_vkfft, self).run()
+
+
 # Run the customize_compiler
 class custom_build_ext(build_ext):
     def build_extensions(self):
@@ -155,13 +168,14 @@ ext_modules.append(vkfft_opencl_ext)
 
 setup(name="pyvkfft",
       version=__version__,
-      description="Python wrapper for the CUDA and OpenCL backend of VkFFT",
+      description="Python wrapper for the CUDA and OpenCL backends of VkFFT",
       ext_modules=ext_modules,
       packages=find_packages(exclude=exclude_packages),
       include_package_data=True,
       author="Vincent Favre-Nicolin",
+      author_email="favre@esrf.fr",
       url="https://github.com/vincefn/pyvkfft",
-      cmdclass={'build_ext': custom_build_ext},
+      cmdclass={'build_ext': custom_build_ext, 'sdist_vkfft': sdist_vkfft},
       install_requires=install_requires,
       test_suite="test")
 
