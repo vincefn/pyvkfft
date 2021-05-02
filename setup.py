@@ -166,15 +166,30 @@ vkfft_opencl_ext = Extension('pyvkfft._vkfft_opencl',
 
 ext_modules.append(vkfft_opencl_ext)
 
+with open("README.rst", "r", encoding="utf-8") as fh:
+    long_description = fh.read()
+
 setup(name="pyvkfft",
       version=__version__,
       description="Python wrapper for the CUDA and OpenCL backends of VkFFT",
+      long_description=long_description,
       ext_modules=ext_modules,
       packages=find_packages(exclude=exclude_packages),
       include_package_data=True,
       author="Vincent Favre-Nicolin",
       author_email="favre@esrf.fr",
       url="https://github.com/vincefn/pyvkfft",
+      project_urls={
+          "Bug Tracker": "https://github.com/vincefn/pyvkfft/issues",
+          "VkFFT project": "https://github.com/DTolm/VkFFT",
+      },
+      classifiers=[
+          "Programming Language :: Python :: 3",
+          "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
+          "Operating System :: OS Independent",
+          "Environment :: GPU",
+      ],
+
       cmdclass={'build_ext': custom_build_ext, 'sdist_vkfft': sdist_vkfft},
       install_requires=install_requires,
       test_suite="test")

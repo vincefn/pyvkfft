@@ -4,7 +4,7 @@ __authors__ = ["Vincent Favre-Nicolin (pyvkfft), Dmitrii Tolmachev (VkFFT)"]
 __license__ = "Mozilla Public License Version 2.0"
 __date__ = "2021/05/02"
 # Valid numbering includes 3.1, 3.1.0, 3.1.2, 3.1dev0, 3.1a0, 3.1b0
-__version__ = "2021.1b1"
+__version__ = "2021.1b6"
 
 
 def vkfft_version():

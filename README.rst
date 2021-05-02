@@ -11,6 +11,11 @@ pyvkfft offers a simple python interface to the **CUDA** and **OpenCL** backends
 Installation
 ------------
 
+Install using `pip install pyvkfft` (works on macOS and Linux).
+
+Note that the PyPI archive includes `vkfft.h` and will automatically install `pyopencl`,
+as well as `pycuda` if a CUDA environment is detected.
+
 Requirements:
 
 - `vkfft.h` installed in the usual include directories, or in the 'src' directory
@@ -18,7 +23,7 @@ Requirements:
 - `pycuda` and CUDA developments tools (`nvcc`) for the cuda backend (optional)
 - `numpy`
 
-This package should be installed using pip or `python setup.py install`.
+This package can be installed from source using `python setup.py install`.
 
 Examples
 --------
@@ -46,10 +51,10 @@ What works:
 - Note that out-of-place C2R transform currently destroys the complex array for FFT dimensions >=2
 - tested on macOS (10.13.6) and Linux.
 - inplace transforms do not require an extra buffer or work area (as in cuFFT), unless the x
-size is larger than 8192, or if the y and z FFT size are larger than 2048. In that case
-a buffer of a size equal to the array is necessary. This makes larger FFT transforms possible
-based on memory requiremnts (even for R2C !) compared to cuFFT. For example you can compute
-the 3D FFT for a 1600**3 complex64 array withon 32GB of memory.
+  size is larger than 8192, or if the y and z FFT size are larger than 2048. In that case
+  a buffer of a size equal to the array is necessary. This makes larger FFT transforms possible
+  based on memory requiremnts (even for R2C !) compared to cuFFT. For example you can compute
+  the 3D FFT for a 1600**3 complex64 array withon 32GB of memory.
 
 Performance
 -----------
@@ -58,8 +63,7 @@ with cuFFT (using scikit-cuda) and clFFT (using gpyfft).
 
 Example result for 2D FFT with array dimensions of 16xNxN using a Titan V:
 
-.. image:: doc/benchmark-2DFFT-TITAN_V-Linux.png
-  :alt: Alternative text
+.. image:: https://raw.githubusercontent.com/vincefn/pyvkfft/master/doc/benchmark-2DFFT-TITAN_V-Linux.png
 
 Note that in this plot the computed throughput is theoretical, as if each transform axis for the
 couple (FFT, iFFT) required exactly one read and one write. This is obviously not true,
@@ -87,6 +91,7 @@ TODO
 - support cupy arrays (this probably requires little change so a cupy user/developer contribution is welcome)
 - out-of-place C2R transform without modifying the C array ? This would require using a R
   array padded with two wolumns, as for the inplace transform
+- windows support (contribution welcome to setup.py)
 - half precision ?
 - convolution ?
 - zero-padding ?
