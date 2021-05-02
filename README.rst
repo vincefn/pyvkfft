@@ -70,7 +70,10 @@ The general results are:
 * vkFFT throughput is similar to cuFFT up to N=150, then slightly lower up to N=1024. For N>1024
   vkFFT is much more efficient than cuFFT due to the smaller number of read and write per FFT axis
   (apart from isolated power-of-2 or power-of-3 sizes)
-* the OpenCL and CUDA backends of vkFFT perform similarly, as expected
+* the OpenCL and CUDA backends of vkFFT perform similarly, as expected. [Note that this should
+  be true *as long as the card is only used for computing*. If it is also used for display,
+  then performance may be different, e.g. for nvidia cards opencl performance is more affected
+  when being used for display than the cuda backend]
 * clFFT (via gpyfft) generally performs much worse than the other transforms, though this was
   tested using nVidia cards. (Note that the clFFT/gpyfft benchmark tries all FFT axis permutations
   to find the fastest combination)
