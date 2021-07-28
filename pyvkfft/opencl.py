@@ -147,10 +147,14 @@ class VkFFTApp:
 
         # Precision: number of bytes per
         if dtype in [np.float16, complex64]:
+            if 'cl_khr_fp16' not in self.queue.device.extensions:
+                raise RuntimeError("Half precision required but cl_khr_fp16 extension is not available")
             self.precision = 2
         elif dtype in [np.float32, np.complex64]:
             self.precision = 4
         elif dtype in [np.float64, np.complex128]:
+            if 'cl_khr_fp64' not in self.queue.device.extensions:
+                raise RuntimeError("Double precision required but cl_khr_fp64 extension is not available")
             self.precision = 8
         self.config = self._make_config()
         if self.config is None:

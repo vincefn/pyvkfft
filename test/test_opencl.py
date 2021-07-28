@@ -35,6 +35,11 @@ class TestVkFFTOpenCL(unittest.TestCase):
                 if cls.ctx is not None:
                     break
         cls.queue = cl.CommandQueue(cls.ctx)
+        cls.dtype_float_v = [np.float32]
+        cls.dtype_complex_v = [np.complex64]
+        if 'cl_khr_fp64' in cls.queue.device.extensions:
+            cls.dtype_float_v.append(np.float64)
+            cls.dtype_complex_v.append(np.complex128)
 
     def test_pyopencl(self):
         self.assertTrue(cla is not None, "pyopencl is not available")
@@ -51,13 +56,13 @@ class TestVkFFTOpenCL(unittest.TestCase):
             else:
                 ndim_max = min(dims + 1, 3)
             for ndim in range(1, ndim_max):
-                for dtype in [np.complex64, np.complex128]:
+                for dtype in self.dtype_complex_v:
                     for norm in [0, 1, "ortho"]:
                         with self.subTest(dims=dims, ndim=ndim, dtype=dtype, norm=norm):
                             if dtype == np.complex64:
-                                rtol = 1e-6
+                                rtol = 1e-4
                             else:
-                                rtol = 1e-12
+                                rtol = 1e-8
 
                             d = np.random.uniform(0, 1, [n] * dims).astype(dtype)
                             # A pure random array may not be a very good test (too random),
@@ -97,13 +102,13 @@ class TestVkFFTOpenCL(unittest.TestCase):
             else:
                 ndim_max = min(dims + 1, 3)
             for ndim in range(1, ndim_max):
-                for dtype in [np.complex64, np.complex128]:
+                for dtype in self.dtype_complex_v:
                     for norm in [0, 1, "ortho"]:
                         with self.subTest(dims=dims, ndim=ndim, dtype=dtype, norm=norm):
                             if dtype == np.complex64:
-                                rtol = 1e-6
+                                rtol = 1e-4
                             else:
-                                rtol = 1e-12
+                                rtol = 1e-8
 
                             d = np.random.uniform(0, 1, [n] * dims).astype(dtype)
                             # A pure random array may not be a very good test (too random),
@@ -144,14 +149,14 @@ class TestVkFFTOpenCL(unittest.TestCase):
             else:
                 ndim_max = min(dims + 1, 3)
             for ndim in range(1, ndim_max):
-                for dtype in [np.float32, np.float64]:
+                for dtype in self.dtype_float_v:
                     for norm in [0, 1, "ortho"]:
                         with self.subTest(dims=dims, ndim=ndim, dtype=dtype, norm=norm):
                             if dtype == np.float32:
-                                rtol = 1e-6
+                                rtol = 1e-4
                                 c_dtype = np.complex64
                             else:
-                                rtol = 1e-12
+                                rtol = 1e-8
                                 c_dtype = np.complex128
 
                             sh = [n] * dims
@@ -206,13 +211,13 @@ class TestVkFFTOpenCL(unittest.TestCase):
             else:
                 ndim_max = min(dims + 1, 3)
             for ndim in range(1, ndim_max):
-                for dtype in [np.float32, np.float64]:
+                for dtype in self.dtype_float_v:
                     for norm in [0, 1, "ortho"]:
                         with self.subTest(dims=dims, ndim=ndim, dtype=dtype, norm=norm):
                             if dtype == np.float32:
-                                rtol = 1e-6
+                                rtol = 1e-4
                             else:
-                                rtol = 1e-12
+                                rtol = 1e-8
                             if dtype == np.float32:
                                 dtype_c = np.complex64
                             elif dtype == np.float64:
