@@ -67,7 +67,7 @@ def locate_opencl():
     """
     if 'darwin' in sys.platform:
         libraries = None
-        extra_link_args = ['-Wl,-framework,OpenCL', '--shared']
+        extra_link_args = ['-Wl,-framework,OpenCL']  # , '--shared'
     else:
         libraries = ['OpenCL']
         extra_link_args = ['--shared']
@@ -114,6 +114,7 @@ class sdist_vkfft(sdist):
     """
     Sdist overloaded to get vkfft header, readme and license from VkFFT's git
     """
+
     def run(self):
         # Get the latest vkFFT.h from github
         os.system('curl -L https://raw.githubusercontent.com/DTolm/VkFFT/master/vkFFT/vkFFT.h -o src/vkFFT.h')
@@ -132,39 +133,58 @@ class custom_build_ext(build_ext):
 ext_modules = []
 install_requires = ['numpy']
 exclude_packages = ['examples', 'test']
-try:
-    CUDA = locate_cuda()
-    vkfft_cuda_ext = Extension('pyvkfft._vkfft_cuda',
-                               sources=['src/vkfft_cuda.cu'],
-                               libraries=['nvrtc', 'cuda'],
-                               # This syntax is specific to this build system
-                               # we're only going to use certain compiler args with nvcc
-                               # and not with gcc the implementation of this trick is in
-                               # customize_compiler()
-                               extra_compile_args=['-O3', '--ptxas-options=-v', '-std=c++11',
-                                                   '--compiler-options=-fPIC']
-                               ,
-                               include_dirs=[CUDA['include'], 'src'],
-                               extra_link_args=['--shared', '-L%s' % CUDA['lib64']]
-                               )
-    ext_modules.append(vkfft_cuda_ext)
-    install_requires.append('pycuda')
-except:
-    CUDA = None
-    exclude_packages.append('cuda')
+CUDA = None
+OPENCL = None
 
-OPENCL = locate_opencl()
-install_requires.append('pyopencl')
+for k, v in os.environ.items():
+    if "VKFFT_BACKEND" in k:
+        # Kludge to manually select vkfft backends. useful e.g. if nvidia tools
+        # are installed but not functional
+        # e.g. use:
+        #   VKFFT_BACKEND=cuda,opencl python setup.py install
+        #   VKFFT_BACKEND=opencl pip install pyvkfft
+        if 'opencl' not in v.lower():
+            exclude_packages.append('opencl')
+        if 'cuda' not in v.lower():
+            exclude_packages.append('cuda')
 
-# OpenCL extension
-vkfft_opencl_ext = Extension('pyvkfft._vkfft_opencl',
-                             sources=['src/vkfft_opencl.cpp'],
-                             extra_compile_args=['-std=c++11', '-Wno-format-security'],
-                             libraries=OPENCL['libraries'],
-                             extra_link_args=OPENCL['extra_link_args']
-                             )
+if 'cuda' not in exclude_packages:
+    try:
+        CUDA = locate_cuda()
+        vkfft_cuda_ext = Extension('pyvkfft._vkfft_cuda',
+                                   sources=['src/vkfft_cuda.cu'],
+                                   libraries=['nvrtc', 'cuda'],
+                                   # This syntax is specific to this build system
+                                   # we're only going to use certain compiler args with nvcc
+                                   # and not with gcc the implementation of this trick is in
+                                   # customize_compiler()
+                                   extra_compile_args=['-O3', '--ptxas-options=-v', '-std=c++11',
+                                                       '--compiler-options=-fPIC']
+                                   ,
+                                   include_dirs=[CUDA['include'], 'src'],
+                                   extra_link_args=['--shared', '-L%s' % CUDA['lib64']]
+                                   )
+        ext_modules.append(vkfft_cuda_ext)
+        install_requires.append('pycuda')
+    except:
+        exclude_packages.append('cuda')
+        warnings.warn("CUDA not available ($CUDAHOME variable missing and nvcc not in path. "
+                      "Skipping pyvkfft.cuda module installation.", UserWarning)
 
-ext_modules.append(vkfft_opencl_ext)
+
+if 'opencl' not in exclude_packages:
+    OPENCL = locate_opencl()
+    install_requires.append('pyopencl')
+
+    # OpenCL extension
+    vkfft_opencl_ext = Extension('pyvkfft._vkfft_opencl',
+                                 sources=['src/vkfft_opencl.cpp'],
+                                 extra_compile_args=['-std=c++11', '-Wno-format-security'],
+                                 libraries=OPENCL['libraries'],
+                                 extra_link_args=OPENCL['extra_link_args']
+                                 )
+
+    ext_modules.append(vkfft_opencl_ext)
 
 with open("README.rst", "r", encoding="utf-8") as fh:
     long_description = fh.read()
@@ -193,7 +213,3 @@ setup(name="pyvkfft",
       cmdclass={'build_ext': custom_build_ext, 'sdist_vkfft': sdist_vkfft},
       install_requires=install_requires,
       test_suite="test")
-
-if CUDA is None:
-    warnings.warn("CUDA not available ($CUDAHOME variable missing and nvcc not in path. "
-                  "Skipping pyvkfft.cuda module installation.", UserWarning)
