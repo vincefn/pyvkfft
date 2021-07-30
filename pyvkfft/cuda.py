@@ -13,23 +13,7 @@ import ctypes
 import numpy as np
 import pycuda.gpuarray as cua
 import pycuda.driver as cu_drv
-
-
-def primes(n):
-    """ Returns the prime decomposition of n as a list
-    """
-    v = [1]
-    assert (n > 0)
-    i = 2
-    while i * i <= n:
-        while n % i == 0:
-            v.append(i)
-            n //= i
-        i += 1
-    if n > 1:
-        v.append(n)
-    return v
-
+from .base import primes, calc_transform_axes
 
 # np.complex32 does not exist yet https://github.com/numpy/numpy/issues/14753
 complex64 = np.dtype([('re', np.float16), ('im', np.float16)])

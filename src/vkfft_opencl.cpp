@@ -18,7 +18,8 @@ using namespace std;
 extern "C"{
 VkFFTConfiguration* make_config(const size_t, const size_t, const size_t, const size_t,
                                 void*, void*, void*, void*, void*,
-                                const int, const size_t, const int, const int, const int);
+                                const int, const size_t, const int, const int, const int,
+                                const int, const int, const size_t, const int, const int, const int);
 
 VkFFTApplication* init_app(const VkFFTConfiguration*, void*);
 
@@ -55,19 +56,35 @@ VkFFTConfiguration* make_config(const size_t nx, const size_t ny, const size_t n
                                 void *buffer, void *buffer_out,
                                 void* platform, void* device, void* ctx,
                                 const int norm, const size_t precision, const int r2c,
-                                const int disableReorderFourStep, const int registerBoost)
+                                const int disableReorderFourStep, const int registerBoost,
+                                const int useLUT, const int keepShaderCode, const size_t n_batch,
+                                const int skipx, const int skipy, const int skipz)
 {
   VkFFTConfiguration *config = new VkFFTConfiguration({});
   config->FFTdim = fftdim;
   config->size[0] = nx;
   config->size[1] = ny;
   config->size[2] = nz;
+  config->numberBatches = n_batch;
+
+  config->omitDimension[0] = skipx;
+  config->omitDimension[1] = skipy;
+  config->omitDimension[2] = skipz;
+
   config->normalize = norm;
   config->performR2C = r2c;
+
   if(disableReorderFourStep>=0)
     config->disableReorderFourStep = disableReorderFourStep;
-   if(registerBoost>=0)
+
+  if(registerBoost>=0)
     config->registerBoost = registerBoost;
+
+  if(useLUT>=0)
+    config->useLUT = useLUT;
+
+  if(keepShaderCode>=0)
+    config->keepShaderCode = keepShaderCode;
 
   switch(precision)
   {
