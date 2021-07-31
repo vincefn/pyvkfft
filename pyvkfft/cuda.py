@@ -7,41 +7,12 @@
 
 import os
 import platform
-import warnings
 import sysconfig
 import ctypes
 import numpy as np
 import pycuda.gpuarray as cua
 import pycuda.driver as cu_drv
-
-
-def primes(n):
-    """ Returns the prime decomposition of n as a list
-    """
-    v = [1]
-    assert (n > 0)
-    i = 2
-    while i * i <= n:
-        while n % i == 0:
-            v.append(i)
-            n //= i
-        i += 1
-    if n > 1:
-        v.append(n)
-    return v
-
-
-# np.complex32 does not exist yet https://github.com/numpy/numpy/issues/14753
-complex64 = np.dtype([('re', np.float16), ('im', np.float16)])
-
-
-def load_library(basename):
-    if platform.system() == 'Windows':
-        ext = '.dll'
-    else:
-        ext = sysconfig.get_config_var('SO')
-    return ctypes.cdll.LoadLibrary(os.path.join(os.path.dirname(__file__) or os.path.curdir, basename + ext))
-
+from .base import complex64, load_library, primes, calc_transform_axes, VkFFTApp as VkFFTAppBase
 
 _vkfft_cuda = load_library("_vkfft_cuda")
 
@@ -56,7 +27,9 @@ class _types:
 _vkfft_cuda.make_config.restype = ctypes.c_void_p
 _vkfft_cuda.make_config.argtypes = [ctypes.c_size_t, ctypes.c_size_t, ctypes.c_size_t, ctypes.c_size_t,
                                     ctypes.c_void_p, ctypes.c_void_p, _types.stream, ctypes.c_int,
-                                    ctypes.c_size_t, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+                                    ctypes.c_size_t, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                    ctypes.c_int, ctypes.c_int, ctypes.c_size_t,
+                                    ctypes.c_int, ctypes.c_int, ctypes.c_int]
 
 _vkfft_cuda.init_app.restype = ctypes.c_void_p
 _vkfft_cuda.init_app.argtypes = [_types.vkfft_config]
@@ -74,13 +47,13 @@ _vkfft_cuda.free_config.restype = None
 _vkfft_cuda.free_config.argtypes = [_types.vkfft_config]
 
 
-class VkFFTApp:
+class VkFFTApp(VkFFTAppBase):
     """
     VkFFT application interface, similar to a cuFFT plan.
     """
 
     def __init__(self, shape, dtype: type, ndim=None, inplace=True, stream=None, norm=1,
-                 r2c=False, batch=1, buffer_allocator=None, **kwargs):
+                 r2c=False, axes=None, **kwargs):
         """
 
         :param shape: the shape of the array to be transformed. The number
@@ -115,47 +88,22 @@ class VkFFTApp:
             the output (complex) shape should be (..., nx//2+1).
             Note that for C2R transforms with ndim>=2, the source (complex) array
             is modified.
+        :param axes: a list or tuple of axes along which the transform should be made.
+            if None, the transform is done along the ndim fastest axes, or all
+            axes if ndim is None. Not allowed for R2C transforms
         :raises RuntimeError: if the initialisation fails, e.g. if the CUDA
             driver has not been properly initialised.
         """
-        self.shape = shape
-        if ndim is None:
-            self.ndim = len(shape)
-        else:
-            self.ndim = ndim
-        self.inplace = inplace
-        self.r2c = r2c
-
-        # Experimental parameters. Not much difference is seen, so don't document this,
-        # VkFFT default parameters seem fine.
-        if "disableReorderFourStep" in kwargs:
-            self.disableReorderFourStep = kwargs["disableReorderFourStep"]
-        else:
-            self.disableReorderFourStep = -1
-        if "registerBoost" in kwargs:
-            self.registerBoost = kwargs["registerBoost"]
-        else:
-            self.registerBoost = -1
+        super().__init__(shape, dtype, ndim=ndim, inplace=inplace, norm=norm, r2c=r2c, axes=axes, **kwargs)
 
         self.stream = stream
-        self.norm = norm
 
-        # Reshape to collapse non-transformed axes if necessary (batch)
-        self.batch_shape = None
-
-        # Precision: number of bytes per
-        if dtype in [np.float16, complex64]:
-            self.precision = 2
-        elif dtype in [np.float32, np.complex64]:
-            self.precision = 4
-        elif dtype in [np.float64, np.complex128]:
-            self.precision = 8
         self.config = self._make_config()
         if self.config is None:
             raise RuntimeError("Error creating VkFFTConfiguration. Was the CUDA context properly initialised ?")
         self.app = _vkfft_cuda.init_app(self.config)
         if self.app is None:
-            raise RuntimeError("Error creating VkFFTApplication. Was the CUDA driver initialised .")
+            raise RuntimeError("Error creating VkFFTApplication. Was the CUDA driver initialised ?")
         # TODO: This is a kludge to keep a reference to the context, so that it is deleted
         #  after the app in __delete__, which throws an error if the context does not exist
         #  anymore. Except that we cannot be sure this is the right context, if a stream
@@ -171,29 +119,13 @@ class VkFFTApp:
 
     def _make_config(self):
         """ Create a vkfft configuration for a FFT transform"""
-        nx, ny, nz = self.shape[-1], 1, 1
-        if len(self.shape) > 1:
-            ny = self.shape[-2]
+        nx, ny, nz, n_batch = self.shape
+        skipx, skipy, skipz = self.skip_axis
+        if self.r2c and self.inplace:
+            # the last two columns are ignored in the R array, and will be used
+            # in the C array with a size nx//2+1
+            nx -= 2
 
-        if len(self.shape) > 2:
-            nz = self.shape[-3]
-
-        if len(self.shape) > 3 and self.ndim < 3:
-            # Collapse axes for dimensions >=3 as VkFFT works on 3D arrays
-            self.batch_shape = tuple([np.prod(self.shape[:-2])] + list(self.shape[-2:]))
-            nz = self.batch_shape[0]
-
-        if self.r2c:
-            if self.inplace:
-                # the last two columns are ignored in the R array, and will be used
-                # in the C array with a size nx//2+1
-                nx -= 2
-            else:
-                # raise RuntimeError("VkFFTApp: out-of-place R2C transform is not supported")
-                pass
-        if max(primes(nx)) > 13 or (max(primes(ny)) > 13 and self.ndim >= 2) \
-                or (self.ndim >= 3 and max(primes(nz)) > 13):
-            raise RuntimeError("The prime numbers of the FFT size is larger than 13")
         if self.stream is None:
             s = 0
         else:
@@ -206,15 +138,15 @@ class VkFFTApp:
 
         # We pass fake buffer pointer addresses to VkFFT. The real ones will be
         # given when performing the actual FFT.
+        dest_gpudata = 2
         if self.inplace:
-            config = _vkfft_cuda.make_config(nx, ny, nz, self.ndim, 1, 0, s,
-                                             norm, self.precision, int(self.r2c),
-                                             int(self.disableReorderFourStep), int(self.registerBoost))
-        else:
-            config = _vkfft_cuda.make_config(nx, ny, nz, self.ndim, 1, 2, s,
-                                             norm, self.precision, int(self.r2c),
-                                             int(self.disableReorderFourStep), int(self.registerBoost))
-        return config
+            dest_gpudata = 0
+
+        return _vkfft_cuda.make_config(nx, ny, nz, self.ndim, 1, dest_gpudata, s,
+                                         norm, self.precision, int(self.r2c),
+                                         int(self.disableReorderFourStep), int(self.registerBoost),
+                                         int(self.use_lut), int(self.keepShaderCode),
+                                         n_batch, skipx, skipy, skipz)
 
     def fft(self, src: cua.GPUArray, dest: cua.GPUArray = None):
         """
@@ -228,18 +160,9 @@ class VkFFTApp:
             if dest is not None:
                 if src.gpudata != dest.gpudata:
                     raise RuntimeError("VkFFTApp.fft: dest is not None but this is an inplace transform")
-            if self.batch_shape is not None:
-                s = src.reshape(self.batch_shape)
-            else:
-                s = src
-            _vkfft_cuda.fft(self.app, int(s.gpudata), int(s.gpudata))
+            _vkfft_cuda.fft(self.app, int(src.gpudata), int(src.gpudata))
             if self.norm == "ortho":
-                if self.precision == 2:
-                    src *= np.float16(self._get_fft_scale(norm=0))
-                elif self.precision == 4:
-                    src *= np.float32(self._get_fft_scale(norm=0))
-                elif self.precision == 8:
-                    src *= np.float64(self._get_fft_scale(norm=0))
+                src *= self._get_fft_scale(norm=0)
             if self.r2c:
                 if src.dtype == np.float32:
                     return src.view(dtype=np.complex64)
@@ -252,24 +175,10 @@ class VkFFTApp:
             elif src.gpudata == dest.gpudata:
                 raise RuntimeError("VkFFTApp.fft: dest and src are identical but this is an out-of-place transform")
             if self.r2c:
-                assert (src.size == dest.size // dest.shape[-1] * 2 * (dest.shape[-1] - 1))
-            if self.batch_shape is not None:
-                s = src.reshape(self.batch_shape)
-                if self.r2c:
-                    c_shape = tuple(list(self.batch_shape[:-1]) + [self.batch_shape[-1] // 2 + 1])
-                    d = dest.reshape(c_shape)
-                else:
-                    d = dest.reshape(self.batch_shape)
-            else:
-                s, d = src, dest
-            _vkfft_cuda.fft(self.app, int(s.gpudata), int(d.gpudata))
+                assert (dest.size == src.size // src.shape[-1] * (src.shape[-1] // 2 + 1))
+            _vkfft_cuda.fft(self.app, int(src.gpudata), int(dest.gpudata))
             if self.norm == "ortho":
-                if self.precision == 2:
-                    dest *= np.float16(self._get_fft_scale(norm=0))
-                elif self.precision == 4:
-                    dest *= np.float32(self._get_fft_scale(norm=0))
-                elif self.precision == 8:
-                    dest *= np.float64(self._get_fft_scale(norm=0))
+                dest *= self._get_fft_scale(norm=0)
             return dest
 
     def ifft(self, src: cua.GPUArray, dest: cua.GPUArray = None):
@@ -284,22 +193,9 @@ class VkFFTApp:
             if dest is not None:
                 if src.gpudata != dest.gpudata:
                     raise RuntimeError("VkFFTApp.fft: dest!=src but this is an inplace transform")
-            if self.batch_shape is not None:
-                if self.r2c:
-                    src_shape = tuple(list(self.batch_shape[:-1]) + [self.batch_shape[-1] // 2])
-                    s = src.reshape(src_shape)
-                else:
-                    s = src.reshape(self.batch_shape)
-            else:
-                s = src
-            _vkfft_cuda.ifft(self.app, int(s.gpudata), int(s.gpudata))
+            _vkfft_cuda.ifft(self.app, int(src.gpudata), int(src.gpudata))
             if self.norm == "ortho":
-                if self.precision == 2:
-                    src *= np.float16(self._get_ifft_scale(norm=0))
-                elif self.precision == 4:
-                    src *= np.float32(self._get_ifft_scale(norm=0))
-                elif self.precision == 8:
-                    src *= np.float64(self._get_ifft_scale(norm=0))
+                src *= self._get_ifft_scale(norm=0)
             if self.r2c:
                 if src.dtype == np.complex64:
                     return src.view(dtype=np.float32)
@@ -312,72 +208,21 @@ class VkFFTApp:
             elif src.gpudata == dest.gpudata:
                 raise RuntimeError("VkFFTApp.ifft: dest and src are identical but this is an out-of-place transform")
             if self.r2c:
-                assert (dest.size == src.size // src.shape[-1] * 2 * (src.shape[-1] - 1))
+                assert (src.size == dest.size // dest.shape[-1] * (dest.shape[-1] // 2 + 1))
                 # Special case, src and dest buffer sizes are different,
                 # VkFFT is configured to go back to the source buffer
-                if self.batch_shape is not None:
-                    src_shape = tuple(list(self.batch_shape[:-1]) + [self.batch_shape[-1] // 2 + 1])
-                    s = src.reshape(src_shape)
-                    d = dest.reshape(self.batch_shape)
-                else:
-                    s, d = src, dest
-                _vkfft_cuda.ifft(self.app, int(d.gpudata), int(s.gpudata))
+                _vkfft_cuda.ifft(self.app, int(dest.gpudata), int(src.gpudata))
             else:
-                if self.batch_shape is not None:
-                    s = src.reshape(self.batch_shape)
-                    d = dest.reshape(self.batch_shape)
-                else:
-                    s, d = src, dest
-                _vkfft_cuda.ifft(self.app, int(s.gpudata), int(d.gpudata))
+                _vkfft_cuda.ifft(self.app, int(src.gpudata), int(dest.gpudata))
             if self.norm == "ortho":
-                if self.precision == 2:
-                    dest *= np.float16(self._get_ifft_scale(norm=0))
-                elif self.precision == 4:
-                    dest *= np.float32(self._get_ifft_scale(norm=0))
-                elif self.precision == 8:
-                    dest *= np.float64(self._get_ifft_scale(norm=0))
+                dest *= self._get_ifft_scale(norm=0)
             return dest
 
-    def _get_fft_scale(self, norm):
-        """Return the scale factor by which an array must be multiplied to keep its L2 norm
-        after a forward FT
-        :param norm: the norm option for which the scale is computed, either 0 or 1
-        :return: the scale factor
-        """
-        s = np.sqrt(np.prod(self.shape[-self.ndim:]))
-        if self.r2c and self.inplace:
-            s *= np.sqrt((self.shape[-1] - 2) / self.shape[-1])
-        if norm == 0 or norm == 1:
-            return 1 / s
-        elif norm == "ortho":
-            return 1
-        raise RuntimeError("Unknown norm choice !")
 
-    def get_fft_scale(self):
-        """Return the scale factor by which an array must be multiplied to keep its L2 norm
-        after a forward FT
-        """
-        return self._get_fft_scale(self.norm)
-
-    def _get_ifft_scale(self, norm):
-        """Return the scale factor by which an array must be multiplied to keep its L2 norm
-        after a backward FT
-        :param norm: the norm option for which the scale is computed, either 0 or 1
-        :return: the scale factor
-        """
-        s = np.sqrt(np.prod(self.shape[-self.ndim:]))
-        if self.r2c and self.inplace:
-            s *= np.sqrt((self.shape[-1] - 2) / self.shape[-1])
-        if norm == 0:
-            return 1 / s
-        elif norm == 1:
-            return s
-        elif norm == "ortho":
-            return 1
-        raise RuntimeError("Unknown norm choice !")
-
-    def get_ifft_scale(self):
-        """Return the scale factor by which an array must be multiplied to keep its L2 norm
-        after a backward FT
-        """
-        return self._get_ifft_scale(self.norm)
+def vkfft_version():
+    """
+    Get VkFFT version
+    :return: version as X.Y.Z
+    """
+    int_ver = _vkfft_cuda.vkfft_version()
+    return "%d.%d.%d" % (int_ver // 10000, (int_ver % 10000) // 100, int_ver % 100)

@@ -17,7 +17,8 @@ typedef float2 Complex;
 
 extern "C"{
 VkFFTConfiguration* make_config(const size_t, const size_t, const size_t, const size_t, void*, void*, void*,
-                                const int, const size_t, const int, const int, const int);
+                                const int, const size_t, const int, const int, const int,
+                                const int, const int, const size_t, const int, const int, const int);
 
 VkFFTApplication* init_app(const VkFFTConfiguration*);
 
@@ -28,6 +29,8 @@ void ifft(VkFFTApplication* app, void*, void*);
 void free_app(VkFFTApplication* app);
 
 void free_config(VkFFTConfiguration *config);
+
+uint32_t vkfft_version();
 }
 
 class PyVkFFT
@@ -63,19 +66,35 @@ class PyVkFFT
 VkFFTConfiguration* make_config(const size_t nx, const size_t ny, const size_t nz, const size_t fftdim,
                                 void *buffer, void *buffer_out, void* hstream,
                                 const int norm, const size_t precision, const int r2c,
-                                const int disableReorderFourStep, const int registerBoost)
+                                const int disableReorderFourStep, const int registerBoost,
+                                const int useLUT, const int keepShaderCode, const size_t n_batch,
+                                const int skipx, const int skipy, const int skipz)
 {
   VkFFTConfiguration *config = new VkFFTConfiguration({});
   config->FFTdim = fftdim;
   config->size[0] = nx;
   config->size[1] = ny;
   config->size[2] = nz;
+  config->numberBatches = n_batch;
+
+  config->omitDimension[0] = skipx;
+  config->omitDimension[1] = skipy;
+  config->omitDimension[2] = skipz;
+
   config->normalize = norm;
   config->performR2C = r2c;
+
   if(disableReorderFourStep>=0)
     config->disableReorderFourStep = disableReorderFourStep;
-   if(registerBoost>=0)
+
+  if(registerBoost>=0)
     config->registerBoost = registerBoost;
+
+  if(useLUT>=0)
+    config->useLUT = useLUT;
+
+  if(keepShaderCode>=0)
+    config->keepShaderCode = keepShaderCode;
 
   switch(precision)
   {
@@ -241,3 +260,9 @@ void free_config(VkFFTConfiguration *config)
   if(config->stream != 0) free(config->stream);
   free(config);
 }
+
+/// Get VkFFT version
+uint32_t vkfft_version()
+{
+  return VkFFTGetVersion();
+};

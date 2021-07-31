@@ -33,28 +33,30 @@ The notebook is also `available on google colab
 Make sure to select a GPU for the runtime. This may fail on old architectures (Kepler- to be confirmed)
 
 
-Status
-------
-What works:
+Features
+--------
 
 - CUDA and OpenCL backends
 - C2C, R2C/C2R for inplace and out-of-place transforms
-- single and double precision for all transforms
-- 1D, 2D and 3D transforms (always performed from the last axes).
-- 1D and 2D FFT accept arrays of any number of dimensions (batch transforms), 3D FFT
-  only accepts 3D arrays.
-- allowed prime factors (radix) of the transform axes are 2, 3, 5, 7, 11 and 13
+- single and double precision for all transforms (double precision requires device support)
+- 1D, 2D and 3D transforms.
+- array can be larger than the FFT dimensions (batch transforms).
+- arbitrary array size, using Bluestein algorithm for prime numbers>13
+- transform along a given list of axes - this requires that after collapsing
+  non-transformed axes, the last transformed axis is at most along the 3rd dimension,
+  e.g. the following axes are allowed: (-2,-3), (-1,-3), (-1,-4), (-4,-5),...
+  but not (-2, -4), (-1, -3, -4) or (-2, -3, -4).
+  This is not allowed for R2C transforms.
 - normalisation=0 (array L2 norm * array size on each transform) and 1 (the backward
   transform divides the L2 norm by the array size, so FFT*iFFT restores the original array)
-- now testing the FFT size does not exceed the allowed maximum prime number decomposition (13)
 - unit tests for all transforms: see test sub-directory.
 - Note that out-of-place C2R transform currently destroys the complex array for FFT dimensions >=2
 - tested on macOS (10.13.6) and Linux.
 - inplace transforms do not require an extra buffer or work area (as in cuFFT), unless the x
   size is larger than 8192, or if the y and z FFT size are larger than 2048. In that case
   a buffer of a size equal to the array is necessary. This makes larger FFT transforms possible
-  based on memory requiremnts (even for R2C !) compared to cuFFT. For example you can compute
-  the 3D FFT for a 1600**3 complex64 array withon 32GB of memory.
+  based on memory requirements (even for R2C !) compared to cuFFT. For example you can compute
+  the 3D FFT for a 1600**3 complex64 array with 32GB of memory.
 
 Performance
 -----------
@@ -85,6 +87,7 @@ The general results are:
 TODO
 ----
 
+- Direct Cosine Transforms aka DCT or R2R
 - access to the other backends:
 
   - for vulkan and rocm this only makes sense combined to a pycuda/cupy/pyopencl equivalent.
