@@ -46,6 +46,7 @@ Features
   non-transformed axes, the last transformed axis is at most along the 3rd dimension,
   e.g. the following axes are allowed: (-2,-3), (-1,-3), (-1,-4), (-4,-5),...
   but not (-2, -4), (-1, -3, -4) or (-2, -3, -4).
+  This is not allowed for R2C transforms.
 - normalisation=0 (array L2 norm * array size on each transform) and 1 (the backward
   transform divides the L2 norm by the array size, so FFT*iFFT restores the original array)
 - unit tests for all transforms: see test sub-directory.

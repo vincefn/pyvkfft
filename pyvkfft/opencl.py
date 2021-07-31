@@ -88,7 +88,7 @@ class VkFFTApp(VkFFTAppBase):
             is modified.
         :param axes: a list or tuple of axes along which the transform should be made.
             if None, the transform is done along the ndim fastest axes, or all
-            axes if ndim is None.
+            axes if ndim is None. Not allowed for R2C transforms
         :raises RuntimeError: if the initialisation fails, e.g. if the GPU
             driver has not been properly initialised, or if the transform dimensions
             are not allowed by VkFFT.
@@ -123,17 +123,10 @@ class VkFFTApp(VkFFTAppBase):
         """ Create a vkfft configuration for a FFT transform"""
         nx, ny, nz, n_batch = self.shape
         skipx, skipy, skipz = self.skip_axis
-        if self.r2c:
-            if self.inplace:
-                # the last two columns are ignored in the R array, and will be used
-                # in the C array with a size nx//2+1
-                nx -= 2
-            else:
-                # raise RuntimeError("VkFFTApp: out-of-place R2C transform is not supported")
-                pass
-        # if max(primes(nx)) > 13 or (max(primes(ny)) > 13 and self.ndim >= 2) \
-        #        or (self.ndim >= 3 and max(primes(nz)) > 13):
-        #    raise RuntimeError("The prime numbers of the FFT size is larger than 13")
+        if self.r2c and self.inplace:
+            # the last two columns are ignored in the R array, and will be used
+            # in the C array with a size nx//2+1
+            nx -= 2
 
         if self.norm == "ortho":
             norm = 0
@@ -148,13 +141,13 @@ class VkFFTApp(VkFFTAppBase):
         dest_gpudata = 2
         if self.inplace:
             dest_gpudata = 0
-        config = _vkfft_opencl.make_config(nx, ny, nz, self.ndim, 1, dest_gpudata, platform.int_ptr,
-                                           device.int_ptr, ctx.int_ptr,
-                                           norm, self.precision, int(self.r2c),
-                                           int(self.disableReorderFourStep), int(self.registerBoost),
-                                           int(self.use_lut), int(self.keepShaderCode),
-                                           n_batch, skipx, skipy, skipz)
-        return config
+
+        return _vkfft_opencl.make_config(nx, ny, nz, self.ndim, 1, dest_gpudata, platform.int_ptr,
+                                         device.int_ptr, ctx.int_ptr,
+                                         norm, self.precision, int(self.r2c),
+                                         int(self.disableReorderFourStep), int(self.registerBoost),
+                                         int(self.use_lut), int(self.keepShaderCode),
+                                         n_batch, skipx, skipy, skipz)
 
     def fft(self, src: cla.Array, dest: cla.Array = None):
         """

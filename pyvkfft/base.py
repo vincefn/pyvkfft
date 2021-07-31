@@ -84,8 +84,6 @@ def calc_transform_axes(shape, axes=None, ndim=None):
         if axes is None:
             ndim1 = len(shape)
             axes = list(range(ndim1))
-        else:
-            ndim1 = len(axes)
     else:
         ndim1 = ndim
         if axes is None:
@@ -168,9 +166,11 @@ class VkFFTApp:
             is modified.
         :param axes: a list or tuple of axes along which the transform should be made.
             if None, the transform is done along the ndim fastest axes, or all
-            axes if ndim is None.
+            axes if ndim is None. Not allowed for R2C transforms
         :raises RuntimeError:  if the transform dimensions are not allowed by VkFFT.
         """
+        if r2c and axes is not None:
+            raise RuntimeError("axes=... is not allowed for R2C transforms")
         # Get the final shape passed to VkFFT, collapsing non-transform axes
         # as necessary. The calculated shape has 4 dimensions (nx, ny, nz, n_batch)
         self.shape, self.skip_axis, self.ndim = calc_transform_axes(shape, axes, ndim)

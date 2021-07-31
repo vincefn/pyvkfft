@@ -3,7 +3,7 @@ Version 2021.X (2021-XX-XX)
 * Enable transforms for any array size (VkFFT Bluestein algorithm)
 * Allow 3D transforms on arrays with >3 dimensions (batch transform)
 * Support for transforms on a given list of axes, instead of
-  only the first ndim axes.
+  only the first ndim axes. Unavailable for R2C.
 * OpenCL: test for half and double-precision support
 * OpenCL: relax accuracy requirements in unit tests
 * Fix shape test for out-of-place R2C transforms
