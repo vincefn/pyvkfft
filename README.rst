@@ -37,7 +37,7 @@ Features
 --------
 
 - CUDA and OpenCL backends
-- C2C, R2C/C2R for inplace and out-of-place transforms
+- C2C, R2C/C2R and DCT (type 2, 3 and 4) for inplace and out-of-place transforms
 - single and double precision for all transforms (double precision requires device support)
 - 1D, 2D and 3D transforms.
 - array can be larger than the FFT dimensions (batch transforms).
@@ -87,7 +87,6 @@ The general results are:
 TODO
 ----
 
-- Direct Cosine Transforms aka DCT or R2R
 - access to the other backends:
 
   - for vulkan and rocm this only makes sense combined to a pycuda/cupy/pyopencl equivalent.

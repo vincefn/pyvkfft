@@ -28,7 +28,7 @@ _vkfft_cuda.make_config.restype = ctypes.c_void_p
 _vkfft_cuda.make_config.argtypes = [ctypes.c_size_t, ctypes.c_size_t, ctypes.c_size_t, ctypes.c_size_t,
                                     ctypes.c_void_p, ctypes.c_void_p, _types.stream, ctypes.c_int,
                                     ctypes.c_size_t, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                                    ctypes.c_int, ctypes.c_int, ctypes.c_size_t,
+                                    ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_size_t,
                                     ctypes.c_int, ctypes.c_int, ctypes.c_int]
 
 _vkfft_cuda.init_app.restype = ctypes.c_void_p
@@ -53,7 +53,7 @@ class VkFFTApp(VkFFTAppBase):
     """
 
     def __init__(self, shape, dtype: type, ndim=None, inplace=True, stream=None, norm=1,
-                 r2c=False, axes=None, **kwargs):
+                 r2c=False, dct=False, axes=None, **kwargs):
         """
 
         :param shape: the shape of the array to be transformed. The number
@@ -88,13 +88,16 @@ class VkFFTApp(VkFFTAppBase):
             the output (complex) shape should be (..., nx//2+1).
             Note that for C2R transforms with ndim>=2, the source (complex) array
             is modified.
+        :param dct: used to perform a Direct Cosine Transform (DCT) aka a R2R transform.
+            An integer can be given to specify the type of DCT (1, 2, 3 or 4).
+            if dct=True, the DCT type 2 will be performed, following scipy's convention.
         :param axes: a list or tuple of axes along which the transform should be made.
             if None, the transform is done along the ndim fastest axes, or all
             axes if ndim is None. Not allowed for R2C transforms
         :raises RuntimeError: if the initialisation fails, e.g. if the CUDA
             driver has not been properly initialised.
         """
-        super().__init__(shape, dtype, ndim=ndim, inplace=inplace, norm=norm, r2c=r2c, axes=axes, **kwargs)
+        super().__init__(shape, dtype, ndim=ndim, inplace=inplace, norm=norm, r2c=r2c, dct=dct, axes=axes, **kwargs)
 
         self.stream = stream
 
@@ -143,7 +146,7 @@ class VkFFTApp(VkFFTAppBase):
             dest_gpudata = 0
 
         return _vkfft_cuda.make_config(nx, ny, nz, self.ndim, 1, dest_gpudata, s,
-                                         norm, self.precision, int(self.r2c),
+                                         norm, self.precision, int(self.r2c), int(self.dct),
                                          int(self.disableReorderFourStep), int(self.registerBoost),
                                          int(self.use_lut), int(self.keepShaderCode),
                                          n_batch, skipx, skipy, skipz)

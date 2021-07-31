@@ -18,7 +18,7 @@ using namespace std;
 extern "C"{
 VkFFTConfiguration* make_config(const size_t, const size_t, const size_t, const size_t,
                                 void*, void*, void*, void*, void*,
-                                const int, const size_t, const int, const int, const int,
+                                const int, const size_t, const int, const int, const int, const int,
                                 const int, const int, const size_t, const int, const int, const int);
 
 VkFFTApplication* init_app(const VkFFTConfiguration*, void*);
@@ -55,7 +55,7 @@ uint32_t vkfft_version();
 VkFFTConfiguration* make_config(const size_t nx, const size_t ny, const size_t nz, const size_t fftdim,
                                 void *buffer, void *buffer_out,
                                 void* platform, void* device, void* ctx,
-                                const int norm, const size_t precision, const int r2c,
+                                const int norm, const size_t precision, const int r2c, const int dct,
                                 const int disableReorderFourStep, const int registerBoost,
                                 const int useLUT, const int keepShaderCode, const size_t n_batch,
                                 const int skipx, const int skipy, const int skipz)
@@ -73,6 +73,7 @@ VkFFTConfiguration* make_config(const size_t nx, const size_t ny, const size_t n
 
   config->normalize = norm;
   config->performR2C = r2c;
+  config->performDCT = dct;
 
   if(disableReorderFourStep>=0)
     config->disableReorderFourStep = disableReorderFourStep;
@@ -123,7 +124,11 @@ VkFFTConfiguration* make_config(const size_t nx, const size_t ny, const size_t n
 			config->inputBufferStride[2] = nx * ny * nz;
     }
   }
-  else *psize = (uint64_t)(nx * ny * nz * precision * (size_t)2);
+  else
+  {
+    if(dct) *psize = (uint64_t)(nx * ny * nz * precision);
+    else *psize = (uint64_t)(nx * ny * nz * precision * (size_t)2);
+  }
 
   config->bufferSize = psize;
 
