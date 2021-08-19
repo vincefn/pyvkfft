@@ -67,7 +67,7 @@ def locate_opencl():
     """
     if 'darwin' in sys.platform:
         libraries = None
-        extra_link_args = ['-Wl,-framework,OpenCL']  # , '--shared'
+        extra_link_args = ['-Wl,-framework,OpenCL', '--shared']  # , '--shared'
     else:
         libraries = ['OpenCL']
         extra_link_args = ['--shared']
@@ -165,7 +165,17 @@ if 'cuda' not in exclude_packages:
                                    extra_link_args=['--shared', '-L%s' % CUDA['lib64']]
                                    )
         ext_modules.append(vkfft_cuda_ext)
-        install_requires.append('pycuda')
+        # install_requires.append("pycuda")
+        try:
+            import pycuda
+            has_pycuda = True
+        except ImportError:
+            has_pycuda = False
+        try:
+            import cupy
+        except ImportError:
+            if has_pycuda is False:
+                print("Reminder: you need to install either PyCUDA or CuPY to use pyvkfft.cuda")
     except:
         exclude_packages.append('cuda')
         warnings.warn("CUDA not available ($CUDAHOME variable missing and nvcc not in path. "
@@ -191,7 +201,7 @@ with open("README.rst", "r", encoding="utf-8") as fh:
 
 setup(name="pyvkfft",
       version=__version__,
-      description="Python wrapper for the CUDA and OpenCL backends of VkFFT",
+      description="Python wrapper for the CUDA (PyCUDA or CuPY) and OpenCL (PyOpenCL) backends of VkFFT",
       long_description=long_description,
       ext_modules=ext_modules,
       packages=find_packages(exclude=exclude_packages),

@@ -10,7 +10,7 @@ import ctypes
 import numpy as np
 import pyopencl as cl
 import pyopencl.array as cla
-from .base import complex64, load_library, primes, calc_transform_axes, VkFFTApp as VkFFTAppBase
+from .base import load_library, primes, VkFFTApp as VkFFTAppBase
 
 _vkfft_opencl = load_library("_vkfft_opencl")
 

@@ -14,7 +14,7 @@ import warnings
 import numpy as np
 
 # np.complex32 does not exist yet https://github.com/numpy/numpy/issues/14753
-complex64 = np.dtype([('re', np.float16), ('im', np.float16)])
+complex32 = np.dtype([('re', np.float16), ('im', np.float16)])
 
 
 def load_library(basename):
@@ -222,7 +222,7 @@ class VkFFTApp:
         self.norm = norm
 
         # Precision: number of bytes per float
-        if dtype in [np.float16, complex64]:
+        if dtype in [np.float16, complex32]:
             self.precision = 2
         elif dtype in [np.float32, np.complex64]:
             self.precision = 4

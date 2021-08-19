@@ -4,7 +4,8 @@ pyvkfft - python interface to the CUDA and OpenCL backends of VkFFT (Vulkan Fast
 `VkFFT <https://github.com/DTolm/VkFFT>`_ is a GPU-accelerated Fast Fourier Transform library
 for Vulkan/CUDA/HIP/OpenCL.
 
-pyvkfft offers a simple python interface to the **CUDA** and **OpenCL** backends of VkFFT, compatible with pyCUDA and pyOpenCL.
+pyvkfft offers a simple python interface to the **CUDA** and **OpenCL** backends of VkFFT,
+compatible with pyCUDA, CuPY and pyOpenCL.
 
 *The code is now in a working state, and passes all unit tests ; no errors are reported by either valgrind or cuda-memcheck.*
 
@@ -20,7 +21,7 @@ Requirements:
 
 - `vkfft.h` installed in the usual include directories, or in the 'src' directory
 - `pyopencl` and the opencl libraries/development tools for the opencl backend
-- `pycuda` and CUDA developments tools (`nvcc`) for the cuda backend (optional)
+- `pycuda` or `cupy` and CUDA developments tools (`nvcc`) for the cuda backend
 - `numpy`
 
 This package can be installed from source using `python setup.py install`.
@@ -36,8 +37,9 @@ Make sure to select a GPU for the runtime. This may fail on old architectures (K
 Features
 --------
 
-- CUDA and OpenCL backends
-- C2C, R2C/C2R and DCT (type 2, 3 and 4) for inplace and out-of-place transforms
+- CUDA (using PyCUDA or CuPY) and OpenCL (using PyOpenCL) backends
+- C2C, R2C/C2R for inplace and out-of-place transforms
+- Direct Cosine Transform (DCT) of type 2, 3 and 4 (EXPERIMENTAL)
 - single and double precision for all transforms (double precision requires device support)
 - 1D, 2D and 3D transforms.
 - array can be larger than the FFT dimensions (batch transforms).
@@ -90,7 +92,6 @@ TODO
 - access to the other backends:
 
   - for vulkan and rocm this only makes sense combined to a pycuda/cupy/pyopencl equivalent.
-- support cupy arrays (this probably requires little change so a cupy user/developer contribution is welcome)
 - out-of-place C2R transform without modifying the C array ? This would require using a R
   array padded with two wolumns, as for the inplace transform
 - windows support (contribution welcome to setup.py)
