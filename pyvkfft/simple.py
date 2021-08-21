@@ -6,6 +6,7 @@
 #         Vincent Favre-Nicolin, favre@esrf.fr
 
 from enum import Enum
+from functools import lru_cache
 import numpy as np
 from .base import complex32
 
@@ -33,10 +34,6 @@ class Backend(Enum):
     PYCUDA = 1
     PYOPENCL = 2
     CUPY = 3
-
-
-app_cache_fft = {}
-app_cache_rfft = {}
 
 
 def _prepare_transform(src, dest, cl_queue, r2c=False):
@@ -121,6 +118,26 @@ def _prepare_transform(src, dest, cl_queue, r2c=False):
         return backend, inplace, dest, cl_queue
 
 
+@lru_cache(maxsize=100)
+def _get_fft_app(backend, shape, dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue):
+    if backend in [Backend.PYCUDA, Backend.CUPY]:
+        return VkFFTApp_cuda(shape, dtype, ndim=ndim, inplace=inplace,
+                             stream=cuda_stream, norm=norm, axes=axes)
+    elif backend == Backend.PYOPENCL:
+        return VkFFTApp_cl(shape, dtype, cl_queue, ndim=ndim, inplace=inplace,
+                           norm=norm, axes=axes)
+
+
+@lru_cache(maxsize=100)
+def _get_rfft_app(backend, shape, dtype, inplace, ndim, norm, cuda_stream, cl_queue):
+    if backend in [Backend.PYCUDA, Backend.CUPY]:
+        return VkFFTApp_cuda(shape, dtype, ndim=ndim, inplace=inplace,
+                             stream=cuda_stream, norm=norm, r2c=True)
+    elif backend == Backend.PYOPENCL:
+        return VkFFTApp_cl(shape, dtype, cl_queue, ndim=ndim, inplace=inplace,
+                           norm=norm, r2c=True)
+
+
 def fftn(src, dest=None, ndim=None, norm=False, axes=None, cuda_stream=None, cl_queue=None,
          return_scale=False):
     """
@@ -156,19 +173,10 @@ def fftn(src, dest=None, ndim=None, norm=False, axes=None, cuda_stream=None, cl_
     :return: the destination array if return_scale is False, or (dest, scale)
     """
     backend, inplace, dest, cl_queue = _prepare_transform(src, dest, cl_queue, False)
-    # Key for caching the VkFFTApp
-    k = (backend, src.shape, src.dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue)
-    if k not in app_cache_fft:
-        if backend in [Backend.PYCUDA, Backend.CUPY]:
-            app_cache_fft[k] = VkFFTApp_cuda(src.shape, src.dtype, ndim=ndim, inplace=inplace,
-                                             stream=cuda_stream, norm=norm, axes=axes)
-        elif backend == Backend.PYOPENCL:
-            app_cache_fft[k] = VkFFTApp_cl(src.shape, src.dtype, cl_queue, ndim=ndim, inplace=inplace,
-                                           norm=norm, axes=axes)
-
-    app_cache_fft[k].fft(src, dest)
+    app = _get_fft_app(backend, src.shape, src.dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue)
+    app.fft(src, dest)
     if return_scale:
-        s = app_cache_fft[k].get_fft_scale()
+        s = app.get_fft_scale()
         return dest, s
     return dest
 
@@ -208,19 +216,10 @@ def ifftn(src, dest=None, ndim=None, norm=False, axes=None, cuda_stream=None, cl
     :return: the destination array if return_scale is False, or (dest, scale)
     """
     backend, inplace, dest, cl_queue = _prepare_transform(src, dest, cl_queue, False)
-    # Key for caching the VkFFTApp
-    k = (backend, src.shape, src.dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue)
-    if k not in app_cache_fft:
-        if backend in [Backend.PYCUDA, Backend.CUPY]:
-            app_cache_fft[k] = VkFFTApp_cuda(src.shape, src.dtype, ndim=ndim, inplace=inplace,
-                                             stream=cuda_stream, norm=norm, axes=axes)
-        elif backend == Backend.PYOPENCL:
-            app_cache_fft[k] = VkFFTApp_cl(src.shape, src.dtype, cl_queue, ndim=ndim, inplace=inplace,
-                                           norm=norm, axes=axes)
-
-    app_cache_fft[k].ifft(src, dest)
+    app = _get_fft_app(backend, src.shape, src.dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue)
+    app.fft(src, dest)
     if return_scale:
-        s = app_cache_fft[k].get_fft_scale()
+        s = app.get_fft_scale()
         return dest, s
     return dest
 
@@ -264,25 +263,16 @@ def rfftn(src, dest=None, ndim=None, norm=False, cuda_stream=None, cl_queue=None
         with the appropriate type.
     """
     backend, inplace, dest, cl_queue, dtype = _prepare_transform(src, dest, cl_queue, True)
-    # Key for caching the VkFFTApp
-    k = (backend, src.shape, src.dtype, inplace, ndim, norm, cuda_stream, cl_queue)
-    if k not in app_cache_rfft:
-        if backend in [Backend.PYCUDA, Backend.CUPY]:
-            app_cache_rfft[k] = VkFFTApp_cuda(src.shape, src.dtype, ndim=ndim, inplace=inplace,
-                                              stream=cuda_stream, norm=norm, r2c=True)
-        elif backend == Backend.PYOPENCL:
-            app_cache_rfft[k] = VkFFTApp_cl(src.shape, src.dtype, cl_queue, ndim=ndim, inplace=inplace,
-                                            norm=norm, r2c=True)
-
-    app_cache_rfft[k].fft(src, dest)
+    app = _get_rfft_app(backend, src.shape, src.dtype, inplace, ndim, norm, cuda_stream, cl_queue)
+    app.fft(src, dest)
     if return_scale:
-        s = app_cache_rfft[k].get_fft_scale()
+        s = app.get_fft_scale()
         return dest.view(dtype=dtype), s
     return dest.view(dtype=dtype)
 
 
 def irfftn(src, dest=None, ndim=None, norm=False, cuda_stream=None, cl_queue=None,
-          return_scale=False):
+           return_scale=False):
     """
     Perform a complex->real transform on a GPU array, automatically creating
     the VkFFTApp and caching it for future re-use.
@@ -320,24 +310,15 @@ def irfftn(src, dest=None, ndim=None, norm=False, cuda_stream=None, cl_queue=Non
         with the appropriate type.
     """
     backend, inplace, dest, cl_queue, dtype = _prepare_transform(src, dest, cl_queue, True)
-    # Key for caching the VkFFTApp
-    k = (backend, src.shape, src.dtype, inplace, ndim, norm, cuda_stream, cl_queue)
-    if k not in app_cache_rfft:
-        if backend in [Backend.PYCUDA, Backend.CUPY]:
-            app_cache_rfft[k] = VkFFTApp_cuda(dest.shape, dest.dtype, ndim=ndim, inplace=inplace,
-                                              stream=cuda_stream, norm=norm, r2c=True)
-        elif backend == Backend.PYOPENCL:
-            app_cache_rfft[k] = VkFFTApp_cl(dest.shape, dest.dtype, cl_queue, ndim=ndim, inplace=inplace,
-                                            norm=norm, r2c=True)
-
-    app_cache_rfft[k].ifft(src, dest)
+    app = _get_rfft_app(backend, dest.shape, dest.dtype, inplace, ndim, norm, cuda_stream, cl_queue)
+    app.ifft(src, dest)
     if return_scale:
-        s = app_cache_rfft[k].get_fft_scale()
+        s = app.get_fft_scale()
         return dest.view(dtype=dtype), s
     return dest.view(dtype=dtype)
 
 
 def clear_vkfftapp_cache():
     """ Remove all cached VkFFTApp"""
-    app_cache_fft.clear()
-    app_cache_rfft.clear()
+    _get_fft_app.cache_clear()
+    _get_rfft_app.cache_clear()
