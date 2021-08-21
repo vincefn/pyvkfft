@@ -65,26 +65,34 @@ Features
   with the selected backend (pyvkfft.cuda for pycuda/cupy or pyvkfft.opencl for pyopencl)
   or by using the simple interface with the `fftn`, `ifftn`, `rfftn` and `irfftn`
   functions which automatically detect the type of GPU array and cache the
-  corresponding VkFFTApp.
+  corresponding VkFFTApp (see the example notebook pyvkfft-simple.ipynb).
 
 Performance
 -----------
 See the benchmark notebook, which allows to plot OpenCL and CUDA backend throughput, as well as compare
 with cuFFT (using scikit-cuda) and clFFT (using gpyfft).
 
-Example result for 2D FFT with array dimensions of 16xNxN using a Titan V:
+Example result for batched 2D FFT with array dimensions of batch x N x N using a Titan V:
 
 .. image:: https://raw.githubusercontent.com/vincefn/pyvkfft/master/doc/benchmark-2DFFT-TITAN_V-Linux.png
 
-Note that in this plot the computed throughput is theoretical, as if each transform axis for the
-couple (FFT, iFFT) required exactly one read and one write. This is obviously not true,
-and explains the drop after N=1024 for cuFFT and (in a smaller extent) vkFFT.
+Notes regarding this plot:
+
+* the computed throughput is *theoretical*, as if each transform axis for the
+  couple (FFT, iFFT) required exactly one read and one write. This is obviously not true,
+  and explains the drop after N=1024 for cuFFT and (in a smaller extent) vkFFT.
+* the batch size is adapted for each N so the transform takes long enough, in practice the
+  transformed array is at around 600MB. Transforms on small arrays with small batch sizes
+  could produce smaller performances, or better ones when fully cached.
+* a number of blue + (CuFFT) are actually performed as radix-N transforms with 7<N<127 (e.g. 11)
+  -hence the performane similar to the blue dots- but the actual supported radix transforms
+  is undocumented so they are not correctly labeled.
 
 The general results are:
 
-* vkFFT throughput is similar to cuFFT up to N=150, then slightly lower up to N=1024. For N>1024
-  vkFFT is much more efficient than cuFFT due to the smaller number of read and write per FFT axis
-  (apart from isolated power-of-2 or power-of-3 sizes)
+* vkFFT throughput is similar to cuFFT up to N=1024. For N>1024 vkFFT is much more
+  efficient than cuFFT due to the smaller number of read and write per FFT axis
+  (apart from isolated radix-2 3 sizes)
 * the OpenCL and CUDA backends of vkFFT perform similarly, as expected. [Note that this should
   be true *as long as the card is only used for computing*. If it is also used for display,
   then performance may be different, e.g. for nvidia cards opencl performance is more affected
