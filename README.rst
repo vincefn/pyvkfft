@@ -43,7 +43,9 @@ Features
 - single and double precision for all transforms (double precision requires device support)
 - 1D, 2D and 3D transforms.
 - array can be larger than the FFT dimensions (batch transforms).
-- arbitrary array size, using Bluestein algorithm for prime numbers>13
+- arbitrary array size, using Bluestein algorithm for prime numbers>13 (note that in this case
+  the performance can be significantly lower, up to ~4x, depending on the transform size,
+  see example performance plot below)
 - transform along a given list of axes - this requires that after collapsing
   non-transformed axes, the last transformed axis is at most along the 3rd dimension,
   e.g. the following axes are allowed: (-2,-3), (-1,-3), (-1,-4), (-4,-5),...
@@ -59,6 +61,11 @@ Features
   a buffer of a size equal to the array is necessary. This makes larger FFT transforms possible
   based on memory requirements (even for R2C !) compared to cuFFT. For example you can compute
   the 3D FFT for a 1600**3 complex64 array with 32GB of memory.
+- transforms can either be done by creating a VkFFTApp (a.k.a. the fft 'plan'),
+  with the selected backend (pyvkfft.cuda for pycuda/cupy or pyvkfft.opencl for pyopencl)
+  or by using the simple interface with the `fftn`, `ifftn`, `rfftn` and `irfftn`
+  functions which automatically detect the type of GPU array and cache the
+  corresponding VkFFTApp.
 
 Performance
 -----------

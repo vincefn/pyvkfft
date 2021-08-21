@@ -4,6 +4,9 @@ Version 2021.X (2021-XX-XX)
 * Allow 3D transforms on arrays with >3 dimensions (batch transform)
 * Support for transforms on a given list of axes, instead of
   only the first ndim axes. Unavailable for R2C.
+* Added a simple interface with `fftn`, `ifftn`, `rfftn` and `irfftn`
+  functions which automatically recognize the type of GPU arrays
+  and cache the generated VkFFTApp (FFT plans).
 * Direct Cosine Transform (DCT) of type 2, 3 and 4 (EXPERIMENTAL)
 * Support CuPY arrays in addition to PyCUDA
 * OpenCL: test for half and double-precision support
