@@ -53,7 +53,8 @@ Features
   This is not allowed for R2C transforms.
 - normalisation=0 (array L2 norm * array size on each transform) and 1 (the backward
   transform divides the L2 norm by the array size, so FFT*iFFT restores the original array)
-- unit tests for all transforms: see test sub-directory.
+- unit tests for all transforms: see test sub-directory. Note that these take a **long**
+  time to finish due to the exhaustive number of sub-tests.
 - Note that out-of-place C2R transform currently destroys the complex array for FFT dimensions >=2
 - tested on macOS (10.13.6) and Linux.
 - inplace transforms do not require an extra buffer or work area (as in cuFFT), unless the x
@@ -63,9 +64,9 @@ Features
   the 3D FFT for a 1600**3 complex64 array with 32GB of memory.
 - transforms can either be done by creating a VkFFTApp (a.k.a. the fft 'plan'),
   with the selected backend (pyvkfft.cuda for pycuda/cupy or pyvkfft.opencl for pyopencl)
-  or by using the simple interface with the `fftn`, `ifftn`, `rfftn` and `irfftn`
+  or by using the `pyvkfft.fft` interface with the `fftn`, `ifftn`, `rfftn` and `irfftn`
   functions which automatically detect the type of GPU array and cache the
-  corresponding VkFFTApp (see the example notebook pyvkfft-simple.ipynb).
+  corresponding VkFFTApp (see the example notebook pyvkfft-fft.ipynb).
 
 Performance
 -----------

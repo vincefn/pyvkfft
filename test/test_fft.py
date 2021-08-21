@@ -7,7 +7,7 @@ except ImportError:
     def ascent():
         return np.random.randint(0, 255, (512, 512))
 
-from pyvkfft import fftn, ifftn, rfftn, irfftn
+from pyvkfft.fft import fftn, ifftn, rfftn, irfftn
 
 try:
     import pycuda.autoinit
