@@ -1,3 +1,16 @@
+# -*- coding: utf-8 -*-
+
+# PyVkFFT
+#   (c) 2021- : ESRF-European Synchrotron Radiation Facility
+#       authors:
+#         Vincent Favre-Nicolin, favre@esrf.fr
+#
+#
+# Unit tests for the (py)opencl backend.
+# WARNING: these take a LONG time. There are few tests, but each has many sub-tests
+# for the different backends, dimensions, transform type, accuracy and normalisation
+# For example the C2C currently has 216 sub-tests (108 if double precision is not available)...
+
 import unittest
 import os
 import numpy as np
