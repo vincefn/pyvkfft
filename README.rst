@@ -85,7 +85,7 @@ Notes regarding this plot:
   transformed array is at around 600MB. Transforms on small arrays with small batch sizes
   could produce smaller performances, or better ones when fully cached.
 * a number of blue + (CuFFT) are actually performed as radix-N transforms with 7<N<127 (e.g. 11)
-  -hence the performane similar to the blue dots- but the actual supported radix transforms
+  -hence the performance similar to the blue dots- but the actual supported radix transforms
   is undocumented so they are not correctly labeled.
 
 The general results are:
