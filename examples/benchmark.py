@@ -1,6 +1,7 @@
 import numpy as np
 from sys import argv
-##### Benchmark configuration 
+
+##### Benchmark configuration
 
 # all parameters below can be replaced from the command-line
 
@@ -56,7 +57,7 @@ try:
     import pycuda.gpuarray as cua
     from pycuda import curandom
     import pyvkfft.cuda
-    from pyvkfft.cuda import primes, VkFFTApp as cuVkFFTApp
+    from pyvkfft.cuda import primes, VkFFTApp as cuVkFFTApp, vkfft_version
 
     has_pyvkfft_cuda = True
 except ImportError:
@@ -67,7 +68,7 @@ try:
     import pyopencl.array as cla
     from pyopencl import clrandom
     import pyvkfft.opencl
-    from pyvkfft.opencl import primes, VkFFTApp as clVkFFTApp
+    from pyvkfft.opencl import primes, VkFFTApp as clVkFFTApp, vkfft_version
 
     has_pyvkfft_opencl = True
 except ImportError:
@@ -384,7 +385,8 @@ plt.xlabel("FFT size", fontsize=12)
 plt.ylabel("idealised throughput [Gbytes/s]", fontsize=12)
 plt.suptitle("%dD FFT speed [%s, %s, %s]" % (ndim, gpu_name_real, platform.platform(),
                                              platform.node()), fontsize=12)
-plt.title("Batched FFTs, 'Ideal' throughput assumes one r+w operation per FFT axis", fontsize=10)
+plt.title("Batched FFTs, 'Ideal' throughput assumes one r+w operation per FFT axis, VkFFT version: %s"
+          % vkfft_version(), fontsize=10)
 plt.grid(which='both', alpha=0.3)
 plt.xlim(0)
 plt.ylim(0)

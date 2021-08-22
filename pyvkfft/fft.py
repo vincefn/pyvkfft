@@ -11,7 +11,7 @@ import numpy as np
 from .base import complex32
 
 try:
-    from .cuda import VkFFTApp as VkFFTApp_cuda, has_pycuda, has_cupy
+    from .cuda import VkFFTApp as VkFFTApp_cuda, has_pycuda, has_cupy, vkfft_version
 
     if has_pycuda:
         import pycuda.gpuarray as cua
@@ -21,7 +21,7 @@ except ImportError:
     has_cupy, has_pycuda = False, False
 
 try:
-    from .opencl import VkFFTApp as VkFFTApp_cl, cla
+    from .opencl import VkFFTApp as VkFFTApp_cl, cla, vkfft_version
 
     has_opencl = True
 except ImportError:
