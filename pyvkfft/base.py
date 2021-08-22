@@ -9,11 +9,12 @@ import os
 import platform
 import sysconfig
 import ctypes
+import warnings
 
 import numpy as np
 
 # np.complex32 does not exist yet https://github.com/numpy/numpy/issues/14753
-complex64 = np.dtype([('re', np.float16), ('im', np.float16)])
+complex32 = np.dtype([('re', np.float16), ('im', np.float16)])
 
 
 def load_library(basename):
@@ -132,7 +133,7 @@ class VkFFTApp:
     """
 
     def __init__(self, shape, dtype: type, ndim=None, inplace=True, norm=1,
-                 r2c=False, axes=None, **kwargs):
+                 r2c=False, dct=False, axes=None, **kwargs):
         """
         Init function for the VkFFT application.
 
@@ -164,11 +165,18 @@ class VkFFTApp:
             the output (complex) shape should be (..., nx//2+1).
             Note that for C2R transforms with ndim>=2, the source (complex) array
             is modified.
+        :param dct: used to perform a Direct Cosine Transform (DCT) aka a R2R transform.
+            An integer can be given to specify the type of DCT (2, 3 or 4).
+            if dct=True, the DCT type 2 will be performed, following scipy's convention.
         :param axes: a list or tuple of axes along which the transform should be made.
             if None, the transform is done along the ndim fastest axes, or all
             axes if ndim is None. Not allowed for R2C transforms
         :raises RuntimeError:  if the transform dimensions are not allowed by VkFFT.
         """
+        if dct and r2c:
+            raise RuntimeError("R2C and DCT cannot both be selected !")
+        if (r2c or dct) and dtype not in [np.float16, np.float32, np.float64]:
+            raise RuntimeError("R2C or DCT selected but input type is not real !")
         if r2c and axes is not None:
             raise RuntimeError("axes=... is not allowed for R2C transforms")
         # Get the final shape passed to VkFFT, collapsing non-transform axes
@@ -176,6 +184,14 @@ class VkFFTApp:
         self.shape, self.skip_axis, self.ndim = calc_transform_axes(shape, axes, ndim)
         self.inplace = inplace
         self.r2c = r2c
+        if dct is False:
+            self.dct = 0
+        elif dct is True:
+            self.dct = 2
+        else:
+            self.dct = dct
+        if dct and self.dct < 2 or dct > 4:
+            raise RuntimeError("Only DCT of types 2, 3 and 4 are allowed")
         # print("VkFFTApp:", shape, axes, ndim, "->", self.shape, self.skip_axis, self.ndim)
 
         # Experimental parameters. Not much difference is seen, so don't document this,
@@ -206,7 +222,7 @@ class VkFFTApp:
         self.norm = norm
 
         # Precision: number of bytes per float
-        if dtype in [np.float16, complex64]:
+        if dtype in [np.float16, complex32]:
             self.precision = 2
         elif dtype in [np.float32, np.complex64]:
             self.precision = 4
@@ -225,12 +241,19 @@ class VkFFTApp:
         elif self.precision == 2:
             dtype = np.float16
         s = 1
+        ndim_real = 0
         for i in range(self.ndim):
             if not self.skip_axis[i]:
                 s *= self.shape[i]
+                ndim_real += 1
         s = np.sqrt(s)
         if self.r2c and self.inplace:
             s *= np.sqrt((self.shape[0] - 2) / self.shape[0])
+        if self.dct:
+            s *= 2 ** (0.5 * ndim_real)
+            if self.dct != 4:
+                warnings.warn("A DCT type 2 or 3 cannot be strictly normalised, using approximation,"
+                              " see https://en.wikipedia.org/wiki/Discrete_cosine_transform#DCT-II")
         if norm == 0 or norm == 1:
             return dtype(1 / s)
         elif norm == "ortho":
@@ -255,16 +278,29 @@ class VkFFTApp:
         elif self.precision == 2:
             dtype = np.float16
         s = 1
+        s_dct = 1
         for i in range(self.ndim):
             if not self.skip_axis[i]:
                 s *= self.shape[i]
+                if self.dct:
+                    s_dct *= np.sqrt(2)
         s = np.sqrt(s)
         if self.r2c and self.inplace:
             s *= np.sqrt((self.shape[0] - 2) / self.shape[0])
+        if self.dct and self.dct != 4:
+            warnings.warn("A DCT type 2 or 3 cannot be strictly normalised, using approximation,"
+                          " see https://en.wikipedia.org/wiki/Discrete_cosine_transform#DCT-II")
         if norm == 0:
-            return dtype(1 / s)
+            return dtype(1 / (s * s_dct))
         elif norm == 1:
-            return dtype(s)
+            # Not sure why the difference in scale factors
+            if self.dct == 2:
+                s_dct = s_dct ** 1
+            elif self.dct == 3:
+                s_dct = s_dct ** 2
+            elif self.dct == 4:
+                s_dct = s_dct ** 3
+            return dtype(s * s_dct)
         elif norm == "ortho":
             return dtype(1)
         raise RuntimeError("Unknown norm choice !")
