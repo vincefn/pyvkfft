@@ -5,33 +5,48 @@ pyvkfft - python interface to the CUDA and OpenCL backends of VkFFT (Vulkan Fast
 for Vulkan/CUDA/HIP/OpenCL.
 
 pyvkfft offers a simple python interface to the **CUDA** and **OpenCL** backends of VkFFT,
-compatible with pyCUDA, CuPY and pyOpenCL.
-
-*The code is now in a working state, and passes all unit tests ; no errors are reported by either valgrind or cuda-memcheck.*
+compatible with **pyCUDA**, **CuPY** and **pyOpenCL**.
 
 Installation
 ------------
 
-Install using `pip install pyvkfft` (works on macOS and Linux).
+Install using ``pip install pyvkfft`` (works on macOS and Linux).
 
-Note that the PyPI archive includes `vkfft.h` and will automatically install `pyopencl`,
-as well as `pycuda` if a CUDA environment is detected.
+Note that the PyPI archive includes ``vkfft.h`` and will automatically install ``pyopencl``
+if opencl is available. However you should manually install either ``cupy``or ``pycuda``
+to use the cuda backend.
 
 Requirements:
 
-- `vkfft.h` installed in the usual include directories, or in the 'src' directory
-- `pyopencl` and the opencl libraries/development tools for the opencl backend
-- `pycuda` or `cupy` and CUDA developments tools (`nvcc`) for the cuda backend
-- `numpy`
+- ``vkfft.h`` installed in the usual include directories, or in the 'src' directory
+- ``pyopencl`` and the opencl libraries/development tools for the opencl backend
+- ``pycuda`` or `cupy` and CUDA developments tools (`nvcc`) for the cuda backend
+- ``numpy``
 
-This package can be installed from source using `python setup.py install`.
+This package can be installed from source using ``python setup.py install`` or ``pip install .``.
 
 Examples
 --------
-See the script and notebook in the examples directory.
-The notebook is also `available on google colab
+
+The simplest way to use pyvkfft is to use the pyvkfft.fft interface, which will
+automatically create the VkFFTApp (the FFT plans) according to the type of GPU
+arrays (pycuda, pyopencl or cupy), and also cache these apps:
+
+.. code-block:: python
+
+  import pycuda.autoinit
+  import pycuda.gpuarray as cua
+  from pyvkfft.fft import fftn
+  import numpy as np
+
+  d0 = cua.to_gpu(np.random.uniform(0,1,(200,200)).astype(np.complex64))
+  # This will compute the fft to a new GPU array
+  d1 = fftn(d0)
+
+See the scripts and notebooks in the examples directory.
+An example notebook is also `available on google colab
 <https://colab.research.google.com/drive/1YJKtIwM3ZwyXnMZfgFVcpbX7H-h02Iej?usp=sharing>`_.
-Make sure to select a GPU for the runtime. This may fail on old architectures (Kepler- to be confirmed)
+Make sure to select a GPU for the runtime.
 
 
 Features
@@ -42,7 +57,7 @@ Features
 - Direct Cosine Transform (DCT) of type 2, 3 and 4 (EXPERIMENTAL)
 - single and double precision for all transforms (double precision requires device support)
 - 1D, 2D and 3D transforms.
-- array can be larger than the FFT dimensions (batch transforms).
+- array can be have more dimensions than the FFT (batch transforms).
 - arbitrary array size, using Bluestein algorithm for prime numbers>13 (note that in this case
   the performance can be significantly lower, up to ~4x, depending on the transform size,
   see example performance plot below)
@@ -63,8 +78,8 @@ Features
   based on memory requirements (even for R2C !) compared to cuFFT. For example you can compute
   the 3D FFT for a 1600**3 complex64 array with 32GB of memory.
 - transforms can either be done by creating a VkFFTApp (a.k.a. the fft 'plan'),
-  with the selected backend (pyvkfft.cuda for pycuda/cupy or pyvkfft.opencl for pyopencl)
-  or by using the `pyvkfft.fft` interface with the `fftn`, `ifftn`, `rfftn` and `irfftn`
+  with the selected backend (``pyvkfft.cuda`` for pycuda/cupy or ``pyvkfft.opencl`` for pyopencl)
+  or by using the ``pyvkfft.fft`` interface with the ``fftn``, ``ifftn``, ``rfftn`` and ``irfftn``
   functions which automatically detect the type of GPU array and cache the
   corresponding VkFFTApp (see the example notebook pyvkfft-fft.ipynb).
 
