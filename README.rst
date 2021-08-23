@@ -20,7 +20,7 @@ Requirements:
 
 - ``vkfft.h`` installed in the usual include directories, or in the 'src' directory
 - ``pyopencl`` and the opencl libraries/development tools for the opencl backend
-- ``pycuda`` or `cupy` and CUDA developments tools (`nvcc`) for the cuda backend
+- ``pycuda`` or ``cupy`` and CUDA developments tools (`nvcc`) for the cuda backend
 - ``numpy``
 
 This package can be installed from source using ``python setup.py install`` or ``pip install .``.
@@ -101,7 +101,7 @@ Notes regarding this plot:
   transformed array is at around 600MB. Transforms on small arrays with small batch sizes
   could produce smaller performances, or better ones when fully cached.
 * a number of blue + (CuFFT) are actually performed as radix-N transforms with 7<N<127 (e.g. 11)
-  -hence the performance similar to the blue dots- but the actual supported radix transforms
+  -hence the performance similar to the blue dots- but the list of supported radix transforms
   is undocumented so they are not correctly labeled.
 
 The general results are:
@@ -109,9 +109,9 @@ The general results are:
 * vkFFT throughput is similar to cuFFT up to N=1024. For N>1024 vkFFT is much more
   efficient than cuFFT due to the smaller number of read and write per FFT axis
   (apart from isolated radix-2 3 sizes)
-* the OpenCL and CUDA backends of vkFFT perform similarly, as expected. [Note that this should
-  be true *as long as the card is only used for computing*. If it is also used for display,
-  then performance may be different, e.g. for nvidia cards opencl performance is more affected
+* the OpenCL and CUDA backends of vkFFT perform similarly, though there are ranges
+  where CUDA performs better. [Note that if the card is also used for display,
+  then difference can increase, e.g. for nvidia cards opencl performance is more affected
   when being used for display than the cuda backend]
 * clFFT (via gpyfft) generally performs much worse than the other transforms, though this was
   tested using nVidia cards. (Note that the clFFT/gpyfft benchmark tries all FFT axis permutations
