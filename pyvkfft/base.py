@@ -148,11 +148,12 @@ class VkFFTApp:
             on the x and y axes for ndim=2, etc.. Unless axes are given.
         :param inplace: if True (the default), performs an inplace transform and
             the destination array should not be given in fft() and ifft().
-        :param norm: if 0, every transform multiplies the L2 norm of the array
-            by its size (or the size of the transformed array if ndim<d.ndim).
-            if 1 (the default), the inverse transform divides the L2 norm
-            by the array size, so FFT+iFFT will keep the array norm.
-            if "ortho", each transform will keep the L2 norm, but that will currently
+        :param norm: if 0 (unnormalised), every transform multiplies the L2
+            norm of the array by its size (or the size of the transformed
+            array if ndim<d.ndim).
+            if 1 (the default) or "backward", the inverse transform divides
+            the L2 norm by the array size, so FFT+iFFT will keep the array norm.
+            if "ortho", each transform will keep the L2 norm, but that will
             involve an extra read & write operation.
         :param r2c: if True, will perform a real->complex transform, where the
             complex destination is a half-hermitian array.
@@ -219,6 +220,8 @@ class VkFFTApp:
         else:
             self.keepShaderCode = -1
 
+        if norm == "backward":
+            norm = 1
         self.norm = norm
 
         # Precision: number of bytes per float

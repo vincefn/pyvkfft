@@ -1,5 +1,5 @@
 # Most of the setup used here is derived from https://github.com/rmcgibbo/npcuda-example
-# License: BSD-2 clause
+# License: MIT
 
 import os
 import sys
@@ -67,7 +67,7 @@ def locate_opencl():
     """
     if 'darwin' in sys.platform:
         libraries = None
-        extra_link_args = ['-Wl,-framework,OpenCL', '--shared']  # , '--shared'
+        extra_link_args = ['-Wl,-framework,OpenCL']  # , '--shared'
     else:
         libraries = ['OpenCL']
         extra_link_args = ['--shared']

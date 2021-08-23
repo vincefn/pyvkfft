@@ -19,7 +19,7 @@ try:
 except ImportError:
     has_cupy = False
     if has_pycuda is False:
-        raise ImportError("You nee either PyCUDA or CuPY to use pyvkfft.cuda.")
+        raise ImportError("You need either PyCUDA or CuPY to use pyvkfft.cuda.")
 
 from .base import load_library, primes, VkFFTApp as VkFFTAppBase
 
@@ -80,11 +80,12 @@ class VkFFTApp(VkFFTAppBase):
             the destination array should not be given in fft() and ifft().
         :param stream: the pycuda.driver.Stream or cupy.cuda.Stream to use
             for the transform. If None, the default one will be used
-        :param norm: if 0, every transform multiplies the L2 norm of the array
-            by its size (or the size of the transformed array if ndim<d.ndim).
-            if 1 (the default), the inverse transform divides the L2 norm
-            by the array size, so FFT+iFFT will keep the array norm.
-            if "ortho", each transform will keep the L2 norm, but that will currently
+        :param norm: if 0 (unnormalised), every transform multiplies the L2
+            norm of the array by its size (or the size of the transformed
+            array if ndim<d.ndim).
+            if 1 (the default) or "backward", the inverse transform divides
+            the L2 norm by the array size, so FFT+iFFT will keep the array norm.
+            if "ortho", each transform will keep the L2 norm, but that will
             involve an extra read & write operation.
         :param r2c: if True, will perform a real->complex transform, where the
             complex destination is a half-hermitian array.

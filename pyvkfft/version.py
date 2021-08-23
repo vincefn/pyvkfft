@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 
 __authors__ = ["Vincent Favre-Nicolin (pyvkfft), Dmitrii Tolmachev (VkFFT)"]
-__license__ = "Mozilla Public License Version 2.0"
-__date__ = "2021/05/02"
+__license__ = "MIT"
+__date__ = "2021/08/23"
 # Valid numbering includes 3.1, 3.1.0, 3.1.2, 3.1dev0, 3.1a0, 3.1b0
-__version__ = "2021.1b6"
+__version__ = "2021.2"
 
 
 def vkfft_version():

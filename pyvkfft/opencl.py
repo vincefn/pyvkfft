@@ -69,11 +69,12 @@ class VkFFTApp(VkFFTAppBase):
             on the x and y axes for ndim=2, etc.. Unless axes are given.
         :param inplace: if True (the default), performs an inplace transform and
             the destination array should not be given in fft() and ifft().
-        :param norm: if 0, every transform multiplies the L2 norm of the array
-            by its size (or the size of the transformed array if ndim<d.ndim).
-            if 1 (the default), the inverse transform divides the L2 norm
-            by the array size, so FFT+iFFT will keep the array norm.
-            if "ortho", each transform will keep the L2 norm, but that will currently
+        :param norm: if 0 (unnormalised), every transform multiplies the L2
+            norm of the array by its size (or the size of the transformed
+            array if ndim<d.ndim).
+            if 1 (the default) or "backward", the inverse transform divides
+            the L2 norm by the array size, so FFT+iFFT will keep the array norm.
+            if "ortho", each transform will keep the L2 norm, but that will
             involve an extra read & write operation.
         :param r2c: if True, will perform a real->complex transform, where the
             complex destination is a half-hermitian array.
@@ -96,6 +97,12 @@ class VkFFTApp(VkFFTAppBase):
             driver has not been properly initialised, or if the transform dimensions
             are not allowed by VkFFT.
         """
+        if dct == 4:
+            if ndim is not None:
+                if ndim > 1:
+                    raise RuntimeError("DCT type IV is not supported for OpenCL for ndim>1")
+            elif len(shape) > 1:
+                raise RuntimeError("DCT type IV is not supported for OpenCL for ndim>1")
         super().__init__(shape, dtype, ndim=ndim, inplace=inplace, norm=norm, r2c=r2c, dct=dct, axes=axes, **kwargs)
 
         self.queue = queue

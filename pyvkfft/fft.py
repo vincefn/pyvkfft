@@ -5,6 +5,9 @@
 #       authors:
 #         Vincent Favre-Nicolin, favre@esrf.fr
 
+__all__ = ['fftn', 'ifftn', 'rfftn', 'irfftn', 'vkfft_version', 'clear_vkfftapp_cache',
+           'has_pycuda', 'has_opencl', 'has_cupy']
+
 from enum import Enum
 from functools import lru_cache
 import numpy as np
@@ -138,7 +141,18 @@ def _get_rfft_app(backend, shape, dtype, inplace, ndim, norm, cuda_stream, cl_qu
                            norm=norm, r2c=True)
 
 
-def fftn(src, dest=None, ndim=None, norm=False, axes=None, cuda_stream=None, cl_queue=None,
+@lru_cache(maxsize=100)
+def _get_dct_app(backend, shape, dtype, inplace, ndim, norm, dct_type,
+                 cuda_stream, cl_queue):
+    if backend in [Backend.PYCUDA, Backend.CUPY]:
+        return VkFFTApp_cuda(shape, dtype, ndim=ndim, inplace=inplace,
+                             stream=cuda_stream, norm=norm, dct=dct_type)
+    elif backend == Backend.PYOPENCL:
+        return VkFFTApp_cl(shape, dtype, cl_queue, ndim=ndim, inplace=inplace,
+                           norm=norm, dct=dct_type)
+
+
+def fftn(src, dest=None, ndim=None, norm=1, axes=None, cuda_stream=None, cl_queue=None,
          return_scale=False):
     """
     Perform a FFT on a GPU array, automatically creating the VkFFTApp
@@ -155,12 +169,12 @@ def fftn(src, dest=None, ndim=None, norm=False, axes=None, cuda_stream=None, cl_
         is always performed along the last axes if the array's number
         of dimension is larger than ndim, i.e. on the x-axis for ndim=1,
         on the x and y axes for ndim=2.
-    :param norm: if 0, every transform multiplies the L2 norm of the array
-        by its size (or the size of the transformed array if ndim<d.ndim).
-        if 1 (the default), the inverse transform divides the L2 norm
-        by the array size, so FFT+iFFT will keep the array norm.
+    :param norm: if 0 (un-normalised), every transform multiplies the L2 norm
+        of the array by the transform size.
+        if 1 (the default) or "backward", the inverse transform divides the
+        L2 norm by the array size, so FFT+iFFT will keep the array norm.
         if "ortho", each transform will keep the L2 norm, but that will
-        currently involve an extra read & write operation.
+        involve an extra read & write operation.
     :param axes: a list or tuple of axes along which the transform is made.
         if None, the transform is done along the ndim fastest axes, or all
         axes if ndim is None. Not allowed for R2C transforms
@@ -181,7 +195,7 @@ def fftn(src, dest=None, ndim=None, norm=False, axes=None, cuda_stream=None, cl_
     return dest
 
 
-def ifftn(src, dest=None, ndim=None, norm=False, axes=None, cuda_stream=None, cl_queue=None,
+def ifftn(src, dest=None, ndim=None, norm=1, axes=None, cuda_stream=None, cl_queue=None,
           return_scale=False):
     """
     Perform an inverse FFT on a GPU array, automatically creating the VkFFTApp
@@ -198,12 +212,12 @@ def ifftn(src, dest=None, ndim=None, norm=False, axes=None, cuda_stream=None, cl
         is always performed along the last axes if the array's number
         of dimension is larger than ndim, i.e. on the x-axis for ndim=1,
         on the x and y axes for ndim=2.
-    :param norm: if 0, every transform multiplies the L2 norm of the array
-        by its size (or the size of the transformed array if ndim<d.ndim).
-        if 1 (the default), the inverse transform divides the L2 norm
-        by the array size, so FFT+iFFT will keep the array norm.
+    :param norm: if 0 (un-normalised), every transform multiplies the L2 norm
+        of the array by the transform size.
+        if 1 (the default) or "backward", the inverse transform divides the
+        L2 norm by the array size, so FFT+iFFT will keep the array norm.
         if "ortho", each transform will keep the L2 norm, but that will
-        currently involve an extra read & write operation.
+        involve an extra read & write operation.
     :param axes: a list or tuple of axes along which the transform is made.
         if None, the transform is done along the ndim fastest axes, or all
         axes if ndim is None. Not allowed for R2C transforms
@@ -224,7 +238,7 @@ def ifftn(src, dest=None, ndim=None, norm=False, axes=None, cuda_stream=None, cl
     return dest
 
 
-def rfftn(src, dest=None, ndim=None, norm=False, cuda_stream=None, cl_queue=None,
+def rfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
           return_scale=False):
     """
     Perform a real->complex transform on a GPU array, automatically creating
@@ -246,12 +260,12 @@ def rfftn(src, dest=None, ndim=None, norm=False, cuda_stream=None, cl_queue=None
         is always performed along the last axes if the array's number
         of dimension is larger than ndim, i.e. on the x-axis for ndim=1,
         on the x and y axes for ndim=2.
-    :param norm: if 0, every transform multiplies the L2 norm of the array
-        by its size (or the size of the transformed array if ndim<d.ndim).
-        if 1 (the default), the inverse transform divides the L2 norm
-        by the array size, so FFT+iFFT will keep the array norm.
+    :param norm: if 0 (un-normalised), every transform multiplies the L2 norm
+        of the array by the transform size.
+        if 1 (the default) or "backward", the inverse transform divides the
+        L2 norm by the array size, so FFT+iFFT will keep the array norm.
         if "ortho", each transform will keep the L2 norm, but that will
-        currently involve an extra read & write operation.
+        involve an extra read & write operation.
     :param cuda_stream: the pycuda.driver.Stream or cupy.cuda.Stream to use
         for the transform. If None, the default one will be used
     :param cl_queue: the pyopencl.CommandQueue to be used. If None,
@@ -271,7 +285,7 @@ def rfftn(src, dest=None, ndim=None, norm=False, cuda_stream=None, cl_queue=None
     return dest.view(dtype=dtype)
 
 
-def irfftn(src, dest=None, ndim=None, norm=False, cuda_stream=None, cl_queue=None,
+def irfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
            return_scale=False):
     """
     Perform a complex->real transform on a GPU array, automatically creating
@@ -293,12 +307,12 @@ def irfftn(src, dest=None, ndim=None, norm=False, cuda_stream=None, cl_queue=Non
         is always performed along the last axes if the array's number
         of dimension is larger than ndim, i.e. on the x-axis for ndim=1,
         on the x and y axes for ndim=2.
-    :param norm: if 0, every transform multiplies the L2 norm of the array
-        by its size (or the size of the transformed array if ndim<d.ndim).
-        if 1 (the default), the inverse transform divides the L2 norm
-        by the array size, so FFT+iFFT will keep the array norm.
+    :param norm: if 0 (un-normalised), every transform multiplies the L2 norm
+        of the array by the transform size.
+        if 1 (the default) or "backward", the inverse transform divides the
+        L2 norm by the array size, so FFT+iFFT will keep the array norm.
         if "ortho", each transform will keep the L2 norm, but that will
-        currently involve an extra read & write operation.
+        involve an extra read & write operation.
     :param cuda_stream: the pycuda.driver.Stream or cupy.cuda.Stream to use
         for the transform. If None, the default one will be used
     :param cl_queue: the pyopencl.CommandQueue to be used. If None,
@@ -316,6 +330,72 @@ def irfftn(src, dest=None, ndim=None, norm=False, cuda_stream=None, cl_queue=Non
         s = app.get_fft_scale()
         return dest.view(dtype=dtype), s
     return dest.view(dtype=dtype)
+
+
+def dctn(src, dest=None, ndim=None, norm=1, dct_type=2, cuda_stream=None, cl_queue=None):
+    """
+    Perform a real->real Direct Cosine Transform on a GPU array, automatically
+    creating the VkFFTApp and caching it for future re-use.
+
+    :param src: the source pycuda.gpuarray.GPUArray or cupy.ndarray
+    :param dest: the destination GPU array. If None, a new GPU array will
+        be created and returned (using the source array allocator
+        (pycuda, pyopencl) if available).
+        If dest is the same array as src, an inplace transform is done.
+    :param ndim: the number of dimensions (<=3) to use for the FFT. By default,
+        uses the array dimensions. Can be smaller, e.g. ndim=2 for a 3D
+        array to perform a batched 3D FFT on all the layers. The FFT
+        is always performed along the last axes if the array's number
+        of dimension is larger than ndim, i.e. on the x-axis for ndim=1,
+        on the x and y axes for ndim=2.
+    :param norm: normalisation mode, either 0 (un-normalised) or
+        1 (the default, also available as "backward) which will normalise
+        the inverse transform, so DCT+iDCT will keep the array norm.
+    :param dct_type: the type of dct desired: 2 (default), 3 or 4
+    :param cuda_stream: the pycuda.driver.Stream or cupy.cuda.Stream to use
+        for the transform. If None, the default one will be used
+    :param cl_queue: the pyopencl.CommandQueue to be used. If None,
+        the source array default queue will be used
+    :return: the destination array.
+    """
+    backend, inplace, dest, cl_queue = _prepare_transform(src, dest, cl_queue, False)
+    app = _get_dct_app(backend, src.shape, src.dtype, inplace, ndim, norm,
+                       dct_type, cuda_stream, cl_queue)
+    app.fft(src, dest)
+    return dest
+
+
+def idctn(src, dest=None, ndim=None, norm=1, dct_type=2, cuda_stream=None, cl_queue=None):
+    """
+    Perform a real->real inverse Direct Cosine Transform on a GPU array,
+    automatically creating the VkFFTApp and caching it for future re-use.
+
+    :param src: the source pycuda.gpuarray.GPUArray or cupy.ndarray
+    :param dest: the destination GPU array. If None, a new GPU array will
+        be created and returned (using the source array allocator
+        (pycuda, pyopencl) if available).
+        If dest is the same array as src, an inplace transform is done.
+    :param ndim: the number of dimensions (<=3) to use for the FFT. By default,
+        uses the array dimensions. Can be smaller, e.g. ndim=2 for a 3D
+        array to perform a batched 3D FFT on all the layers. The FFT
+        is always performed along the last axes if the array's number
+        of dimension is larger than ndim, i.e. on the x-axis for ndim=1,
+        on the x and y axes for ndim=2.
+    :param norm: normalisation mode, either 0 (un-normalised) or
+        1 (the default, also available as "backward) which will normalise
+        the inverse transform, so DCT+iDCT will keep the array norm.
+    :param dct_type: the type of dct desired: 2 (default), 3 or 4
+    :param cuda_stream: the pycuda.driver.Stream or cupy.cuda.Stream to use
+        for the transform. If None, the default one will be used
+    :param cl_queue: the pyopencl.CommandQueue to be used. If None,
+        the source array default queue will be used
+    :return: the destination array.
+    """
+    backend, inplace, dest, cl_queue = _prepare_transform(src, dest, cl_queue, False)
+    app = _get_dct_app(backend, src.shape, src.dtype, inplace, ndim, norm,
+                       dct_type, cuda_stream, cl_queue)
+    app.ifft(src, dest)
+    return dest
 
 
 def clear_vkfftapp_cache():
