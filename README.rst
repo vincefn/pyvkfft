@@ -13,7 +13,7 @@ Installation
 Install using ``pip install pyvkfft`` (works on macOS and Linux).
 
 Note that the PyPI archive includes ``vkfft.h`` and will automatically install ``pyopencl``
-if opencl is available. However you should manually install either ``cupy``or ``pycuda``
+if opencl is available. However you should manually install either ``cupy`` or ``pycuda``
 to use the cuda backend.
 
 Requirements:
