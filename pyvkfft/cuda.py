@@ -19,7 +19,7 @@ try:
 except ImportError:
     has_cupy = False
     if has_pycuda is False:
-        raise ImportError("You need either PyCUDA or CuPY to use pyvkfft.cuda.")
+        raise ImportError("You need either PyCUDA or CuPy to use pyvkfft.cuda.")
 
 from .base import load_library, primes, VkFFTApp as VkFFTAppBase
 

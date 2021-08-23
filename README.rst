@@ -5,7 +5,7 @@ pyvkfft - python interface to the CUDA and OpenCL backends of VkFFT (Vulkan Fast
 for Vulkan/CUDA/HIP/OpenCL.
 
 pyvkfft offers a simple python interface to the **CUDA** and **OpenCL** backends of VkFFT,
-compatible with **pyCUDA**, **CuPY** and **pyOpenCL**.
+compatible with **pyCUDA**, **CuPy** and **pyOpenCL**.
 
 Installation
 ------------
@@ -52,7 +52,7 @@ Make sure to select a GPU for the runtime.
 Features
 --------
 
-- CUDA (using PyCUDA or CuPY) and OpenCL (using PyOpenCL) backends
+- CUDA (using PyCUDA or CuPy) and OpenCL (using PyOpenCL) backends
 - C2C, R2C/C2R for inplace and out-of-place transforms
 - Direct Cosine Transform (DCT) of type 2, 3 and 4 (EXPERIMENTAL)
 - single and double precision for all transforms (double precision requires device support)

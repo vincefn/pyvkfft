@@ -175,7 +175,7 @@ if 'cuda' not in exclude_packages:
             import cupy
         except ImportError:
             if has_pycuda is False:
-                print("Reminder: you need to install either PyCUDA or CuPY to use pyvkfft.cuda")
+                print("Reminder: you need to install either PyCUDA or CuPy to use pyvkfft.cuda")
     except:
         exclude_packages.append('cuda')
         warnings.warn("CUDA not available ($CUDAHOME variable missing and nvcc not in path. "
@@ -201,7 +201,8 @@ with open("README.rst", "r", encoding="utf-8") as fh:
 
 setup(name="pyvkfft",
       version=__version__,
-      description="Python wrapper for the CUDA (PyCUDA or CuPY) and OpenCL (PyOpenCL) backends of VkFFT",
+      description="Python wrapper for the CUDA and OpenCL backends of VkFFT,"
+                  "providing GPU FFT for PyCUDA, PyOpenCL and CuPy",
       long_description=long_description,
       ext_modules=ext_modules,
       packages=find_packages(exclude=exclude_packages),

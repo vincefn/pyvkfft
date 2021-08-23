@@ -8,7 +8,7 @@ Version 2021.X (2021-XX-XX)
   functions which automatically recognize the type of GPU arrays
   and cache the generated VkFFTApp (FFT plans).
 * Direct Cosine Transform (DCT) of type 2, 3 and 4 (EXPERIMENTAL)
-* Support CuPY arrays in addition to PyCUDA
+* Support CuPy arrays in addition to PyCUDA and PyOpenCL
 * OpenCL: test for half and double-precision support
 * OpenCL: relax accuracy requirements in unit tests
 * Fix shape test for out-of-place R2C transforms
