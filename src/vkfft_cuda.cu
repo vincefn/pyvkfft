@@ -14,24 +14,29 @@ using namespace std;
 #include "vkFFT.h"
 typedef float2 Complex;
 
+#ifdef _WIN32
+#define LIBRARY_API extern "C" __declspec(dllexport)
+#else
+#define LIBRARY_API extern "C"
+#endif
 
-extern "C"{
-VkFFTConfiguration* make_config(const size_t, const size_t, const size_t, const size_t, void*, void*, void*,
+
+LIBRARY_API VkFFTConfiguration* make_config(const size_t, const size_t, const size_t, const size_t, void*, void*, void*,
                                 const int, const size_t, const int, const int, const int, const int,
                                 const int, const int, const size_t, const int, const int, const int);
 
-VkFFTApplication* init_app(const VkFFTConfiguration*);
+LIBRARY_API VkFFTApplication* init_app(const VkFFTConfiguration*);
 
-void fft(VkFFTApplication* app, void*, void*);
+LIBRARY_API void fft(VkFFTApplication* app, void*, void*);
 
-void ifft(VkFFTApplication* app, void*, void*);
+LIBRARY_API void ifft(VkFFTApplication* app, void*, void*);
 
-void free_app(VkFFTApplication* app);
+LIBRARY_API void free_app(VkFFTApplication* app);
 
-void free_config(VkFFTConfiguration *config);
+LIBRARY_API void free_config(VkFFTConfiguration *config);
 
-uint32_t vkfft_version();
-}
+LIBRARY_API uint32_t vkfft_version();
+
 
 class PyVkFFT
 {

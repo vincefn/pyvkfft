@@ -2,12 +2,14 @@
 # - https://github.com/rmcgibbo/npcuda-example
 
 import os
+import sys
 import platform
 from os.path import join as pjoin
 import warnings
 from setuptools import setup, find_packages
 from setuptools.command.sdist import sdist, sdist_add_defaults
 from distutils.extension import Extension
+from distutils import unixccompiler
 from setuptools.command.build_ext import build_ext as build_ext_orig
 from pyvkfft.version import __version__
 
@@ -45,6 +47,8 @@ def locate_cuda():
                                        'or set $CUDA_PATH')
             home = os.path.dirname(os.path.dirname(nvcc))
         libdir = pjoin(home, 'lib', 'x64')
+        extra_compile_args = ['-O3', '--ptxas-options=-v', '-Xcompiler', '/MD']
+        extra_link_args = ['-L%s' % libdir]
         print("locate_cuda: Windows -> ", nvcc)
     else:
         # First check if the CUDAHOME env variable is in use
@@ -63,11 +67,15 @@ def locate_cuda():
             libdir = pjoin(home, 'lib64')
         else:
             libdir = pjoin(home, 'lib')
+        extra_compile_args = ['-O3', '--ptxas-options=-v', '-std=c++11',
+                              '--compiler-options=-fPIC']
+        extra_link_args = ['--shared', '-L%s' % libdir]
     cudaconfig = {'home': home, 'nvcc': nvcc,
-                  'include': pjoin(home, 'include'),
-                  'lib64': libdir}
-    for k, v in iter(cudaconfig.items()):
-        if not os.path.exists(v):
+                  'include_dirs': [pjoin(home, 'include')],
+                  'extra_compile_args': extra_compile_args,
+                  'extra_link_args': extra_link_args}
+    for k in ['home', 'nvcc']:
+        if not os.path.exists(cudaconfig[k]):
             raise EnvironmentError('The CUDA %s path could not be '
                                    'located in %s' % (k, v))
     print("CUDA config: ", cudaconfig)
@@ -100,8 +108,8 @@ def locate_opencl():
         extra_link_args = ['--shared']
 
     opencl_config = {'libraries': libraries, 'extra_link_args': extra_link_args,
-                    'include_dirs': include_dirs, 'library_dirs': library_dirs,
-                    'extra_compile_args': extra_compile_args}
+                     'include_dirs': include_dirs, 'library_dirs': library_dirs,
+                     'extra_compile_args': extra_compile_args}
     print("OpenCL config: ", opencl_config)
     return opencl_config
 
@@ -110,15 +118,43 @@ class build_ext_custom(build_ext_orig):
     """Custom `build_ext` command which will correctly compile and link
     the OpenCL and CUDA modules."""
 
+    def build_extension(self, ext):
+        print("Building extension: ", ext.name)
+        if "cuda" in ext.name:
+            print(CUDA)
+            default_compiler = self.compiler
+            # Create unix compiler patched for cu
+            self.compiler = unixccompiler.UnixCCompiler()
+            self.compiler.src_extensions.append('.cu')
+            tmp = CUDA['nvcc']  # .replace('\\\\','toto')
+            print("tmp:", tmp)
+            self.compiler.set_executable('compiler_so', [tmp])
+            self.compiler.set_executable('linker_so', [tmp])
+            print("compiler_so", self.compiler.compiler_so)
+            print(ext.libraries)
+            if platform.system() == "Windows":
+                CUDA['extra_link_args'] += ['--shared', '-Xcompiler', '/MD']
+                # pythonXX.lib must be in the linker paths
+                # Is using sys.prefix always correct ?
+                CUDA['extra_link_args'].append('-L%s' % pjoin(sys.prefix, 'libs'))
+
+            super().build_extension(ext)
+            # Restore default linker and compiler
+            self.compiler = default_compiler
+        else:
+            super().build_extension(ext)
+
     def get_export_symbols(self, ext):
         """ Hook based on the name to make sure we get the correct symbols"""
-        if "opencl" in ext.name:
+        print("get_export_symbols:", ext.export_symbols)
+        if "opencl" in ext.name or "cuda" in ext.name:
             return ext.export_symbols
         return super().get_export_symbols(ext)
 
     def get_ext_filename(self, ext_name):
         """ Hook based on the name to make sure we keep the correct name ('.so)"""
-        if "opencl" in ext_name:
+        print("get_ext_filename:", ext_name)
+        if "opencl" in ext_name or "cuda" in ext_name:
             return ext_name + '.so'
         return super().get_ext_filename(ext_name)
 
@@ -138,7 +174,7 @@ class sdist_vkfft(sdist):
 
 ext_modules = []
 install_requires = ['numpy']
-exclude_packages = ['examples', 'test', 'cuda']
+exclude_packages = ['examples', 'test']
 CUDA = None
 OPENCL = None
 
@@ -160,14 +196,9 @@ if 'cuda' not in exclude_packages:
         vkfft_cuda_ext = Extension('pyvkfft._vkfft_cuda',
                                    sources=['src/vkfft_cuda.cu'],
                                    libraries=['nvrtc', 'cuda'],
-                                   # This syntax is specific to this build system
-                                   # we're only going to use certain compiler args with nvcc
-                                   # and not with gcc the implementation of this trick is in
-                                   # customize_compiler()
-                                   extra_compile_args=['-O3', '--ptxas-options=-v', '-std=c++11',
-                                                       '--compiler-options=-fPIC'],
-                                   include_dirs=[CUDA['include']],
-                                   extra_link_args=['--shared', '-L%s' % CUDA['lib64']]
+                                   extra_compile_args=CUDA['extra_compile_args'],
+                                   include_dirs=CUDA['include_dirs'],
+                                   extra_link_args=CUDA['extra_link_args']
                                    )
         ext_modules.append(vkfft_cuda_ext)
         # install_requires.append("pycuda")
