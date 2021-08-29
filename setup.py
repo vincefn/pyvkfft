@@ -7,7 +7,7 @@ import platform
 from os.path import join as pjoin
 import warnings
 from setuptools import setup, find_packages
-from setuptools.command.sdist import sdist, sdist_add_defaults
+from setuptools.command.sdist import sdist
 from distutils.extension import Extension
 from distutils import unixccompiler
 from setuptools.command.build_ext import build_ext as build_ext_orig
@@ -49,7 +49,6 @@ def locate_cuda():
         libdir = pjoin(home, 'lib', 'x64')
         extra_compile_args = ['-O3', '--ptxas-options=-v', '-Xcompiler', '/MD']
         extra_link_args = ['-L%s' % libdir]
-        print("locate_cuda: Windows -> ", nvcc)
     else:
         # First check if the CUDAHOME env variable is in use
         if 'CUDAHOME' in os.environ:
@@ -78,7 +77,6 @@ def locate_cuda():
         if not os.path.exists(cudaconfig[k]):
             raise EnvironmentError('The CUDA %s path could not be '
                                    'located in %s' % (k, v))
-    print("CUDA config: ", cudaconfig)
     return cudaconfig
 
 
@@ -89,11 +87,11 @@ def locate_opencl():
     """
     include_dirs = []
     library_dirs = []
-    extra_compile_args = ['-std=c++1L', '-Wno-format-security']
+    extra_compile_args = ['-std=c++11', '-Wno-format-security']
     extra_link_args = None
     if platform.system() == 'Darwin':
         libraries = None
-        extra_link_args = ['-Wl,-framework,OpenCL', '--shared']
+        extra_link_args = ['-Wl,-framework,OpenCL']
     elif platform.system() == "Windows":
         # Add include & lib dirs if possible from usual nvidia and AMD paths
         for path in ["CUDA_HOME", "CUDAHOME", "CUDA_PATH"]:
@@ -110,32 +108,28 @@ def locate_opencl():
     opencl_config = {'libraries': libraries, 'extra_link_args': extra_link_args,
                      'include_dirs': include_dirs, 'library_dirs': library_dirs,
                      'extra_compile_args': extra_compile_args}
-    print("OpenCL config: ", opencl_config)
     return opencl_config
 
 
 class build_ext_custom(build_ext_orig):
     """Custom `build_ext` command which will correctly compile and link
-    the OpenCL and CUDA modules."""
+    the OpenCL and CUDA modules. The hooks are based on the name of the extension"""
 
     def build_extension(self, ext):
-        print("Building extension: ", ext.name)
         if "cuda" in ext.name:
-            print(CUDA)
+            # Use nvcc for compilation. This assumes all sources are .cu files
+            # for this extension.
             default_compiler = self.compiler
             # Create unix compiler patched for cu
             self.compiler = unixccompiler.UnixCCompiler()
             self.compiler.src_extensions.append('.cu')
             tmp = CUDA['nvcc']  # .replace('\\\\','toto')
-            print("tmp:", tmp)
             self.compiler.set_executable('compiler_so', [tmp])
             self.compiler.set_executable('linker_so', [tmp])
-            print("compiler_so", self.compiler.compiler_so)
-            print(ext.libraries)
             if platform.system() == "Windows":
                 CUDA['extra_link_args'] += ['--shared', '-Xcompiler', '/MD']
                 # pythonXX.lib must be in the linker paths
-                # Is using sys.prefix always correct ?
+                # Is using sys.prefix\libs always correct ?
                 CUDA['extra_link_args'].append('-L%s' % pjoin(sys.prefix, 'libs'))
 
             super().build_extension(ext)
@@ -145,16 +139,14 @@ class build_ext_custom(build_ext_orig):
             super().build_extension(ext)
 
     def get_export_symbols(self, ext):
-        """ Hook based on the name to make sure we get the correct symbols"""
-        print("get_export_symbols:", ext.export_symbols)
-        if "opencl" in ext.name or "cuda" in ext.name:
+        """ Hook to make sure we get the correct symbols for windows"""
+        if ("opencl" in ext.name or "cuda" in ext.name) and platform.system() == "Windows":
             return ext.export_symbols
         return super().get_export_symbols(ext)
 
     def get_ext_filename(self, ext_name):
-        """ Hook based on the name to make sure we keep the correct name ('.so)"""
-        print("get_ext_filename:", ext_name)
-        if "opencl" in ext_name or "cuda" in ext_name:
+        """ Hook to make sure we keep the correct name (*.so) for windows"""
+        if ("opencl" in ext_name or "cuda" in ext_name) and platform.system() == "Windows":
             return ext_name + '.so'
         return super().get_ext_filename(ext_name)
 
