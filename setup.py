@@ -1,14 +1,14 @@
-# Most of the setup used here is derived from https://github.com/rmcgibbo/npcuda-example
-# License: MIT
+# The setup used here is derived with bits from:
+# - https://github.com/rmcgibbo/npcuda-example
 
 import os
-import sys
+import platform
 from os.path import join as pjoin
 import warnings
 from setuptools import setup, find_packages
 from setuptools.command.sdist import sdist, sdist_add_defaults
 from distutils.extension import Extension
-from Cython.Distutils import build_ext
+from setuptools.command.build_ext import build_ext as build_ext_orig
 from pyvkfft.version import __version__
 
 
@@ -29,34 +29,48 @@ def locate_cuda():
     Returns a dict with keys 'home', 'nvcc', 'include', and 'lib64'
     and values giving the absolute path to each directory.
 
-    Starts by looking for the CUDAHOME env variable. If not found,
-    everything is based on finding 'nvcc' in the PATH.
+    Starts by looking for the CUDAHOME or CUDA_PATH env variable.
+    If not found, find 'nvcc' in the PATH.
     """
-
-    # First check if the CUDAHOME env variable is in use
-    if 'CUDAHOME' in os.environ:
-        home = os.environ['CUDAHOME']
-        nvcc = pjoin(home, 'bin', 'nvcc')
+    if platform.system() == "Windows":
+        if 'CUDA_PATH' in os.environ:
+            home = os.environ['CUDA_PATH']
+            nvcc = pjoin(home, 'bin', 'nvcc.exe')
+        else:
+            # Otherwise, search the PATH for NVCC
+            nvcc = find_in_path('nvcc.exe', os.environ['PATH'])
+            if nvcc is None:
+                raise EnvironmentError('The nvcc binary could not be '
+                                       'located in your $PATH. Either add it to your path, '
+                                       'or set $CUDA_PATH')
+            home = os.path.dirname(os.path.dirname(nvcc))
+        libdir = pjoin(home, 'lib', 'x64')
+        print("locate_cuda: Windows -> ", nvcc)
     else:
-        # Otherwise, search the PATH for NVCC
-        nvcc = find_in_path('nvcc', os.environ['PATH'])
-        if nvcc is None:
-            raise EnvironmentError('The nvcc binary could not be '
-                                   'located in your $PATH. Either add it to your path, '
-                                   'or set $CUDAHOME')
-        home = os.path.dirname(os.path.dirname(nvcc))
-    if os.path.exists(pjoin(home, 'lib64')):
-        libdir = 'lib64'
-    else:
-        libdir = 'lib'
+        # First check if the CUDAHOME env variable is in use
+        if 'CUDAHOME' in os.environ:
+            home = os.environ['CUDAHOME']
+            nvcc = pjoin(home, 'bin', 'nvcc')
+        else:
+            # Otherwise, search the PATH for NVCC
+            nvcc = find_in_path('nvcc', os.environ['PATH'])
+            if nvcc is None:
+                raise EnvironmentError('The nvcc binary could not be '
+                                       'located in your $PATH. Either add it to your path, '
+                                       'or set $CUDAHOME or $CUDA_PATH')
+            home = os.path.dirname(os.path.dirname(nvcc))
+        if os.path.exists(pjoin(home, 'lib64')):
+            libdir = pjoin(home, 'lib64')
+        else:
+            libdir = pjoin(home, 'lib')
     cudaconfig = {'home': home, 'nvcc': nvcc,
                   'include': pjoin(home, 'include'),
-                  'lib64': pjoin(home, libdir)}
+                  'lib64': libdir}
     for k, v in iter(cudaconfig.items()):
         if not os.path.exists(v):
             raise EnvironmentError('The CUDA %s path could not be '
                                    'located in %s' % (k, v))
-
+    print("CUDA config: ", cudaconfig)
     return cudaconfig
 
 
@@ -65,49 +79,48 @@ def locate_opencl():
     Get the opencl configuration
     :return:
     """
-    if 'darwin' in sys.platform:
+    include_dirs = []
+    library_dirs = []
+    extra_compile_args = ['-std=c++1L', '-Wno-format-security']
+    extra_link_args = None
+    if platform.system() == 'Darwin':
         libraries = None
-        extra_link_args = ['-Wl,-framework,OpenCL']  # , '--shared'
+        extra_link_args = ['-Wl,-framework,OpenCL', '--shared']
+    elif platform.system() == "Windows":
+        # Add include & lib dirs if possible from usual nvidia and AMD paths
+        for path in ["CUDA_HOME", "CUDAHOME", "CUDA_PATH"]:
+            if path in os.environ:
+                include_dirs.append(pjoin(os.environ[path], 'include'))
+                library_dirs.append(pjoin(os.environ[path], 'lib', 'x64'))
+        libraries = ['OpenCL']
+        extra_compile_args = None
     else:
+        # Linux
         libraries = ['OpenCL']
         extra_link_args = ['--shared']
 
-    return {'libraries': libraries, 'extra_link_args': extra_link_args}
+    opencl_config = {'libraries': libraries, 'extra_link_args': extra_link_args,
+                    'include_dirs': include_dirs, 'library_dirs': library_dirs,
+                    'extra_compile_args': extra_compile_args}
+    print("OpenCL config: ", opencl_config)
+    return opencl_config
 
 
-def customize_compiler_for_nvcc(self):
-    """Inject deep into distutils to customize how the dispatch
-    to gcc/nvcc works.
+class build_ext_custom(build_ext_orig):
+    """Custom `build_ext` command which will correctly compile and link
+    the OpenCL and CUDA modules."""
 
-    If you subclass UnixCCompiler, it's not trivial to get your subclass
-    injected in, and still have the right customizations (i.e.
-    distutils.sysconfig.customize_compiler) run on it. So instead of going
-    the OO route, I have this. Note, it's kindof like a wierd functional
-    subclassing going on.
-    """
+    def get_export_symbols(self, ext):
+        """ Hook based on the name to make sure we get the correct symbols"""
+        if "opencl" in ext.name:
+            return ext.export_symbols
+        return super().get_export_symbols(ext)
 
-    # Tell the compiler it can processes .cu
-    self.src_extensions.append('.cu')
-
-    # Save references to the default compiler_so and _compile methods
-    default_compiler_so = self.compiler_so
-    super = self._compile
-
-    # Now redefine the _compile method. This gets executed for each
-    # object but distutils doesn't have the ability to change compilers
-    # based on source extension: we add it.
-    def _compile(obj, src, ext, cc_args, postargs, pp_opts):
-        if os.path.splitext(src)[1] == '.cu':
-            # use the cuda for .cu files
-            self.set_executable('compiler_so', CUDA['nvcc'])
-            self.set_executable('linker_so', CUDA['nvcc'])
-
-        super(obj, src, ext, cc_args, postargs, pp_opts)
-        # Reset the default compiler_so, which we might have changed for cuda
-        self.compiler_so = default_compiler_so
-
-    # Inject our redefined _compile method into the class
-    self._compile = _compile
+    def get_ext_filename(self, ext_name):
+        """ Hook based on the name to make sure we keep the correct name ('.so)"""
+        if "opencl" in ext_name:
+            return ext_name + '.so'
+        return super().get_ext_filename(ext_name)
 
 
 class sdist_vkfft(sdist):
@@ -123,16 +136,9 @@ class sdist_vkfft(sdist):
         super(sdist_vkfft, self).run()
 
 
-# Run the customize_compiler
-class custom_build_ext(build_ext):
-    def build_extensions(self):
-        customize_compiler_for_nvcc(self.compiler)
-        build_ext.build_extensions(self)
-
-
 ext_modules = []
 install_requires = ['numpy']
-exclude_packages = ['examples', 'test']
+exclude_packages = ['examples', 'test', 'cuda']
 CUDA = None
 OPENCL = None
 
@@ -159,15 +165,15 @@ if 'cuda' not in exclude_packages:
                                    # and not with gcc the implementation of this trick is in
                                    # customize_compiler()
                                    extra_compile_args=['-O3', '--ptxas-options=-v', '-std=c++11',
-                                                       '--compiler-options=-fPIC']
-                                   ,
-                                   include_dirs=[CUDA['include'], 'src'],
+                                                       '--compiler-options=-fPIC'],
+                                   include_dirs=[CUDA['include']],
                                    extra_link_args=['--shared', '-L%s' % CUDA['lib64']]
                                    )
         ext_modules.append(vkfft_cuda_ext)
         # install_requires.append("pycuda")
         try:
             import pycuda
+
             has_pycuda = True
         except ImportError:
             has_pycuda = False
@@ -178,9 +184,9 @@ if 'cuda' not in exclude_packages:
                 print("Reminder: you need to install either PyCUDA or CuPy to use pyvkfft.cuda")
     except:
         exclude_packages.append('cuda')
-        warnings.warn("CUDA not available ($CUDAHOME variable missing and nvcc not in path. "
+        warnings.warn("CUDA not available ($CUDAHOME/$CUDA_PATH variables missing "
+                      "and nvcc not in path. "
                       "Skipping pyvkfft.cuda module installation.", UserWarning)
-
 
 if 'opencl' not in exclude_packages:
     OPENCL = locate_opencl()
@@ -189,8 +195,10 @@ if 'opencl' not in exclude_packages:
     # OpenCL extension
     vkfft_opencl_ext = Extension('pyvkfft._vkfft_opencl',
                                  sources=['src/vkfft_opencl.cpp'],
-                                 extra_compile_args=['-std=c++11', '-Wno-format-security'],
+                                 extra_compile_args=OPENCL['extra_compile_args'],
+                                 include_dirs=OPENCL['include_dirs'],
                                  libraries=OPENCL['libraries'],
+                                 library_dirs=OPENCL['library_dirs'],
                                  extra_link_args=OPENCL['extra_link_args']
                                  )
 
@@ -221,6 +229,6 @@ setup(name="pyvkfft",
           "Environment :: GPU",
       ],
 
-      cmdclass={'build_ext': custom_build_ext, 'sdist_vkfft': sdist_vkfft},
+      cmdclass={'build_ext': build_ext_custom, 'sdist_vkfft': sdist_vkfft},
       install_requires=install_requires,
       test_suite="test")
