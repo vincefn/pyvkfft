@@ -1,4 +1,4 @@
-Version 2021.X (2021-XX-XX)
+Version 2021.2 (2021-08-23)
 ---------------------------
 * Enable transforms for any array size (VkFFT Bluestein algorithm)
 * Allow 3D transforms on arrays with >3 dimensions (batch transform)
