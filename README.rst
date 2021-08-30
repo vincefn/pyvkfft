@@ -10,7 +10,7 @@ compatible with **pyCUDA**, **CuPy** and **pyOpenCL**.
 Installation
 ------------
 
-Install using ``pip install pyvkfft`` (works on macOS and Linux).
+Install using ``pip install pyvkfft`` (works on macOS, Linux and Windows).
 
 Note that the PyPI archive includes ``vkfft.h`` and will automatically install ``pyopencl``
 if opencl is available. However you should manually install either ``cupy`` or ``pycuda``
@@ -22,6 +22,7 @@ Requirements:
 - ``pyopencl`` and the opencl libraries/development tools for the opencl backend
 - ``pycuda`` or ``cupy`` and CUDA developments tools (`nvcc`) for the cuda backend
 - ``numpy``
+- on Windows, this requires visual studio (c++ tools) and a cuda toolkit installation
 
 This package can be installed from source using ``python setup.py install`` or ``pip install .``.
 
@@ -77,7 +78,8 @@ Features
 - unit tests for all transforms: see test sub-directory. Note that these take a **long**
   time to finish due to the exhaustive number of sub-tests.
 - Note that out-of-place C2R transform currently destroys the complex array for FFT dimensions >=2
-- tested on macOS (10.13.6) and Linux.
+- tested on macOS (10.13.6), Linux (Debian/Ubuntu, x86-64 and power9), and Windows 10
+  (Anaconda python 3.8 with Visual Studio 2019 and the CUDA toolkit 11.2)
 - inplace transforms do not require an extra buffer or work area (as in cuFFT), unless the x
   size is larger than 8192, or if the y and z FFT size are larger than 2048. In that case
   a buffer of a size equal to the array is necessary. This makes larger FFT transforms possible
@@ -116,7 +118,7 @@ The general results are:
   efficient than cuFFT due to the smaller number of read and write per FFT axis
   (apart from isolated radix-2 3 sizes)
 * the OpenCL and CUDA backends of vkFFT perform similarly, though there are ranges
-  where CUDA performs better. [Note that if the card is also used for display,
+  where CUDA performs better, due to different cache . [Note that if the card is also used for display,
   then difference can increase, e.g. for nvidia cards opencl performance is more affected
   when being used for display than the cuda backend]
 * clFFT (via gpyfft) generally performs much worse than the other transforms, though this was

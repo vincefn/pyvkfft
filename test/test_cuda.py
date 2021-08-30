@@ -20,15 +20,20 @@ try:
 except ImportError:
     def ascent():
         return np.random.randint(0, 255, (512, 512))
-from pyvkfft.cuda import VkFFTApp, primes, has_pycuda, has_cupy
 
-if has_pycuda:
-    import pycuda.autoinit
-    import pycuda.driver as cu_drv
-    import pycuda.gpuarray as cua
+try:
+    from pyvkfft.cuda import VkFFTApp, primes, has_pycuda, has_cupy
 
-if has_cupy:
-    import cupy as cp
+    if has_pycuda:
+        import pycuda.autoinit
+        import pycuda.driver as cu_drv
+        import pycuda.gpuarray as cua
+
+    if has_cupy:
+        import cupy as cp
+except ImportError:
+    has_cupy = False
+    has_pycuda = False
 
 
 class TestVkFFTCUDA(unittest.TestCase):

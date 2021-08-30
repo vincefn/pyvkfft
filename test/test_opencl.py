@@ -21,11 +21,11 @@ try:
 except ImportError:
     def ascent():
         return np.random.randint(0, 255, (512, 512))
-from pyvkfft.opencl import VkFFTApp, primes
 
 try:
     import pyopencl as cl
     import pyopencl.array as cla
+    from pyvkfft.opencl import VkFFTApp, primes
 except ImportError:
     cla = None
 

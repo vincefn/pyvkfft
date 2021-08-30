@@ -1,3 +1,7 @@
+Version 2021.2.1 (2021-XX-XX)
+-----------------------------
+* Support for windows installation (cuda and opencl)
+
 Version 2021.2 (2021-08-23)
 ---------------------------
 * Enable transforms for any array size (VkFFT Bluestein algorithm)
