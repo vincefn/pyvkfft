@@ -19,7 +19,8 @@ complex32 = np.dtype([('re', np.float16), ('im', np.float16)])
 
 def load_library(basename):
     if platform.system() == 'Windows':
-        ext = '.dll'
+        # We patched build_ext so the module is a .so and not a dll
+        ext = '.so'
     else:
         ext = sysconfig.get_config_var('SO')
     return ctypes.cdll.LoadLibrary(os.path.join(os.path.dirname(__file__) or os.path.curdir, basename + ext))
