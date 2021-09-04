@@ -1,6 +1,8 @@
-Version 2021.2.1 (2021-XX-XX)
+Version 2021.2.1 (2021-09-04)
 -----------------------------
-* Support for windows installation (cuda and opencl)
+* Support for windows installation (cuda and opencl) [requires visual studio
+  with c++ tools and the cuda toolkit with nvcc. Untested with the AMD SDK]
+* Remove Cython reference in setup.py
 
 Version 2021.2 (2021-08-23)
 ---------------------------

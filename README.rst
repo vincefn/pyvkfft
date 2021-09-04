@@ -22,7 +22,8 @@ Requirements:
 - ``pyopencl`` and the opencl libraries/development tools for the opencl backend
 - ``pycuda`` or ``cupy`` and CUDA developments tools (`nvcc`) for the cuda backend
 - ``numpy``
-- on Windows, this requires visual studio (c++ tools) and a cuda toolkit installation
+- on Windows, this requires visual studio (c++ tools) and a cuda toolkit installation,
+  with either CUDA_PATH or CUDA_HOME environment variable.
 
 This package can be installed from source using ``python setup.py install`` or ``pip install .``.
 
@@ -133,7 +134,6 @@ TODO
   - for vulkan and rocm this only makes sense combined to a pycuda/cupy/pyopencl equivalent.
 - out-of-place C2R transform without modifying the C array ? This would require using a R
   array padded with two wolumns, as for the inplace transform
-- windows support (contribution welcome to setup.py)
 - half precision ?
 - convolution ?
 - zero-padding ?
