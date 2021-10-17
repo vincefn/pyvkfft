@@ -97,12 +97,6 @@ class VkFFTApp(VkFFTAppBase):
             driver has not been properly initialised, or if the transform dimensions
             are not allowed by VkFFT.
         """
-        if dct == 4:
-            if ndim is not None:
-                if ndim > 1:
-                    raise RuntimeError("DCT type IV is not supported for OpenCL for ndim>1")
-            elif len(shape) > 1:
-                raise RuntimeError("DCT type IV is not supported for OpenCL for ndim>1")
         super().__init__(shape, dtype, ndim=ndim, inplace=inplace, norm=norm, r2c=r2c, dct=dct, axes=axes, **kwargs)
 
         self.queue = queue

@@ -62,7 +62,7 @@ Features
 
 - CUDA (using PyCUDA or CuPy) and OpenCL (using PyOpenCL) backends
 - C2C, R2C/C2R for inplace and out-of-place transforms
-- Direct Cosine Transform (DCT) of type 2, 3 and 4 (EXPERIMENTAL)
+- Direct Cosine Transform (DCT) of type 1, 2, 3 and 4 (EXPERIMENTAL)
 - single and double precision for all transforms (double precision requires device support)
 - 1D, 2D and 3D transforms.
 - array can be have more dimensions than the FFT (batch transforms).

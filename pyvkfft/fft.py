@@ -351,7 +351,7 @@ def dctn(src, dest=None, ndim=None, norm=1, dct_type=2, cuda_stream=None, cl_que
     :param norm: normalisation mode, either 0 (un-normalised) or
         1 (the default, also available as "backward) which will normalise
         the inverse transform, so DCT+iDCT will keep the array norm.
-    :param dct_type: the type of dct desired: 2 (default), 3 or 4
+    :param dct_type: the type of dct desired: 1, 2 (default), 3 or 4
     :param cuda_stream: the pycuda.driver.Stream or cupy.cuda.Stream to use
         for the transform. If None, the default one will be used
     :param cl_queue: the pyopencl.CommandQueue to be used. If None,

@@ -168,7 +168,7 @@ class VkFFTApp:
             Note that for C2R transforms with ndim>=2, the source (complex) array
             is modified.
         :param dct: used to perform a Direct Cosine Transform (DCT) aka a R2R transform.
-            An integer can be given to specify the type of DCT (2, 3 or 4).
+            An integer can be given to specify the type of DCT (1, 2, 3 or 4).
             if dct=True, the DCT type 2 will be performed, following scipy's convention.
         :param axes: a list or tuple of axes along which the transform should be made.
             if None, the transform is done along the ndim fastest axes, or all
@@ -192,8 +192,8 @@ class VkFFTApp:
             self.dct = 2
         else:
             self.dct = dct
-        if dct and self.dct < 2 or dct > 4:
-            raise RuntimeError("Only DCT of types 2, 3 and 4 are allowed")
+        if dct and self.dct < 1 or dct > 4:
+            raise RuntimeError("Only DCT of types 1, 2, 3 and 4 are allowed")
         # print("VkFFTApp:", shape, axes, ndim, "->", self.shape, self.skip_axis, self.ndim)
 
         # Experimental parameters. Not much difference is seen, so don't document this,
