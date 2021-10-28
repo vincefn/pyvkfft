@@ -231,7 +231,7 @@ def ifftn(src, dest=None, ndim=None, norm=1, axes=None, cuda_stream=None, cl_que
     """
     backend, inplace, dest, cl_queue = _prepare_transform(src, dest, cl_queue, False)
     app = _get_fft_app(backend, src.shape, src.dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue)
-    app.fft(src, dest)
+    app.ifft(src, dest)
     if return_scale:
         s = app.get_fft_scale()
         return dest, s

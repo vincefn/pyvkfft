@@ -1,3 +1,10 @@
+Version 2021.2.2 (2021-10-XX)
+-----------------------------
+* Update to VkFFT 1.2.X, with support for DCT types 1, 2, 3 and 4,
+  also fixing DCT issues (see https://github.com/DTolm/VkFFT/issues/48).
+  DCT calculations now match scipy.
+* [BUG] Correct inverse FFT calculation using pyvkfft.fft.ifftn()
+
 Version 2021.2.1 (2021-09-04)
 -----------------------------
 * Support for windows installation (cuda and opencl) [requires visual studio
