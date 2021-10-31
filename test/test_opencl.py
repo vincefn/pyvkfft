@@ -17,6 +17,14 @@ import numpy as np
 from numpy.fft import fftn, ifftn, fftshift, rfftn, irfftn
 
 try:
+    from scipy.fft import dctn, idctn
+
+    has_scipy_dct = True
+except ImportError:
+    has_scipy_dct = False
+    print("Install scipy if you want to test dct transforms")
+
+try:
     from scipy.misc import ascent
 except ImportError:
     def ascent():
@@ -74,6 +82,14 @@ class TestVkFFTOpenCL(unittest.TestCase):
                                 axes.append(-ii - 1)
                         ndim_axes.append((None, axes))
                     for ndim, axes in ndim_axes:
+                        d0 = np.random.uniform(0, 1, [n] * dims)
+                        # A pure random array may not be a very good test (too random),
+                        # so add a Gaussian
+                        xx = [np.fft.fftshift(np.fft.fftfreq(n))] * dims
+                        v = np.zeros_like(d0)
+                        for x in np.meshgrid(*xx, indexing='ij'):
+                            v += x ** 2
+                        d0 += 10 * np.exp(-v * 2)
                         for dtype in self.dtype_complex_v:
                             for norm in [0, 1, "ortho"]:
                                 with self.subTest(n=n, dims=dims, ndim=ndim, axes=axes, dtype=dtype, norm=norm):
@@ -83,14 +99,7 @@ class TestVkFFTOpenCL(unittest.TestCase):
                                         rtol = 1e-8
                                     if max(primes(n)) > 13:
                                         rtol *= 4  # Lower accuracy for Bluestein algorithm
-                                    d = np.random.uniform(0, 1, [n] * dims).astype(dtype)
-                                    # A pure random array may not be a very good test (too random),
-                                    # so add a Gaussian
-                                    xx = [np.fft.fftshift(np.fft.fftfreq(n))] * dims
-                                    v = np.zeros_like(d)
-                                    for x in np.meshgrid(*xx, indexing='ij'):
-                                        v += x ** 2
-                                    d += 10 * np.exp(-v * 2)
+                                    d = d0.astype(dtype).copy()
                                     n0 = (abs(d) ** 2).sum()
                                     d_gpu = cla.to_device(self.queue, d)
                                     app = VkFFTApp(d.shape, d.dtype, self.queue, ndim=ndim, norm=norm, axes=axes)
@@ -127,6 +136,14 @@ class TestVkFFTOpenCL(unittest.TestCase):
                                 axes.append(-ii - 1)
                         ndim_axes.append((None, axes))
                     for ndim, axes in ndim_axes:
+                        d0 = np.random.uniform(0, 1, [n] * dims)
+                        # A pure random array may not be a very good test (too random),
+                        # so add a Gaussian
+                        xx = [np.fft.fftshift(np.fft.fftfreq(n))] * dims
+                        v = np.zeros_like(d0)
+                        for x in np.meshgrid(*xx, indexing='ij'):
+                            v += x ** 2
+                        d0 += 10 * np.exp(-v * 2)
                         for dtype in self.dtype_complex_v:
                             for norm in [0, 1, "ortho"]:
                                 with self.subTest(n=n, dims=dims, ndim=ndim, axes=axes, dtype=dtype, norm=norm):
@@ -136,15 +153,7 @@ class TestVkFFTOpenCL(unittest.TestCase):
                                         rtol = 1e-8
                                     if max(primes(n)) > 13:
                                         rtol *= 4  # Lower accuracy for Bluestein algorithm
-
-                                    d = np.random.uniform(0, 1, [n] * dims).astype(dtype)
-                                    # A pure random array may not be a very good test (too random),
-                                    # so add a Gaussian
-                                    xx = [np.fft.fftshift(np.fft.fftfreq(n))] * dims
-                                    v = np.zeros_like(d)
-                                    for x in np.meshgrid(*xx, indexing='ij'):
-                                        v += x ** 2
-                                    d += 10 * np.exp(-v * 2)
+                                    d = d0.astype(dtype).copy()
                                     n0 = (abs(d) ** 2).sum()
                                     d_gpu = cla.to_device(self.queue, d)
                                     d1_gpu = cla.zeros_like(d_gpu)
@@ -177,6 +186,19 @@ class TestVkFFTOpenCL(unittest.TestCase):
             # We need a multiple of 2 for the first axis of an inplace R2C transform
             for dims in range(1, 5):
                 for ndim in range(1, min(dims, 3) + 1):
+                    sh = [n] * dims
+                    sh[-1] += 2
+                    shc = [n] * dims
+                    shc[-1] = n // 2 + 1
+
+                    d0 = np.random.uniform(0, 1, sh)
+                    # A pure random array may not be a very good test (too random),
+                    # so add a Gaussian
+                    xx = [np.fft.fftshift(np.fft.fftfreq(nn)) for nn in sh]
+                    v = np.zeros_like(d0)
+                    for x in np.meshgrid(*xx, indexing='ij'):
+                        v += x ** 2
+                    d0 += 10 * np.exp(-v * 2)
                     for dtype in self.dtype_float_v:
                         for norm in [0, 1, "ortho"]:
                             with self.subTest(n=n, dims=dims, ndim=ndim, dtype=dtype, norm=norm):
@@ -188,20 +210,7 @@ class TestVkFFTOpenCL(unittest.TestCase):
                                     c_dtype = np.complex128
                                 if max(primes(n)) > 13:
                                     rtol *= 8  # Lower accuracy for Bluestein algorithm
-
-                                sh = [n] * dims
-                                sh[-1] += 2
-                                shc = [n] * dims
-                                shc[-1] = n // 2 + 1
-
-                                d = np.random.uniform(0, 1, sh).astype(dtype)
-                                # A pure random array may not be a very good test (too random),
-                                # so add a Gaussian
-                                xx = [np.fft.fftshift(np.fft.fftfreq(nn)) for nn in sh]
-                                v = np.zeros_like(d)
-                                for x in np.meshgrid(*xx, indexing='ij'):
-                                    v += x ** 2
-                                d += 10 * np.exp(-v * 2)
+                                d = d0.astype(dtype).copy()
                                 n0 = (abs(d[..., :-2]) ** 2).sum()
                                 d_gpu = cla.to_device(self.queue, d)
                                 app = VkFFTApp(d.shape, d.dtype, self.queue, ndim=ndim, norm=norm, r2c=True)
@@ -237,6 +246,20 @@ class TestVkFFTOpenCL(unittest.TestCase):
         for n in [32, 17]:  # test both radix-2 and Bluestein algorithms.
             for dims in range(1, 5):
                 for ndim in range(1, min(dims, 3) + 1):
+                    sh = [n] * dims
+                    sh = tuple(sh)
+                    shc = [n] * dims
+                    shc[-1] = n // 2 + 1
+                    shc = tuple(shc)
+
+                    d0 = np.random.uniform(0, 1, sh)
+                    # A pure random array may not be a very good test (too random),
+                    # so add a Gaussian
+                    xx = [np.fft.fftshift(np.fft.fftfreq(nn)) for nn in sh]
+                    v = np.zeros_like(d0)
+                    for x in np.meshgrid(*xx, indexing='ij'):
+                        v += x ** 2
+                    d0 += 10 * np.exp(-v * 2)
                     for dtype in self.dtype_float_v:
                         for norm in [0, 1, "ortho"]:
                             with self.subTest(n=n, dims=dims, ndim=ndim, dtype=dtype, norm=norm):
@@ -251,21 +274,7 @@ class TestVkFFTOpenCL(unittest.TestCase):
                                     dtype_c = np.complex64
                                 elif dtype == np.float64:
                                     dtype_c = np.complex128
-
-                                sh = [n] * dims
-                                sh = tuple(sh)
-                                shc = [n] * dims
-                                shc[-1] = n // 2 + 1
-                                shc = tuple(shc)
-
-                                d = np.random.uniform(0, 1, sh).astype(dtype)
-                                # A pure random array may not be a very good test (too random),
-                                # so add a Gaussian
-                                xx = [np.fft.fftshift(np.fft.fftfreq(nn)) for nn in sh]
-                                v = np.zeros_like(d)
-                                for x in np.meshgrid(*xx, indexing='ij'):
-                                    v += x ** 2
-                                d += 10 * np.exp(-v * 2)
+                                d = d0.astype(dtype).copy()
                                 n0 = (abs(d) ** 2).sum()
                                 d_gpu = cla.to_device(self.queue, d)
                                 d1_gpu = cla.empty(self.queue, shc, dtype=dtype_c)
@@ -291,6 +300,107 @@ class TestVkFFTOpenCL(unittest.TestCase):
                                 self.assertTrue(np.allclose(d, d_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
                                 n1 = (abs(d_gpu.get()) ** 2).sum()
                                 self.assertTrue(np.isclose(n0, n1, rtol=rtol))
+
+    @unittest.skipIf(cla is None, "pyopencl is not available")
+    @unittest.skipIf(not has_scipy_dct, "scipy.fft.dctn is not available")
+    def test_dct(self):
+        """
+        Test inplace DCT transforms
+        """
+        for n in [32, 34]:
+            # test both radix-2 and Bluestein algorithms.
+            for dims in range(1, 5):
+                for ndim in range(1, min(dims, 3) + 1):
+                    sh = [n] * dims
+                    d0 = np.random.uniform(0, 1, sh)
+                    # A pure random array may not be a very good test (too random),
+                    # so add a Gaussian
+                    xx = [np.fft.fftshift(np.fft.fftfreq(nn)) for nn in sh]
+                    v = np.zeros_like(d0)
+                    for x in np.meshgrid(*xx, indexing='ij'):
+                        v += x ** 2
+                    d0 += 10 * np.exp(-v * 2)
+                    n0 = (abs(d0) ** 2).sum()
+                    for dtype in self.dtype_float_v:
+                        for dct in range(1, 4 + 1):
+                            # for norm in [0, 1, "ortho"] # TODO : test all norms
+                            norm = 1  # Same default norm as scipy
+                            with self.subTest(n=n, dims=dims, ndim=ndim, dtype=dtype, dct=dct, norm=norm):
+                                if dtype == np.float32:
+                                    rtol = 1e-4
+                                else:
+                                    rtol = 1e-8
+                                if max(primes(n)) > 13 or dct != 2:
+                                    # Lower accuracy for Bluestein transforms
+                                    # Why is it necessary for DCT types != 2 ?
+                                    rtol *= 8
+
+                                d = d0.astype(dtype).copy()
+
+                                d_gpu = cla.to_device(self.queue, d)
+                                app = VkFFTApp(d.shape, d.dtype, self.queue, ndim=ndim, norm=norm, dct=dct)
+
+                                d = dctn(d, axes=list(range(dims))[-ndim:], type=dct)
+                                d_gpu = app.fft(d_gpu)
+                                self.assertTrue(np.allclose(d, d_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
+
+                                d = idctn(d, axes=list(range(dims))[-ndim:], type=dct)
+                                d_gpu = app.ifft(d_gpu)
+
+                                self.assertTrue(np.allclose(d, d_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
+                                self.assertTrue(np.allclose(d0, d_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
+
+    @unittest.skipIf(cla is None, "pyopencl is not available")
+    @unittest.skipIf(not has_scipy_dct, "scipy.fft.dctn is not available")
+    def test_dct_outofplace(self):
+        """
+        Test out-of-place DCT transforms
+        """
+        for n in [32, 34]:
+            # test both radix-2 and Bluestein algorithms.
+            for dims in range(1, 5):
+                for ndim in range(1, min(dims, 3) + 1):
+                    sh = [n] * dims
+                    d0 = np.random.uniform(0, 1, sh)
+                    # A pure random array may not be a very good test (too random),
+                    # so add a Gaussian
+                    xx = [np.fft.fftshift(np.fft.fftfreq(nn)) for nn in sh]
+                    v = np.zeros_like(d0)
+                    for x in np.meshgrid(*xx, indexing='ij'):
+                        v += x ** 2
+                    d0 += 10 * np.exp(-v * 2)
+                    n0 = (abs(d0) ** 2).sum()
+                    for dtype in self.dtype_float_v:
+                        for dct in range(1, 4 + 1):
+                            # for norm in [0, 1, "ortho"] # TODO : test all norms
+                            norm = 1  # Same default norm as scipy
+                            with self.subTest(n=n, dims=dims, ndim=ndim, dtype=dtype, dct=dct, norm=norm):
+                                if dtype == np.float32:
+                                    rtol = 1e-4
+                                else:
+                                    rtol = 1e-8
+                                if max(primes(n)) > 13 or dct != 2:
+                                    # Lower accuracy for Bluestein transforms
+                                    # Why is it necessary for DCT types != 2 ?
+                                    rtol *= 8
+
+                                d = d0.astype(dtype).copy()
+
+                                d_gpu = cla.to_device(self.queue, d)
+                                d1_gpu = cla.empty_like(d_gpu)
+                                app = VkFFTApp(d.shape, d.dtype, self.queue, ndim=ndim, norm=norm,
+                                               dct=dct, inplace=False)
+
+                                d = dctn(d, axes=list(range(dims))[-ndim:], type=dct)
+                                d1_gpu = app.fft(d_gpu, d1_gpu)
+                                self.assertTrue(np.allclose(d0, d_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
+                                self.assertTrue(np.allclose(d, d1_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
+
+                                d = idctn(d, axes=list(range(dims))[-ndim:], type=dct)
+                                d_gpu = app.ifft(d1_gpu, d_gpu)
+
+                                self.assertTrue(np.allclose(d, d_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
+                                self.assertTrue(np.allclose(d0, d_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
 
 
 def suite():
