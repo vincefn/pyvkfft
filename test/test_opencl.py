@@ -82,10 +82,20 @@ class TestVkFFTOpenCL(unittest.TestCase):
                                 axes.append(-ii - 1)
                         ndim_axes.append((None, axes))
                     for ndim, axes in ndim_axes:
-                        d0 = np.random.uniform(0, 1, [n] * dims)
+                        sh = [n] * dims
+                        if axes is not None:
+                            for i in range(dims):
+                                if -1 - i not in axes:
+                                    # Smaller array for non-transformed axes
+                                    sh[-1 - i] = 2
+                        else:
+                            for i in range(ndim, dims):
+                                sh[-1 - i] = 2
+
+                        d0 = np.random.uniform(0, 1, sh)
                         # A pure random array may not be a very good test (too random),
                         # so add a Gaussian
-                        xx = [np.fft.fftshift(np.fft.fftfreq(n))] * dims
+                        xx = [np.fft.fftshift(np.fft.fftfreq(nx)) for nx in sh]
                         v = np.zeros_like(d0)
                         for x in np.meshgrid(*xx, indexing='ij'):
                             v += x ** 2
@@ -136,10 +146,20 @@ class TestVkFFTOpenCL(unittest.TestCase):
                                 axes.append(-ii - 1)
                         ndim_axes.append((None, axes))
                     for ndim, axes in ndim_axes:
-                        d0 = np.random.uniform(0, 1, [n] * dims)
+                        sh = [n] * dims
+                        if axes is not None:
+                            for i in range(dims):
+                                if -1 - i not in axes:
+                                    # Smaller array for non-transformed axes
+                                    sh[-1 - i] = 2
+                        else:
+                            for i in range(ndim, dims):
+                                sh[-1 - i] = 2
+
+                        d0 = np.random.uniform(0, 1, sh)
                         # A pure random array may not be a very good test (too random),
                         # so add a Gaussian
-                        xx = [np.fft.fftshift(np.fft.fftfreq(n))] * dims
+                        xx = [np.fft.fftshift(np.fft.fftfreq(nx)) for nx in sh]
                         v = np.zeros_like(d0)
                         for x in np.meshgrid(*xx, indexing='ij'):
                             v += x ** 2
@@ -190,6 +210,10 @@ class TestVkFFTOpenCL(unittest.TestCase):
                     sh[-1] += 2
                     shc = [n] * dims
                     shc[-1] = n // 2 + 1
+                    for i in range(ndim, dims):
+                        # Smaller array on non-transformed axes
+                        sh[-i - 1] = 2
+                        shc[-i - 1] = 2
 
                     d0 = np.random.uniform(0, 1, sh)
                     # A pure random array may not be a very good test (too random),
@@ -233,10 +257,12 @@ class TestVkFFTOpenCL(unittest.TestCase):
                                 d_gpu = app.ifft(d_gpu) * app.get_ifft_scale()
                                 self.assertTrue(d_gpu.shape == tuple(sh))
 
+                                n1 = (abs(d_gpu.get()[..., :-2]) ** 2).sum()
+                                # print(dims, ndim, n, "%6s" % str(norm), "%14.1f %14.1f" % (n0, n1),
+                                #       np.isclose(n0, n1, rtol=rtol))
+                                self.assertTrue(np.isclose(n0, n1, rtol=rtol))
                                 self.assertTrue(
                                     np.allclose(d, d_gpu.get()[..., :-2], rtol=rtol, atol=abs(d).max() * rtol))
-                                n1 = (abs(d_gpu.get()[..., :-2]) ** 2).sum()
-                                self.assertTrue(np.isclose(n0, n1, rtol=rtol))
 
     @unittest.skipIf(cla is None, "pyopencl is not available")
     def test_r2c_outofplace(self):
@@ -247,9 +273,13 @@ class TestVkFFTOpenCL(unittest.TestCase):
             for dims in range(1, 5):
                 for ndim in range(1, min(dims, 3) + 1):
                     sh = [n] * dims
-                    sh = tuple(sh)
                     shc = [n] * dims
                     shc[-1] = n // 2 + 1
+                    for i in range(ndim, dims):
+                        # Smaller array on non-transformed axes
+                        sh[-i - 1] = 2
+                        shc[-i - 1] = 2
+                    sh = tuple(sh)
                     shc = tuple(shc)
 
                     d0 = np.random.uniform(0, 1, sh)
@@ -312,6 +342,9 @@ class TestVkFFTOpenCL(unittest.TestCase):
             for dims in range(1, 5):
                 for ndim in range(1, min(dims, 3) + 1):
                     sh = [n] * dims
+                    for i in range(ndim, dims):
+                        # Smaller array on non-transformed axes
+                        sh[-i - 1] = 2
                     d0 = np.random.uniform(0, 1, sh)
                     # A pure random array may not be a very good test (too random),
                     # so add a Gaussian
@@ -320,7 +353,6 @@ class TestVkFFTOpenCL(unittest.TestCase):
                     for x in np.meshgrid(*xx, indexing='ij'):
                         v += x ** 2
                     d0 += 10 * np.exp(-v * 2)
-                    n0 = (abs(d0) ** 2).sum()
                     for dtype in self.dtype_float_v:
                         for dct in range(1, 4 + 1):
                             # for norm in [0, 1, "ortho"] # TODO : test all norms
@@ -361,6 +393,9 @@ class TestVkFFTOpenCL(unittest.TestCase):
             for dims in range(1, 5):
                 for ndim in range(1, min(dims, 3) + 1):
                     sh = [n] * dims
+                    for i in range(ndim, dims):
+                        # Smaller array on non-transformed axes
+                        sh[-i - 1] = 2
                     d0 = np.random.uniform(0, 1, sh)
                     # A pure random array may not be a very good test (too random),
                     # so add a Gaussian
@@ -369,7 +404,6 @@ class TestVkFFTOpenCL(unittest.TestCase):
                     for x in np.meshgrid(*xx, indexing='ij'):
                         v += x ** 2
                     d0 += 10 * np.exp(-v * 2)
-                    n0 = (abs(d0) ** 2).sum()
                     for dtype in self.dtype_float_v:
                         for dct in range(1, 4 + 1):
                             # for norm in [0, 1, "ortho"] # TODO : test all norms
