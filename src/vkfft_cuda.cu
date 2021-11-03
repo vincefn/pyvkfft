@@ -27,9 +27,9 @@ LIBRARY_API VkFFTConfiguration* make_config(const size_t, const size_t, const si
 
 LIBRARY_API VkFFTApplication* init_app(const VkFFTConfiguration*);
 
-LIBRARY_API void fft(VkFFTApplication* app, void*, void*);
+LIBRARY_API int fft(VkFFTApplication* app, void*, void*);
 
-LIBRARY_API void ifft(VkFFTApplication* app, void*, void*);
+LIBRARY_API int ifft(VkFFTApplication* app, void*, void*);
 
 LIBRARY_API void free_app(VkFFTApplication* app);
 
@@ -220,20 +220,20 @@ VkFFTApplication* init_app(const VkFFTConfiguration* config)
   return app;
 }
 
-void fft(VkFFTApplication* app, void *in, void *out)
+int fft(VkFFTApplication* app, void *in, void *out)
 {
   *(app->configuration.buffer) = out;
   *(app->configuration.inputBuffer) = in;
   *(app->configuration.outputBuffer) = out;
-  VkFFTAppend(app, -1, NULL);
+  return VkFFTAppend(app, -1, NULL);
 }
 
-void ifft(VkFFTApplication* app, void *in, void *out)
+int ifft(VkFFTApplication* app, void *in, void *out)
 {
   *(app->configuration.buffer) = out;
   *(app->configuration.inputBuffer) = in;
   *(app->configuration.outputBuffer) = out;
-  VkFFTAppend(app, 1, NULL);
+  return VkFFTAppend(app, 1, NULL);
 }
 
 /** Free memory allocated during make_config()

@@ -28,9 +28,9 @@ LIBRARY_API VkFFTConfiguration* make_config(const size_t, const size_t, const si
 
 LIBRARY_API VkFFTApplication* init_app(const VkFFTConfiguration*, void*);
 
-LIBRARY_API void fft(VkFFTApplication* app, void*, void*, void*);
+LIBRARY_API int fft(VkFFTApplication* app, void*, void*, void*);
 
-LIBRARY_API void ifft(VkFFTApplication* app, void*, void*, void*);
+LIBRARY_API int ifft(VkFFTApplication* app, void*, void*, void*);
 
 LIBRARY_API void free_app(VkFFTApplication* app);
 
@@ -177,7 +177,7 @@ VkFFTApplication* init_app(const VkFFTConfiguration* config, void *queue)
   return app;
 }
 
-void fft(VkFFTApplication* app, void *in, void *out, void* queue)
+int fft(VkFFTApplication* app, void *in, void *out, void* queue)
 {
   cl_command_queue q = (cl_command_queue) queue;
 
@@ -192,10 +192,10 @@ void fft(VkFFTApplication* app, void *in, void *out, void* queue)
   par.inputBuffer = app->configuration.inputBuffer;
   par.outputBuffer = app->configuration.outputBuffer;
 
-  const int res = VkFFTAppend(app, -1, &par);
+  return VkFFTAppend(app, -1, &par);
 }
 
-void ifft(VkFFTApplication* app, void *in, void *out, void* queue)
+int ifft(VkFFTApplication* app, void *in, void *out, void* queue)
 {
   cl_command_queue q = (cl_command_queue) queue;
 
@@ -210,7 +210,7 @@ void ifft(VkFFTApplication* app, void *in, void *out, void* queue)
   par.inputBuffer = app->configuration.inputBuffer;
   par.outputBuffer = app->configuration.outputBuffer;
 
-  const int res = VkFFTAppend(app, 1, &par);
+  return VkFFTAppend(app, 1, &par);
 }
 
 /** Free memory associated to the vkFFT app

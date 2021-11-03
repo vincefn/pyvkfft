@@ -10,7 +10,7 @@ import ctypes
 import numpy as np
 import pyopencl as cl
 import pyopencl.array as cla
-from .base import load_library, primes, VkFFTApp as VkFFTAppBase
+from .base import load_library, primes, VkFFTApp as VkFFTAppBase, VkFFTResult, check_vkfft_result
 
 _vkfft_opencl = load_library("_vkfft_opencl")
 
@@ -31,10 +31,10 @@ _vkfft_opencl.make_config.argtypes = [ctypes.c_size_t, ctypes.c_size_t, ctypes.c
 _vkfft_opencl.init_app.restype = ctypes.c_void_p
 _vkfft_opencl.init_app.argtypes = [_types.vkfft_config, ctypes.c_void_p]
 
-_vkfft_opencl.fft.restype = None
+_vkfft_opencl.fft.restype = ctypes.c_int
 _vkfft_opencl.fft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
 
-_vkfft_opencl.ifft.restype = None
+_vkfft_opencl.ifft.restype = ctypes.c_int
 _vkfft_opencl.ifft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
 
 _vkfft_opencl.free_app.restype = None
@@ -158,6 +158,7 @@ class VkFFTApp(VkFFTAppBase):
         Compute the forward FFT
         :param src: the source pyopencl Array
         :param dest: the destination pyopencl Array. Should be None for an inplace transform
+        :raises RuntimeError: in case of a GPU kernel launch error
         :return: the transformed array. For a R2C inplace transform, the complex view of the
             array is returned.
         """
@@ -165,7 +166,8 @@ class VkFFTApp(VkFFTAppBase):
             if dest is not None:
                 if src.data.int_ptr != dest.data.int_ptr:
                     raise RuntimeError("VkFFTApp.fft: dest is not None but this is an inplace transform")
-            _vkfft_opencl.fft(self.app, int(src.data.int_ptr), int(src.data.int_ptr), int(self.queue.int_ptr))
+            res = _vkfft_opencl.fft(self.app, int(src.data.int_ptr), int(src.data.int_ptr), int(self.queue.int_ptr))
+            check_vkfft_result(res)
             if self.norm == "ortho":
                 src *= self._get_fft_scale(norm=0)
             if self.r2c:
@@ -181,7 +183,8 @@ class VkFFTApp(VkFFTAppBase):
                 raise RuntimeError("VkFFTApp.fft: dest and src are identical but this is an out-of-place transform")
             if self.r2c:
                 assert (dest.size == src.size // src.shape[-1] * (src.shape[-1] // 2 + 1))
-            _vkfft_opencl.fft(self.app, int(src.data.int_ptr), int(dest.data.int_ptr), int(self.queue.int_ptr))
+            res = _vkfft_opencl.fft(self.app, int(src.data.int_ptr), int(dest.data.int_ptr), int(self.queue.int_ptr))
+            check_vkfft_result(res)
             if self.norm == "ortho":
                 dest *= self._get_fft_scale(norm=0)
             return dest
@@ -191,6 +194,7 @@ class VkFFTApp(VkFFTAppBase):
         Compute the backward FFT
         :param src: the source pyopencl.Array
         :param dest: the destination pyopencl.Array. Can be None for an inplace transform
+        :raises RuntimeError: in case of a GPU kernel launch error
         :return: the transformed array. For a C2R inplace transform, the float view of the
             array is returned.
         """
@@ -198,7 +202,8 @@ class VkFFTApp(VkFFTAppBase):
             if dest is not None:
                 if src.data.int_ptr != dest.data.int_ptr:
                     raise RuntimeError("VkFFTApp.fft: dest!=src but this is an inplace transform")
-            _vkfft_opencl.ifft(self.app, int(src.data.int_ptr), int(src.data.int_ptr), int(self.queue.int_ptr))
+            res = _vkfft_opencl.ifft(self.app, int(src.data.int_ptr), int(src.data.int_ptr), int(self.queue.int_ptr))
+            check_vkfft_result(res)
             if self.norm == "ortho":
                 src *= self._get_ifft_scale(norm=0)
             if self.r2c:
@@ -216,10 +221,12 @@ class VkFFTApp(VkFFTAppBase):
                 assert (src.size == dest.size // dest.shape[-1] * (dest.shape[-1] // 2 + 1))
                 # Special case, src and dest buffer sizes are different,
                 # VkFFT is configured to go back to the source buffer
-                _vkfft_opencl.ifft(self.app, int(dest.data.int_ptr), int(src.data.int_ptr),
-                                   int(self.queue.int_ptr))
+                res = _vkfft_opencl.ifft(self.app, int(dest.data.int_ptr), int(src.data.int_ptr),
+                                         int(self.queue.int_ptr))
             else:
-                _vkfft_opencl.ifft(self.app, int(src.data.int_ptr), int(dest.data.int_ptr), int(self.queue.int_ptr))
+                res = _vkfft_opencl.ifft(self.app, int(src.data.int_ptr), int(dest.data.int_ptr),
+                                         int(self.queue.int_ptr))
+            check_vkfft_result(res)
             if self.norm == "ortho":
                 dest *= self._get_ifft_scale(norm=0)
             return dest

@@ -10,18 +10,20 @@ import numpy as np
 
 try:
     import pycuda.driver as cu_drv
+
     has_pycuda = True
 except ImportError:
     has_pycuda = False
 try:
     import cupy as cp
+
     has_cupy = True
 except ImportError:
     has_cupy = False
     if has_pycuda is False:
         raise ImportError("You need either PyCUDA or CuPy to use pyvkfft.cuda.")
 
-from .base import load_library, primes, VkFFTApp as VkFFTAppBase
+from .base import load_library, primes, VkFFTApp as VkFFTAppBase, VkFFTResult, check_vkfft_result
 
 _vkfft_cuda = load_library("_vkfft_cuda")
 
@@ -43,10 +45,10 @@ _vkfft_cuda.make_config.argtypes = [ctypes.c_size_t, ctypes.c_size_t, ctypes.c_s
 _vkfft_cuda.init_app.restype = ctypes.c_void_p
 _vkfft_cuda.init_app.argtypes = [_types.vkfft_config]
 
-_vkfft_cuda.fft.restype = None
+_vkfft_cuda.fft.restype = ctypes.c_int
 _vkfft_cuda.fft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p]
 
-_vkfft_cuda.ifft.restype = None
+_vkfft_cuda.ifft.restype = ctypes.c_int
 _vkfft_cuda.ifft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p]
 
 _vkfft_cuda.free_app.restype = None
@@ -171,6 +173,7 @@ class VkFFTApp(VkFFTAppBase):
         Compute the forward FFT
         :param src: the source pycuda.gpuarray.GPUArray or cupy.ndarray
         :param dest: the destination GPU array. Should be None for an inplace transform
+        :raises RuntimeError: in case of a GPU kernel launch error
         :return: the transformed array. For a R2C inplace transform, the complex view of the
             array is returned.
         """
@@ -192,7 +195,8 @@ class VkFFTApp(VkFFTAppBase):
         if self.inplace:
             if src_ptr != dest_ptr:
                 raise RuntimeError("VkFFTApp.fft: dest is not None but this is an inplace transform")
-            _vkfft_cuda.fft(self.app, int(src_ptr), int(src_ptr))
+            res = _vkfft_cuda.fft(self.app, int(src_ptr), int(src_ptr))
+            check_vkfft_result(res)
             if self.norm == "ortho":
                 src *= self._get_fft_scale(norm=0)
             if self.r2c:
@@ -208,7 +212,8 @@ class VkFFTApp(VkFFTAppBase):
                 raise RuntimeError("VkFFTApp.fft: dest and src are identical but this is an out-of-place transform")
             if self.r2c:
                 assert (dest.size == src.size // src.shape[-1] * (src.shape[-1] // 2 + 1))
-            _vkfft_cuda.fft(self.app, int(src_ptr), int(dest_ptr))
+            res = _vkfft_cuda.fft(self.app, int(src_ptr), int(dest_ptr))
+            check_vkfft_result(res)
             if self.norm == "ortho":
                 dest *= self._get_fft_scale(norm=0)
             return dest
@@ -218,6 +223,7 @@ class VkFFTApp(VkFFTAppBase):
         Compute the backward FFT
         :param src: the source pycuda.gpuarray.GPUArray or cupy.ndarray
         :param dest: the destination GPU array. Should be None for an inplace transform
+        :raises RuntimeError: in case of a GPU kernel launch error
         :return: the transformed array. For a C2R inplace transform, the float view of the
             array is returned.
         """
@@ -240,7 +246,8 @@ class VkFFTApp(VkFFTAppBase):
             if dest is not None:
                 if src_ptr != dest_ptr:
                     raise RuntimeError("VkFFTApp.fft: dest!=src but this is an inplace transform")
-            _vkfft_cuda.ifft(self.app, int(src_ptr), int(src_ptr))
+            res = _vkfft_cuda.ifft(self.app, int(src_ptr), int(src_ptr))
+            check_vkfft_result(res)
             if self.norm == "ortho":
                 src *= self._get_ifft_scale(norm=0)
             if self.r2c:
@@ -258,9 +265,10 @@ class VkFFTApp(VkFFTAppBase):
                 assert (src.size == dest.size // dest.shape[-1] * (dest.shape[-1] // 2 + 1))
                 # Special case, src and dest buffer sizes are different,
                 # VkFFT is configured to go back to the source buffer
-                _vkfft_cuda.ifft(self.app, int(dest_ptr), int(src_ptr))
+                res = _vkfft_cuda.ifft(self.app, int(dest_ptr), int(src_ptr))
             else:
-                _vkfft_cuda.ifft(self.app, int(src_ptr), int(dest_ptr))
+                res = _vkfft_cuda.ifft(self.app, int(src_ptr), int(dest_ptr))
+            check_vkfft_result(res)
             if self.norm == "ortho":
                 dest *= self._get_ifft_scale(norm=0)
             return dest
