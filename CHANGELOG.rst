@@ -6,6 +6,8 @@ Version 2021.2.2 (2021-11-XX)
 * Will now raise a RuntimeError if the GPU kernel launch fails,
   with the corresponding VkFFT error.
 * [BUG] Correct inverse FFT calculation using pyvkfft.fft.ifftn()
+* Installation from source using 'python setup.py install' is now
+  disabled - 'pip install' should always be used.
 
 Version 2021.2.1 (2021-09-04)
 -----------------------------

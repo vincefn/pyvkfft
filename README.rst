@@ -25,7 +25,10 @@ Requirements:
 - on Windows, this requires visual studio (c++ tools) and a cuda toolkit installation,
   with either CUDA_PATH or CUDA_HOME environment variable.
 
-This package can be installed from source using ``python setup.py install`` or ``pip install .``.
+This package can be installed from source using ``pip install .``.
+
+*Note:* ``python setup.py install`` is now disabled, to avoid messed up environments
+where both methods have been used.
 
 Examples
 --------

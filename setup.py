@@ -12,6 +12,7 @@ from distutils.extension import Extension
 from distutils import unixccompiler
 from setuptools.command.build_ext import build_ext as build_ext_orig
 from pyvkfft.version import __version__
+from setuptools.command.bdist_egg import bdist_egg
 
 
 def find_in_path(name, path):
@@ -230,6 +231,14 @@ if 'opencl' not in exclude_packages:
 with open("README.rst", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
+
+class bdist_egg_disabled(bdist_egg):
+    """ Disabled bdist_egg, to prevent use of 'python setup.py install' """
+
+    def run(self):
+        sys.exit("Aborting building of eggs. Please use `pip install .` to install from source.")
+
+
 setup(name="pyvkfft",
       version=__version__,
       description="Python wrapper for the CUDA and OpenCL backends of VkFFT,"
@@ -252,6 +261,8 @@ setup(name="pyvkfft",
           "Environment :: GPU",
       ],
 
-      cmdclass={'build_ext': build_ext_custom, 'sdist_vkfft': sdist_vkfft},
+      cmdclass={'build_ext': build_ext_custom, 'sdist_vkfft': sdist_vkfft,
+                'bdist_egg': bdist_egg if 'bdist_egg' in sys.argv else bdist_egg_disabled
+                },
       install_requires=install_requires,
       test_suite="test")
