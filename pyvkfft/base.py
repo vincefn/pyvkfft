@@ -315,7 +315,10 @@ class VkFFTApp:
         if "useLUT" in kwargs:
             # useLUT=1 may be beneficial on platforms which have a low accuracy for
             # the native sincos functions.
-            self.use_lut = kwargs["useLUT"]
+            if kwargs["useLUT"] is None:
+                self.use_lut = -1
+            else:
+                self.use_lut = kwargs["useLUT"]
         else:
             self.use_lut = -1
 
