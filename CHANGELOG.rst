@@ -3,6 +3,8 @@ Version 2021.2.2 (2021-11-XX)
 * Update to VkFFT 1.2.X, with support for DCT types 1, 2, 3 and 4,
   also fixing DCT issues (see https://github.com/DTolm/VkFFT/issues/48).
   DCT calculations now match scipy.
+  This also fixes a bug for some Bluestein transforms,
+  e.g. for 2D iFFT with a size of 808x808 or 1010x1010
 * Will now raise a RuntimeError if the GPU kernel launch fails,
   with the corresponding VkFFT error.
 * [BUG] Correct inverse FFT calculation using pyvkfft.fft.ifftn()

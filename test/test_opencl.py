@@ -61,8 +61,10 @@ class TestVkFFTOpenCL(unittest.TestCase):
         if 'cl_khr_fp64' in cls.queue.device.extensions:
             cls.dtype_float_v.append(np.float64)
             cls.dtype_complex_v.append(np.complex128)
+        cls.vn = [30, 34, 606]
 
     def test_pyopencl(self):
+        """Test if pyopencl available (may not matter if pycuda or cupy is used instead)"""
         self.assertTrue(cla is not None, "pyopencl is not available")
 
     @unittest.skipIf(cla is None, "pyopencl is not available")
@@ -70,8 +72,12 @@ class TestVkFFTOpenCL(unittest.TestCase):
         """
         Test inplace C2C transforms
         """
-        for n in [32, 17]:  # test both radix-2 and Bluestein algorithms
-            for dims in range(1, 5):
+        for n in self.vn:  # test both radix-2 and Bluestein algorithms
+            max_dim = 4
+            if n > 64:
+                # Only test 1D and 2D for large sizes
+                max_dim = 2
+            for dims in range(1, max_dim + 1):
                 for ndim0 in range(1, min(dims, 3) + 1):
                     # Setup use of either ndim or axes, also test skipping dimensions
                     ndim_axes = [(ndim0, None)]
@@ -108,7 +114,11 @@ class TestVkFFTOpenCL(unittest.TestCase):
                                     else:
                                         rtol = 1e-8
                                     if max(primes(n)) > 13:
-                                        rtol *= 4  # Lower accuracy for Bluestein algorithm
+                                        # Lower accuracy for Bluestein algorithm.
+                                        rtol *= 4
+                                        if n > 100 and dtype == np.complex128:
+                                            rtol *= 4
+
                                     d = d0.astype(dtype).copy()
                                     n0 = (abs(d) ** 2).sum()
                                     d_gpu = cla.to_device(self.queue, d)
@@ -134,8 +144,12 @@ class TestVkFFTOpenCL(unittest.TestCase):
         """
         Test out-of-place C2C transforms
         """
-        for n in [32, 17]:  # test both radix-2 and Bluestein algorithms
-            for dims in range(1, 5):
+        for n in self.vn:  # test both radix-2 and Bluestein algorithms
+            max_dim = 4
+            if n > 64:
+                # Only test 1D and 2D for large sizes
+                max_dim = 2
+            for dims in range(1, max_dim + 1):
                 for ndim0 in range(1, min(dims, 3) + 1):
                     # Setup use of either ndim or axes, also test skipping dimensions
                     ndim_axes = [(ndim0, None)]
@@ -172,7 +186,11 @@ class TestVkFFTOpenCL(unittest.TestCase):
                                     else:
                                         rtol = 1e-8
                                     if max(primes(n)) > 13:
-                                        rtol *= 4  # Lower accuracy for Bluestein algorithm
+                                        # Lower accuracy for Bluestein algorithm.
+                                        rtol *= 4
+                                        if n > 100 and dtype == np.complex128:
+                                            rtol *= 4
+
                                     d = d0.astype(dtype).copy()
                                     n0 = (abs(d) ** 2).sum()
                                     d_gpu = cla.to_device(self.queue, d)
@@ -201,10 +219,16 @@ class TestVkFFTOpenCL(unittest.TestCase):
         """
         Test inplace R2C transforms
         """
-        for n in [32, 34]:
+        for n in self.vn:
             # test both radix-2 and Bluestein algorithms.
             # We need a multiple of 2 for the first axis of an inplace R2C transform
-            for dims in range(1, 5):
+            if n % 2:
+                continue
+            max_dim = 4
+            if n > 64:
+                # Only test 1D and 2D for large sizes
+                max_dim = 2
+            for dims in range(1, max_dim + 1):
                 for ndim in range(1, min(dims, 3) + 1):
                     sh = [n] * dims
                     sh[-1] += 2
@@ -269,8 +293,12 @@ class TestVkFFTOpenCL(unittest.TestCase):
         """
         Test out-of-place R2C transforms
         """
-        for n in [32, 17]:  # test both radix-2 and Bluestein algorithms.
-            for dims in range(1, 5):
+        for n in self.vn:  # test both radix-2 and Bluestein algorithms.
+            max_dim = 4
+            if n > 64:
+                # Only test 1D and 2D for large sizes
+                max_dim = 2
+            for dims in range(1, max_dim + 1):
                 for ndim in range(1, min(dims, 3) + 1):
                     sh = [n] * dims
                     shc = [n] * dims
@@ -337,9 +365,13 @@ class TestVkFFTOpenCL(unittest.TestCase):
         """
         Test inplace DCT transforms
         """
-        for n in [32, 34]:
+        for n in self.vn:
             # test both radix-2 and Bluestein algorithms.
-            for dims in range(1, 5):
+            max_dim = 4
+            if n > 64:
+                # Only test 1D and 2D for large sizes
+                max_dim = 2
+            for dims in range(1, max_dim + 1):
                 for ndim in range(1, min(dims, 3) + 1):
                     sh = [n] * dims
                     for i in range(ndim, dims):
@@ -355,6 +387,13 @@ class TestVkFFTOpenCL(unittest.TestCase):
                     d0 += 10 * np.exp(-v * 2)
                     for dtype in self.dtype_float_v:
                         for dct in range(1, 4 + 1):
+                            if dct == 1 and n > 750 * 4 // np.dtype(dtype).itemsize:
+                                # Not sure where this limitation comes from
+                                # limit is n > 757 for float64, 1532 for float32 on a GTX 1080
+                                continue
+                            elif n > 2000 * 4 // np.dtype(dtype).itemsize:
+                                # limit is n > 2002 for float64, 4004 for float32 on a GTX 1080
+                                continue
                             # for norm in [0, 1, "ortho"] # TODO : test all norms
                             norm = 1  # Same default norm as scipy
                             with self.subTest(n=n, dims=dims, ndim=ndim, dtype=dtype, dct=dct, norm=norm):
@@ -370,6 +409,7 @@ class TestVkFFTOpenCL(unittest.TestCase):
                                 d = d0.astype(dtype).copy()
 
                                 d_gpu = cla.to_device(self.queue, d)
+                                print(d.shape, d.dtype, self.queue, ndim, norm, dct)
                                 app = VkFFTApp(d.shape, d.dtype, self.queue, ndim=ndim, norm=norm, dct=dct)
 
                                 d = dctn(d, axes=list(range(dims))[-ndim:], type=dct)
@@ -381,6 +421,7 @@ class TestVkFFTOpenCL(unittest.TestCase):
 
                                 self.assertTrue(np.allclose(d, d_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
                                 self.assertTrue(np.allclose(d0, d_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
+                                print("OK")
 
     @unittest.skipIf(cla is None, "pyopencl is not available")
     @unittest.skipIf(not has_scipy_dct, "scipy.fft.dctn is not available")
@@ -388,9 +429,13 @@ class TestVkFFTOpenCL(unittest.TestCase):
         """
         Test out-of-place DCT transforms
         """
-        for n in [32, 34]:
+        for n in self.vn:
             # test both radix-2 and Bluestein algorithms.
-            for dims in range(1, 5):
+            max_dim = 4
+            if n > 64:
+                # Only test 1D and 2D for large sizes
+                max_dim = 2
+            for dims in range(1, max_dim + 1):
                 for ndim in range(1, min(dims, 3) + 1):
                     sh = [n] * dims
                     for i in range(ndim, dims):
@@ -406,6 +451,13 @@ class TestVkFFTOpenCL(unittest.TestCase):
                     d0 += 10 * np.exp(-v * 2)
                     for dtype in self.dtype_float_v:
                         for dct in range(1, 4 + 1):
+                            if dct == 1 and n > 750 * 4 // np.dtype(dtype).itemsize:
+                                # Not sure where this limitation comes from
+                                # limit is n > 757 for float64, 1532 for float32 on a GTX 1080
+                                continue
+                            elif n > 2000 * 4 // np.dtype(dtype).itemsize:
+                                # limit is n > 2002 for float64, 4004 for float32 on a GTX 1080
+                                continue
                             # for norm in [0, 1, "ortho"] # TODO : test all norms
                             norm = 1  # Same default norm as scipy
                             with self.subTest(n=n, dims=dims, ndim=ndim, dtype=dtype, dct=dct, norm=norm):

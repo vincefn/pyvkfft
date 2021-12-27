@@ -18,12 +18,13 @@ to use the cuda backend.
 
 Requirements:
 
-- ``vkfft.h`` installed in the usual include directories, or in the 'src' directory
 - ``pyopencl`` and the opencl libraries/development tools for the opencl backend
 - ``pycuda`` or ``cupy`` and CUDA developments tools (`nvcc`) for the cuda backend
 - ``numpy``
 - on Windows, this requires visual studio (c++ tools) and a cuda toolkit installation,
   with either CUDA_PATH or CUDA_HOME environment variable.
+- *Only when installing from source*: ``vkfft.h`` installed in the usual include
+  directories, or in the 'src' directory
 
 This package can be installed from source using ``pip install .``.
 
@@ -65,7 +66,8 @@ Features
 
 - CUDA (using PyCUDA or CuPy) and OpenCL (using PyOpenCL) backends
 - C2C, R2C/C2R for inplace and out-of-place transforms
-- Direct Cosine Transform (DCT) of type 1, 2, 3 and 4 (EXPERIMENTAL)
+- Direct Cosine Transform (DCT) of type 1, 2, 3 and 4 (EXPERIMENTAL, comparison with
+  scipy DCT transforms are OK, but there are limitations on the array dimensions)
 - single and double precision for all transforms (double precision requires device support)
 - 1D, 2D and 3D transforms.
 - array can be have more dimensions than the FFT (batch transforms).
