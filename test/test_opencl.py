@@ -61,7 +61,7 @@ class TestVkFFTOpenCL(unittest.TestCase):
         if 'cl_khr_fp64' in cls.queue.device.extensions:
             cls.dtype_float_v.append(np.float64)
             cls.dtype_complex_v.append(np.complex128)
-        cls.vn = [30, 34, 606]
+        cls.vn = [30, 34, 808]
 
     def test_pyopencl(self):
         """Test if pyopencl available (may not matter if pycuda or cupy is used instead)"""
@@ -387,9 +387,9 @@ class TestVkFFTOpenCL(unittest.TestCase):
                     d0 += 10 * np.exp(-v * 2)
                     for dtype in self.dtype_float_v:
                         for dct in range(1, 4 + 1):
-                            if dct == 1 and n > 750 * 4 // np.dtype(dtype).itemsize:
+                            if dct == 1 and n > 512 * 4 // np.dtype(dtype).itemsize:
                                 # Not sure where this limitation comes from
-                                # limit is n > 757 for float64, 1532 for float32 on a GTX 1080
+                                # limit is n > 513 for float64, 1025 for float32 on a GTX 1080
                                 continue
                             elif n > 2000 * 4 // np.dtype(dtype).itemsize:
                                 # limit is n > 2002 for float64, 4004 for float32 on a GTX 1080

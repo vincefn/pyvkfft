@@ -51,7 +51,7 @@ class TestVkFFTCUDA(unittest.TestCase):
         cls.dtype_float_v = [np.float32, np.float64]
         cls.dtype_complex_v = [np.complex64, np.complex128]
         cls.backend = []
-        cls.vn = [30, 34, 606]
+        cls.vn = [30, 34, 808]
         if has_pycuda:
             cls.backend.append("pycuda")
         if has_cupy:

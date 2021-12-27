@@ -25,7 +25,7 @@ LIBRARY_API VkFFTConfiguration* make_config(const size_t, const size_t, const si
                                 const int, const size_t, const int, const int, const int, const int,
                                 const int, const int, const size_t, const int, const int, const int);
 
-LIBRARY_API VkFFTApplication* init_app(const VkFFTConfiguration*);
+LIBRARY_API VkFFTApplication* init_app(const VkFFTConfiguration*, int*);
 
 LIBRARY_API int fft(VkFFTApplication* app, void*, void*);
 
@@ -201,19 +201,18 @@ VkFFTConfiguration* make_config(const size_t nx, const size_t ny, const size_t n
 * \param config: the pointer to the VkFFTConfiguration
 * \return: the pointer to the newly created VkFFTApplication
 */
-VkFFTApplication* init_app(const VkFFTConfiguration* config)
+VkFFTApplication* init_app(const VkFFTConfiguration* config, int *res)
 {
   VkFFTApplication* app = new VkFFTApplication({});
-  const int res = initializeVkFFT(app, *config);
+  *res = initializeVkFFT(app, *config);
   /*
   cout << "init_app: "<<config<<endl<< config->buffer<<", "<< *(config->buffer)<<", "
        << config->size[0] << " " << config->size[1] << " " << config->size[2] << " "<< config->FFTdim
        << " " << *(config->bufferSize) << endl<<endl;
   cout<<res<<endl<<endl;
   */
-  if(res!=0)
+  if(*res!=0)
   {
-    cout << "VkFFTApplication initialisation failed: " << res << endl;
     delete app;
     return 0;
   }

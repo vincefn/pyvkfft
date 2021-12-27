@@ -35,6 +35,7 @@ class VkFFTResult(Enum):
     VKFFT_ERROR_ONLY_INVERSE_FFT_INITIALIZED = 1007
     VKFFT_ERROR_INVALID_CONTEXT = 1008
     VKFFT_ERROR_INVALID_PLATFORM = 1009
+    VKFFT_ERROR_ENABLED_saveApplicationToString = 1010,
     VKFFT_ERROR_EMPTY_FFTdim = 2001
     VKFFT_ERROR_EMPTY_size = 2002
     VKFFT_ERROR_EMPTY_bufferSize = 2003
@@ -47,6 +48,7 @@ class VkFFTResult(Enum):
     VKFFT_ERROR_EMPTY_outputBuffer = 2010
     VKFFT_ERROR_EMPTY_kernelSize = 2011
     VKFFT_ERROR_EMPTY_kernel = 2012
+    VKFFT_ERROR_EMPTY_applicationString = 2013,
     VKFFT_ERROR_UNSUPPORTED_RADIX = 3001
     VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH = 3002
     VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C = 3003
@@ -223,6 +225,8 @@ def check_vkfft_result(res):
     :param res: the result code from launching a transform.
     :raises RuntimeError: if res != 0
     """
+    if isinstance(res, ctypes.c_int):
+        res = res.value
     if res != 0:
         try:
             r = VkFFTResult(res)
@@ -421,4 +425,3 @@ class VkFFTApp:
         after a backward FT
         """
         return self._get_ifft_scale(self.norm)
-

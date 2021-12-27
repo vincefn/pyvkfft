@@ -29,7 +29,7 @@ _vkfft_opencl.make_config.argtypes = [ctypes.c_size_t, ctypes.c_size_t, ctypes.c
                                       ctypes.c_size_t, ctypes.c_int, ctypes.c_int, ctypes.c_int]
 
 _vkfft_opencl.init_app.restype = ctypes.c_void_p
-_vkfft_opencl.init_app.argtypes = [_types.vkfft_config, ctypes.c_void_p]
+_vkfft_opencl.init_app.argtypes = [_types.vkfft_config, ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)]
 
 _vkfft_opencl.fft.restype = ctypes.c_int
 _vkfft_opencl.fft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
@@ -111,7 +111,9 @@ class VkFFTApp(VkFFTAppBase):
         if self.config is None:
             print("VkFFTApp:", shape, axes, ndim, r2c, "->", self.shape, self.skip_axis, self.ndim)
             raise RuntimeError("Error creating VkFFTConfiguration. Was the OpenCL context properly initialised ?")
-        self.app = _vkfft_opencl.init_app(self.config, queue.int_ptr)
+        res = ctypes.c_int(0)
+        self.app = _vkfft_opencl.init_app(self.config, queue.int_ptr, ctypes.byref(res))
+        check_vkfft_result(res)
         if self.app is None:
             print("VkFFTApp:", shape, axes, ndim, r2c, "->", self.shape, self.skip_axis, self.ndim)
             raise RuntimeError("Error creating VkFFTApplication. Was the OpenCL context properly initialised ?")

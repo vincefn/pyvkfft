@@ -5,8 +5,8 @@ Version 2021.2.2 (2021-11-XX)
   DCT calculations now match scipy.
   This also fixes a bug for some Bluestein transforms,
   e.g. for 2D iFFT with a size of 808x808 or 1010x1010
-* Will now raise a RuntimeError if the GPU kernel launch fails,
-  with the corresponding VkFFT error.
+* Raise a RuntimeError if the VkFFTApp initialisation or the
+  GPU kernel launch fails, with the corresponding VkFFT error.
 * [BUG] Correct inverse FFT calculation using pyvkfft.fft.ifftn()
 * Installation from source using 'python setup.py install' is now
   disabled - 'pip install' should always be used.

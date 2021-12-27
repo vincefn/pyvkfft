@@ -43,7 +43,7 @@ _vkfft_cuda.make_config.argtypes = [ctypes.c_size_t, ctypes.c_size_t, ctypes.c_s
                                     ctypes.c_int, ctypes.c_int, ctypes.c_int]
 
 _vkfft_cuda.init_app.restype = ctypes.c_void_p
-_vkfft_cuda.init_app.argtypes = [_types.vkfft_config]
+_vkfft_cuda.init_app.argtypes = [_types.vkfft_config, ctypes.POINTER(ctypes.c_int)]
 
 _vkfft_cuda.fft.restype = ctypes.c_int
 _vkfft_cuda.fft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p]
@@ -116,7 +116,9 @@ class VkFFTApp(VkFFTAppBase):
         self.config = self._make_config()
         if self.config is None:
             raise RuntimeError("Error creating VkFFTConfiguration. Was the CUDA context properly initialised ?")
-        self.app = _vkfft_cuda.init_app(self.config)
+        res = ctypes.c_int(0)
+        self.app = _vkfft_cuda.init_app(self.config, ctypes.byref(res))
+        check_vkfft_result(res)
         if self.app is None:
             raise RuntimeError("Error creating VkFFTApplication. Was the CUDA driver initialised ?")
         if has_pycuda:
