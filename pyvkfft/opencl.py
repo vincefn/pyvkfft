@@ -109,13 +109,11 @@ class VkFFTApp(VkFFTAppBase):
         self.config = self._make_config()
 
         if self.config is None:
-            print("VkFFTApp:", shape, axes, ndim, r2c, "->", self.shape, self.skip_axis, self.ndim)
             raise RuntimeError("Error creating VkFFTConfiguration. Was the OpenCL context properly initialised ?")
         res = ctypes.c_int(0)
         self.app = _vkfft_opencl.init_app(self.config, queue.int_ptr, ctypes.byref(res))
         check_vkfft_result(res)
         if self.app is None:
-            print("VkFFTApp:", shape, axes, ndim, r2c, "->", self.shape, self.skip_axis, self.ndim)
             raise RuntimeError("Error creating VkFFTApplication. Was the OpenCL context properly initialised ?")
 
     def __del__(self):

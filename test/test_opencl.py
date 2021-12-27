@@ -116,8 +116,10 @@ class TestVkFFTOpenCL(unittest.TestCase):
                                     if max(primes(n)) > 13:
                                         # Lower accuracy for Bluestein algorithm.
                                         rtol *= 4
-                                        if n > 100 and dtype == np.complex128:
+                                        if n > 100:
                                             rtol *= 4
+                                            if dtype == np.complex128:
+                                                rtol *= 4
 
                                     d = d0.astype(dtype).copy()
                                     n0 = (abs(d) ** 2).sum()
@@ -188,8 +190,10 @@ class TestVkFFTOpenCL(unittest.TestCase):
                                     if max(primes(n)) > 13:
                                         # Lower accuracy for Bluestein algorithm.
                                         rtol *= 4
-                                        if n > 100 and dtype == np.complex128:
+                                        if n > 100:
                                             rtol *= 4
+                                            if dtype == np.complex128:
+                                                rtol *= 4
 
                                     d = d0.astype(dtype).copy()
                                     n0 = (abs(d) ** 2).sum()
@@ -421,7 +425,6 @@ class TestVkFFTOpenCL(unittest.TestCase):
 
                                 self.assertTrue(np.allclose(d, d_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
                                 self.assertTrue(np.allclose(d0, d_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
-                                print("OK")
 
     @unittest.skipIf(cla is None, "pyopencl is not available")
     @unittest.skipIf(not has_scipy_dct, "scipy.fft.dctn is not available")
