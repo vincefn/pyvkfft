@@ -242,6 +242,8 @@ class TestVkFFTCUDA(unittest.TestCase):
                                         rtol = 1e-12
                                     if max(primes(n)) > 13:
                                         rtol *= 4  # Lower accuracy for Bluestein algorithm
+                                        if n > 100 and dtype == np.float64:
+                                            rtol *= 10
 
                                     sh = [n] * dims
                                     sh[-1] += 2
@@ -310,6 +312,8 @@ class TestVkFFTCUDA(unittest.TestCase):
                                         rtol = 1e-12
                                     if max(primes(n)) > 13:
                                         rtol *= 4  # Lower accuracy for Bluestein algorithm
+                                        if n > 100 and dtype == np.float64:
+                                            rtol *= 10
 
                                     if dtype == np.float32:
                                         dtype_c = np.complex64

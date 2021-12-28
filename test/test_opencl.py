@@ -261,7 +261,10 @@ class TestVkFFTOpenCL(unittest.TestCase):
                                     rtol = 1e-8
                                     c_dtype = np.complex128
                                 if max(primes(n)) > 13:
-                                    rtol *= 8  # Lower accuracy for Bluestein algorithm
+                                    rtol *= 4  # Lower accuracy for Bluestein algorithm
+                                    if n > 100 and dtype == np.float64:
+                                        rtol *= 10
+
                                 d = d0.astype(dtype).copy()
                                 n0 = (abs(d[..., :-2]) ** 2).sum()
                                 d_gpu = cla.to_device(self.queue, d)
@@ -331,6 +334,8 @@ class TestVkFFTOpenCL(unittest.TestCase):
                                     rtol = 1e-8
                                 if max(primes(n)) > 13:
                                     rtol *= 4  # Lower accuracy for Bluestein algorithm
+                                    if n > 100 and dtype == np.float64:
+                                        rtol *= 10
 
                                 if dtype == np.float32:
                                     dtype_c = np.complex64
