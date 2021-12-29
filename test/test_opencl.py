@@ -418,7 +418,6 @@ class TestVkFFTOpenCL(unittest.TestCase):
                                 d = d0.astype(dtype).copy()
 
                                 d_gpu = cla.to_device(self.queue, d)
-                                print(d.shape, d.dtype, self.queue, ndim, norm, dct)
                                 app = VkFFTApp(d.shape, d.dtype, self.queue, ndim=ndim, norm=norm, dct=dct)
 
                                 d = dctn(d, axes=list(range(dims))[-ndim:], type=dct)
