@@ -44,6 +44,16 @@ except ImportError:
     has_pycuda = False
 
 
+def l2(a, b):
+    """L2 norm"""
+    return np.sqrt((abs(a - b) ** 2).sum() / (abs(a) ** 2).sum())
+
+
+def li(a, b):
+    """Linf norm"""
+    return abs(a - b).max() / abs(a).max()
+
+
 class TestVkFFTCUDA(unittest.TestCase):
 
     @classmethod
@@ -75,8 +85,9 @@ class TestVkFFTCUDA(unittest.TestCase):
     @unittest.skipIf(not has_pycuda and not has_cupy, "pycuda and cupy are not available")
     def test_c2c(self):
         """
-        Test inplace C2C transforms [240 sub-tests per backend]
+        Test C2C transforms [XX sub-tests per backend]
         """
+        verbose = False
         ct = 0
         for backend in self.backend:
             if backend == "pycuda":
@@ -100,119 +111,81 @@ class TestVkFFTCUDA(unittest.TestCase):
                             ndim_axes.append((None, axes))
                         for ndim, axes in ndim_axes:
                             for dtype in self.dtype_complex_v:
-                                for norm in [0, 1, "ortho"]:
-                                    with self.subTest(backend=backend, n=n, dims=dims, ndim=ndim,
-                                                      axes=axes, dtype=dtype, norm=norm):
-                                        ct += 1
-                                        if dtype == np.complex64:
-                                            rtol = 1e-6
+                                if axes is None:
+                                    axes_numpy = list(range(dims))[-ndim:]
+                                else:
+                                    axes_numpy = axes
+
+                                # Array shape
+                                sh = [n] * dims
+
+                                # Use only a size of 2 for non-transform axes
+                                for ii in range(len(sh)):
+                                    if ii not in axes_numpy and (-len(sh) + ii) not in axes_numpy:
+                                        sh[ii] = 2
+
+                                d0 = (np.random.uniform(-0.5, 0.5, sh)
+                                      + 1j * np.random.uniform(-0.5, 0.5, sh)).astype(dtype)
+
+                                # base FFT scale for numpy
+                                s = np.sqrt(np.prod([d0.shape[i] for i in axes_numpy]))
+
+                                # Tolerance estimated from accuracy notebook
+                                if dtype == np.complex64:
+                                    tol = 1e-6 + 4e-7 * np.log10(s ** 2)
+                                else:
+                                    tol = 5e-15 + 5e-16 * np.log10(s ** 2)
+
+                                for use_lut in [None, 1]:
+                                    # None will use the VkFFT default, 1 will force using the LUT
+                                    for inplace in [True, False]:
+                                        if n == 30:
+                                            vnorm = [0, 1, "ortho"]
                                         else:
-                                            rtol = 1e-12
-                                        if max(primes(n)) > 13:
-                                            # Lower accuracy for Bluestein algorithm.
-                                            rtol *= 4
-                                            if n > 100 and dtype == np.complex128:
-                                                rtol *= 10
+                                            vnorm = [0, 1]
+                                        for norm in vnorm:
+                                            with self.subTest(backend=backend, n=n, dims=dims, ndim=ndim,
+                                                              axes=axes, dtype=dtype, norm=norm, use_lut=use_lut,
+                                                              inplace=inplace):
+                                                ct += 1
+                                                d_gpu = to_gpu(d0)
+                                                if inplace:
+                                                    d1_gpu = d_gpu
+                                                else:
+                                                    d1_gpu = d_gpu.copy()
+                                                app = VkFFTApp(d0.shape, d0.dtype, ndim=ndim, norm=norm, axes=axes,
+                                                               useLUT=use_lut, inplace=inplace)
 
-                                        d = np.random.uniform(0, 1, [n] * dims).astype(dtype)
-                                        # A pure random array may not be a very good test (too random),
-                                        # so add a Gaussian
-                                        xx = [np.fft.fftshift(np.fft.fftfreq(n))] * dims
-                                        v = np.zeros_like(d)
-                                        for x in np.meshgrid(*xx, indexing='ij'):
-                                            v += x ** 2
-                                        d += 10 * np.exp(-v * 2)
-                                        n0 = (abs(d) ** 2).sum()
-                                        d_gpu = to_gpu(d)
-                                        app = VkFFTApp(d.shape, d.dtype, ndim=ndim, norm=norm, axes=axes)
-                                        if axes is None:
-                                            axes = list(range(dims))[-ndim:]  # For numpy
-                                        # base FFT scale for numpy
-                                        s = np.sqrt(np.prod([d.shape[i] for i in axes]))
+                                                d = fftn(d0, axes=axes_numpy) / s
+                                                d1_gpu = app.fft(d_gpu, d1_gpu) * app.get_fft_scale()
+                                                n2, ni = l2(d, d1_gpu.get()), li(d, d1_gpu.get())
+                                                if verbose:
+                                                    print("%16s axes=%12s %12s ndim=%4s norm=%5s lut=%4s"
+                                                          "inplace=%d %5s: n2=%8e ninf=%8e < %8e %s"
+                                                          % (str(d0.shape), str(axes), str(d0.dtype), str(ndim),
+                                                             str(norm), str(use_lut), int(inplace), "FFT", n2, ni,
+                                                             tol, ni < tol))
+                                                self.assertTrue(ni < tol, "Accuracy mismatch after FFT, "
+                                                                          "n2=%8e ni=%8e>%8e" % (n2, ni, tol))
 
-                                        d = fftn(d, axes=axes) / s
-                                        d_gpu = app.fft(d_gpu) * app.get_fft_scale()
-                                        self.assertTrue(
-                                            np.allclose(d, d_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
-
-                                        d = ifftn(d, axes=axes) * s
-                                        d_gpu = app.ifft(d_gpu) * app.get_ifft_scale()
-                                        self.assertTrue(
-                                            np.allclose(d, d_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
-                                        n1 = (abs(d_gpu.get()) ** 2).sum()
-                                        self.assertTrue(np.isclose(n0, n1, rtol=rtol))
+                                                # test iFFT from original array to avoid error propagation
+                                                d_gpu = to_gpu(d0)
+                                                if inplace:
+                                                    d1_gpu = d_gpu
+                                                else:
+                                                    d1_gpu = d_gpu.copy()
+                                                d = ifftn(d0, axes=axes_numpy) * s
+                                                d1_gpu = app.ifft(d_gpu, d1_gpu) * app.get_ifft_scale()
+                                                n2, ni = l2(d, d1_gpu.get()), li(d, d1_gpu.get())
+                                                if verbose:
+                                                    print("%16s axes=%12s %12s ndim=%4s norm=%5s lut=%4s"
+                                                          "inplace=%d %5s: n2=%8e ninf=%8e < %8e %s"
+                                                          % (str(d0.shape), str(axes), str(d0.dtype), str(ndim),
+                                                             str(norm), str(use_lut), int(inplace), "FFT", n2, ni,
+                                                             tol, ni < tol))
+                                                self.assertTrue(ni < tol, "Accuracy mismatch after iFFT, "
+                                                                          "n2=%8e ni=%8e>%8e" % (n2, ni, tol))
         # print("Finished C2C tests with %d subtests" % ct)
-
-    @unittest.skipIf(not has_pycuda and not has_cupy, "pycuda and cupy are not available")
-    def test_c2c_outofplace(self):
-        """
-        Test out-of-place C2C transforms [240 sub-tests per backend]
-        """
-        for backend in self.backend:
-            if backend == "pycuda":
-                to_gpu = cua.to_gpu
-                gpu_empty_like = cua.empty_like
-            else:
-                to_gpu = cp.array
-                gpu_empty_like = cp.empty_like
-            for n in [32, 17, 808]:  # test both radix-2 and Bluestein algorithms
-                max_dim = 4
-                if n > 100:
-                    # Only test 1D and 2D for large sizes
-                    max_dim = 2
-                for dims in range(1, max_dim + 1):
-                    for ndim0 in range(1, min(dims, 3) + 1):
-                        # Setup use of either ndim or axes, also test skipping dimensions
-                        ndim_axes = [(ndim0, None)]
-                        for i in range(1, 2 ** (ndim0 - 1)):
-                            axes = []
-                            for ii in range(ndim0):
-                                if not (i & 2 ** ii):
-                                    axes.append(-ii - 1)
-                            ndim_axes.append((None, axes))
-                        for ndim, axes in ndim_axes:
-                            for dtype in self.dtype_complex_v:
-                                for norm in [0, 1, "ortho"]:
-                                    with self.subTest(backend=backend, n=n, dims=dims, ndim=ndim,
-                                                      axes=axes, dtype=dtype, norm=norm):
-                                        if dtype == np.complex64:
-                                            rtol = 1e-6
-                                        else:
-                                            rtol = 1e-12
-                                        if max(primes(n)) > 13:
-                                            # Lower accuracy for Bluestein algorithm.
-                                            rtol *= 4
-                                            if n > 100 and dtype == np.complex128:
-                                                rtol *= 10
-
-                                        d = np.random.uniform(0, 1, [n] * dims).astype(dtype)
-                                        # A pure random array may not be a very good test (too random),
-                                        # so add a Gaussian
-                                        xx = [np.fft.fftshift(np.fft.fftfreq(n))] * dims
-                                        v = np.zeros_like(d)
-                                        for x in np.meshgrid(*xx, indexing='ij'):
-                                            v += x ** 2
-                                        d += 10 * np.exp(-v * 2)
-                                        n0 = (abs(d) ** 2).sum()
-                                        d_gpu = to_gpu(d)
-                                        d1_gpu = gpu_empty_like(d_gpu)
-                                        app = VkFFTApp(d.shape, d.dtype, ndim=ndim, norm=norm, axes=axes, inplace=False)
-                                        if axes is None:
-                                            axes = list(range(dims))[-ndim:]  # For numpy
-                                        # base FFT scale for numpy
-                                        s = np.sqrt(np.prod([d.shape[i] for i in axes]))
-
-                                        d = fftn(d, axes=axes) / s
-                                        d1_gpu = app.fft(d_gpu, d1_gpu) * app.get_fft_scale()
-                                        self.assertTrue(
-                                            np.allclose(d, d1_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
-
-                                        d = ifftn(d, axes=axes) * s
-                                        d_gpu = app.ifft(d1_gpu, d_gpu) * app.get_ifft_scale()
-                                        self.assertTrue(
-                                            np.allclose(d, d_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
-                                        n1 = (abs(d_gpu.get()) ** 2).sum()
-                                        self.assertTrue(np.isclose(n0, n1, rtol=rtol))
 
     @unittest.skipIf(not has_pycuda and not has_cupy, "pycuda and cupy are not available")
     def test_r2c(self):
