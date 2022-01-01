@@ -24,12 +24,6 @@ except ImportError:
     print("Install scipy if you want to test dct transforms")
 
 try:
-    from scipy.misc import ascent
-except ImportError:
-    def ascent():
-        return np.random.randint(0, 255, (512, 512))
-
-try:
     from pyvkfft.cuda import VkFFTApp, primes, has_pycuda, has_cupy
 
     if has_pycuda:
@@ -43,15 +37,7 @@ except ImportError:
     has_cupy = False
     has_pycuda = False
 
-
-def l2(a, b):
-    """L2 norm"""
-    return np.sqrt((abs(a - b) ** 2).sum() / (abs(a) ** 2).sum())
-
-
-def li(a, b):
-    """Linf norm"""
-    return abs(a - b).max() / abs(a).max()
+from pyvkfft.accuracy import test_accuracy
 
 
 class TestVkFFTCUDA(unittest.TestCase):
@@ -69,7 +55,7 @@ class TestVkFFTCUDA(unittest.TestCase):
             # TODO: The following somehow helps initialising cupy, not sure why it's useful.
             #  (some context auto-init...). Otherwise a cuLaunchKernel error occurs with
             #  the first transform.
-            cupy_a = cp.array(ascent())
+            cupy_a = cp.array(np.zeros((128, 128), dtype=np.float32))
             cupy_a.sum()
 
     @unittest.skipIf(has_pycuda is False and has_cupy, "pycuda is not available, but cupy is")
@@ -127,15 +113,6 @@ class TestVkFFTCUDA(unittest.TestCase):
                                 d0 = (np.random.uniform(-0.5, 0.5, sh)
                                       + 1j * np.random.uniform(-0.5, 0.5, sh)).astype(dtype)
 
-                                # base FFT scale for numpy
-                                s = np.sqrt(np.prod([d0.shape[i] for i in axes_numpy]))
-
-                                # Tolerance estimated from accuracy notebook
-                                if dtype == np.complex64:
-                                    tol = 1e-6 + 4e-7 * np.log10(s ** 2)
-                                else:
-                                    tol = 5e-15 + 5e-16 * np.log10(s ** 2)
-
                                 for use_lut in [None, 1]:
                                     # None will use the VkFFT default, 1 will force using the LUT
                                     for inplace in [True, False]:
@@ -148,43 +125,19 @@ class TestVkFFTCUDA(unittest.TestCase):
                                                               axes=axes, dtype=dtype, norm=norm, use_lut=use_lut,
                                                               inplace=inplace):
                                                 ct += 1
-                                                d_gpu = to_gpu(d0)
-                                                if inplace:
-                                                    d1_gpu = d_gpu
-                                                else:
-                                                    d1_gpu = d_gpu.copy()
-                                                app = VkFFTApp(d0.shape, d0.dtype, ndim=ndim, norm=norm, axes=axes,
-                                                               useLUT=use_lut, inplace=inplace)
-
-                                                d = fftn(d0, axes=axes_numpy) / s
-                                                d1_gpu = app.fft(d_gpu, d1_gpu) * app.get_fft_scale()
-                                                n2, ni = l2(d, d1_gpu.get()), li(d, d1_gpu.get())
-                                                if verbose:
-                                                    print("%16s axes=%12s %12s ndim=%4s norm=%5s lut=%4s"
-                                                          "inplace=%d %5s: n2=%8e ninf=%8e < %8e %s"
-                                                          % (str(d0.shape), str(axes), str(d0.dtype), str(ndim),
-                                                             str(norm), str(use_lut), int(inplace), "FFT", n2, ni,
-                                                             tol, ni < tol))
+                                                n2, ni, n2i, nii, tol, dt1, dt2, dt3, dt4, src1, src2, res = \
+                                                    test_accuracy(backend, sh, ndim, axes, dtype, inplace, norm,
+                                                                  use_lut, stream=None, queue=None,
+                                                                  return_array=False, init_array=d0, verbose=verbose)
                                                 self.assertTrue(ni < tol, "Accuracy mismatch after FFT, "
                                                                           "n2=%8e ni=%8e>%8e" % (n2, ni, tol))
-
-                                                # test iFFT from original array to avoid error propagation
-                                                d_gpu = to_gpu(d0)
-                                                if inplace:
-                                                    d1_gpu = d_gpu
-                                                else:
-                                                    d1_gpu = d_gpu.copy()
-                                                d = ifftn(d0, axes=axes_numpy) * s
-                                                d1_gpu = app.ifft(d_gpu, d1_gpu) * app.get_ifft_scale()
-                                                n2, ni = l2(d, d1_gpu.get()), li(d, d1_gpu.get())
-                                                if verbose:
-                                                    print("%16s axes=%12s %12s ndim=%4s norm=%5s lut=%4s"
-                                                          "inplace=%d %5s: n2=%8e ninf=%8e < %8e %s"
-                                                          % (str(d0.shape), str(axes), str(d0.dtype), str(ndim),
-                                                             str(norm), str(use_lut), int(inplace), "FFT", n2, ni,
-                                                             tol, ni < tol))
-                                                self.assertTrue(ni < tol, "Accuracy mismatch after iFFT, "
-                                                                          "n2=%8e ni=%8e>%8e" % (n2, ni, tol))
+                                                self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, "
+                                                                           "n2=%8e ni=%8e>%8e" % (n2, nii, tol))
+                                                if not inplace:
+                                                    self.assertTrue(src1,
+                                                                    "The source array was modified during the FFT")
+                                                    self.assertTrue(src2,
+                                                                    "The source array was modified during the iFFT")
         # print("Finished C2C tests with %d subtests" % ct)
 
     @unittest.skipIf(not has_pycuda and not has_cupy, "pycuda and cupy are not available")
@@ -476,7 +429,8 @@ class TestVkFFTCUDA(unittest.TestCase):
                         rtol = 1e-6
                     else:
                         rtol = 1e-12
-                    d = ascent().astype(dtype)
+                    sh = (256, 256)
+                    d = (np.random.uniform(-0.5, 0.5, sh) + 1j * np.random.uniform(-0.5, 0.5, sh)).astype(dtype)
                     n_streams = 5
                     vd = []
                     vapp = []

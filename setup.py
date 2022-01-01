@@ -190,8 +190,9 @@ if 'cuda' not in exclude_packages:
                                    sources=['src/vkfft_cuda.cu'],
                                    libraries=['nvrtc', 'cuda'],
                                    extra_compile_args=CUDA['extra_compile_args'],
-                                   include_dirs=CUDA['include_dirs'],
-                                   extra_link_args=CUDA['extra_link_args']
+                                   include_dirs=CUDA['include_dirs'] + ['src'],
+                                   extra_link_args=CUDA['extra_link_args'],
+                                   depends=['vkFFT.h']
                                    )
         ext_modules.append(vkfft_cuda_ext)
         # install_requires.append("pycuda")
@@ -220,10 +221,11 @@ if 'opencl' not in exclude_packages:
     vkfft_opencl_ext = Extension('pyvkfft._vkfft_opencl',
                                  sources=['src/vkfft_opencl.cpp'],
                                  extra_compile_args=OPENCL['extra_compile_args'],
-                                 include_dirs=OPENCL['include_dirs'],
+                                 include_dirs=OPENCL['include_dirs'] + ['src'],
                                  libraries=OPENCL['libraries'],
                                  library_dirs=OPENCL['library_dirs'],
-                                 extra_link_args=OPENCL['extra_link_args']
+                                 extra_link_args=OPENCL['extra_link_args'],
+                                 depends=['vkFFT.h']
                                  )
 
     ext_modules.append(vkfft_opencl_ext)

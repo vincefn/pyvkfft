@@ -25,17 +25,13 @@ except ImportError:
     print("Install scipy if you want to test dct transforms")
 
 try:
-    from scipy.misc import ascent
-except ImportError:
-    def ascent():
-        return np.random.randint(0, 255, (512, 512))
-
-try:
     import pyopencl as cl
     import pyopencl.array as cla
     from pyvkfft.opencl import VkFFTApp, primes
 except ImportError:
     cla = None
+
+from pyvkfft.accuracy import test_accuracy
 
 
 class TestVkFFTOpenCL(unittest.TestCase):
@@ -88,135 +84,49 @@ class TestVkFFTOpenCL(unittest.TestCase):
                                 axes.append(-ii - 1)
                         ndim_axes.append((None, axes))
                     for ndim, axes in ndim_axes:
-                        sh = [n] * dims
-                        if axes is not None:
-                            for i in range(dims):
-                                if -1 - i not in axes:
-                                    # Smaller array for non-transformed axes
-                                    sh[-1 - i] = 2
-                        else:
-                            for i in range(ndim, dims):
-                                sh[-1 - i] = 2
-
-                        d0 = np.random.uniform(0, 1, sh)
-                        # A pure random array may not be a very good test (too random),
-                        # so add a Gaussian
-                        xx = [np.fft.fftshift(np.fft.fftfreq(nx)) for nx in sh]
-                        v = np.zeros_like(d0)
-                        for x in np.meshgrid(*xx, indexing='ij'):
-                            v += x ** 2
-                        d0 += 10 * np.exp(-v * 2)
                         for dtype in self.dtype_complex_v:
-                            for norm in [0, 1, "ortho"]:
-                                with self.subTest(n=n, dims=dims, ndim=ndim, axes=axes, dtype=dtype, norm=norm):
-                                    if dtype == np.complex64:
-                                        rtol = 1e-4
+                            if axes is None:
+                                axes_numpy = list(range(dims))[-ndim:]
+                            else:
+                                axes_numpy = axes
+
+                            # Array shape
+                            sh = [n] * dims
+
+                            # Use only a size of 2 for non-transform axes
+                            for ii in range(len(sh)):
+                                if ii not in axes_numpy and (-len(sh) + ii) not in axes_numpy:
+                                    sh[ii] = 2
+
+                            d0 = (np.random.uniform(-0.5, 0.5, sh)
+                                  + 1j * np.random.uniform(-0.5, 0.5, sh)).astype(dtype)
+
+                            for use_lut in [None, 1]:
+                                # None will use the VkFFT default, 1 will force using the LUT
+                                for inplace in [True, False]:
+                                    if n == 30:
+                                        vnorm = [0, 1, "ortho"]
                                     else:
-                                        rtol = 1e-8
-                                    if max(primes(n)) > 13:
-                                        # Lower accuracy for Bluestein algorithm.
-                                        rtol *= 4
-                                        if n > 100:
-                                            rtol *= 4
-                                            if dtype == np.complex128:
-                                                rtol *= 4
-
-                                    d = d0.astype(dtype).copy()
-                                    n0 = (abs(d) ** 2).sum()
-                                    d_gpu = cla.to_device(self.queue, d)
-                                    app = VkFFTApp(d.shape, d.dtype, self.queue, ndim=ndim, norm=norm, axes=axes)
-                                    if axes is None:
-                                        axes = list(range(dims))[-ndim:]  # For numpy
-                                    # base FFT scale for numpy
-                                    s = np.sqrt(np.prod([d.shape[i] for i in axes]))
-
-                                    d = fftn(d, axes=axes) / s
-                                    d_gpu = app.fft(d_gpu) * app.get_fft_scale()
-                                    self.assertTrue(np.allclose(d, d_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
-
-                                    d = ifftn(d, axes=axes) * s
-                                    app.ifft(d_gpu)
-                                    d_gpu *= dtype(app.get_ifft_scale())
-                                    self.assertTrue(np.allclose(d, d_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
-                                    n1 = (abs(d_gpu.get()) ** 2).sum()
-                                    self.assertTrue(np.isclose(n0, n1, rtol=rtol))
-
-    @unittest.skipIf(cla is None, "pyopencl is not available")
-    def test_c2c_outofplace(self):
-        """
-        Test out-of-place C2C transforms
-        """
-        for n in self.vn:  # test both radix-2 and Bluestein algorithms
-            max_dim = 4
-            if n > 64:
-                # Only test 1D and 2D for large sizes
-                max_dim = 2
-            for dims in range(1, max_dim + 1):
-                for ndim0 in range(1, min(dims, 3) + 1):
-                    # Setup use of either ndim or axes, also test skipping dimensions
-                    ndim_axes = [(ndim0, None)]
-                    for i in range(1, 2 ** (ndim0 - 1)):
-                        axes = []
-                        for ii in range(ndim0):
-                            if not (i & 2 ** ii):
-                                axes.append(-ii - 1)
-                        ndim_axes.append((None, axes))
-                    for ndim, axes in ndim_axes:
-                        sh = [n] * dims
-                        if axes is not None:
-                            for i in range(dims):
-                                if -1 - i not in axes:
-                                    # Smaller array for non-transformed axes
-                                    sh[-1 - i] = 2
-                        else:
-                            for i in range(ndim, dims):
-                                sh[-1 - i] = 2
-
-                        d0 = np.random.uniform(0, 1, sh)
-                        # A pure random array may not be a very good test (too random),
-                        # so add a Gaussian
-                        xx = [np.fft.fftshift(np.fft.fftfreq(nx)) for nx in sh]
-                        v = np.zeros_like(d0)
-                        for x in np.meshgrid(*xx, indexing='ij'):
-                            v += x ** 2
-                        d0 += 10 * np.exp(-v * 2)
-                        for dtype in self.dtype_complex_v:
-                            for norm in [0, 1, "ortho"]:
-                                with self.subTest(n=n, dims=dims, ndim=ndim, axes=axes, dtype=dtype, norm=norm):
-                                    if dtype == np.complex64:
-                                        rtol = 1e-4
-                                    else:
-                                        rtol = 1e-8
-                                    if max(primes(n)) > 13:
-                                        # Lower accuracy for Bluestein algorithm.
-                                        rtol *= 4
-                                        if n > 100:
-                                            rtol *= 4
-                                            if dtype == np.complex128:
-                                                rtol *= 4
-
-                                    d = d0.astype(dtype).copy()
-                                    n0 = (abs(d) ** 2).sum()
-                                    d_gpu = cla.to_device(self.queue, d)
-                                    d1_gpu = cla.zeros_like(d_gpu)
-                                    app = VkFFTApp(d.shape, d.dtype, self.queue, ndim=ndim, norm=norm,
-                                                   axes=axes, inplace=False)
-                                    if axes is None:
-                                        axes = list(range(dims))[-ndim:]  # For numpy
-                                    # base FFT scale for numpy
-                                    s = np.sqrt(np.prod([d.shape[i] for i in axes]))
-
-                                    d = fftn(d, axes=axes) / s
-                                    app.fft(d_gpu, d1_gpu)
-                                    d1_gpu *= app.get_fft_scale()
-                                    self.assertTrue(np.allclose(d, d1_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
-
-                                    d = ifftn(d, axes=axes) * s
-                                    app.ifft(d1_gpu, d_gpu)
-                                    d_gpu *= app.get_ifft_scale()
-                                    n1 = (abs(d_gpu.get()) ** 2).sum()
-                                    self.assertTrue(np.allclose(d, d_gpu.get(), rtol=rtol, atol=abs(d).max() * rtol))
-                                    self.assertTrue(np.isclose(n0, n1, rtol=rtol))
+                                        vnorm = [0, 1]
+                                    for norm in vnorm:
+                                        with self.subTest(n=n, dims=dims, ndim=ndim,
+                                                          axes=axes, dtype=dtype, norm=norm, use_lut=use_lut,
+                                                          inplace=inplace):
+                                            ct += 1
+                                            n2, ni, n2i, nii, tol, dt1, dt2, dt3, dt4, src1, src2, res = \
+                                                test_accuracy("pyopencl", sh, ndim, axes, dtype, inplace, norm,
+                                                              use_lut, stream=None, queue=self.queue,
+                                                              return_array=False, init_array=d0, verbose=verbose)
+                                            self.assertTrue(ni < tol, "Accuracy mismatch after FFT, "
+                                                                      "n2=%8e ni=%8e>%8e" % (n2, ni, tol))
+                                            self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, "
+                                                                       "n2=%8e ni=%8e>%8e" % (n2, nii, tol))
+                                            if not inplace:
+                                                self.assertTrue(src1,
+                                                                "The source array was modified during the FFT")
+                                                self.assertTrue(src2,
+                                                                "The source array was modified during the iFFT")
+        # print("Finished C2C tests with %d subtests" % ct)
 
     @unittest.skipIf(cla is None, "pyopencl is not available")
     def test_r2c(self):
