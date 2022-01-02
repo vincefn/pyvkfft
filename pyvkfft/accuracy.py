@@ -92,21 +92,26 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         fields), to save time. The correct type will be applied.
         If None, a random array is generated.
     :param verbose: if True, print a 1-line info for both fft and ifft results
-    :return: a tuple (l2_fft, li_fft, l2_ifft, li_ifft, tol, dt_array, dt_app, dt_fft,
-        dt_ifft, src_unchanged_fft, src_unchanged_ifft, ok), with the L2 and Linf
-        normalised norms comparing pyvkfft's result with either numpy, scipy or
-        pyfftw (in long double precision for the latter), the reference tolerance, and
-        the times spent in preparing the initial random array, creating the VkFFT app,
-        and performing the forward and backward transforms (including the GPU and
-        reference transforms, plus the L2 and Linf computations - don't use this for
-        benchmarking), 'src_fft_unchanged' and 'srf_ifft_unchanged' are True if for
-        an out-of-place transform, the source array is actually unmodified (which is
-        not true for r2c ifft with ndim>=2).
-        The final value 'ok' is True if both li_fft and li_ifft are smaller than tol.
-        If return_array is True, the initial random array used is returned as the last
-        element of the tuple
+    :return: a dictionary with (l2_fft, li_fft, l2_ifft, li_ifft, tol, dt_array,
+        dt_app, dt_fft, dt_ifft, src_unchanged_fft, src_unchanged_ifft, tol_test, str),
+        with the L2 and Linf normalised norms comparing pyvkfft's result with either
+        numpy, scipy or pyfftw (in long double precision for the latter), the reference
+        tolerance, and the times spent in preparing the initial random array, creating
+        the VkFFT app, and performing the forward and backward transforms (including
+        the GPU and reference transforms, plus the L2 and Linf computations - don't use
+        this for benchmarking), 'src_fft_unchanged' and 'srf_ifft_unchanged' are True
+        if for an out-of-place transform, the source array is actually unmodified
+        (which is not true for r2c ifft with ndim>=2).
+        The last fields are 'tol_test' which is True if both li_fft and li_ifft are
+        smaller than tol, and str the string summarising the results (printed if
+        verbose is True). If return_array is True, the initial random array used is
+        returned as 'd0'.
+        All input parameters are also returned as key/values, except stream, queue,
+        return_array, ini_array and verbose.
     """
     t0 = timeit.default_timer()
+    shape0 = shape
+    dtype0 = dtype
     if dtype in (np.complex64, np.float32):
         dtype = np.complex64
         dtypef = np.float32
@@ -117,7 +122,6 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
     if dct:
         if norm != 1:
             raise RuntimeError("test_accuracy: only norm=1 can be used with dct")
-
     if r2c:
         if inplace:
             # Add two extra columns in the source array
@@ -226,31 +230,32 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
 
     src_unchanged_fft = np.all(np.equal(d_gpu.get(), d0))
 
-    if verbose:
-        if r2c:
-            t = "R2C"
-        elif dct:
-            t = "DCT%d" % dct
+    # Output string
+    if r2c:
+        t = "R2C"
+    elif dct:
+        t = "DCT%d" % dct
+    else:
+        t = "C2C"
+    if r2c and inplace:
+        tmp = list(d0.shape)
+        tmp[-1] -= 2
+        shstr = str(tuple(tmp)).replace(" ", "")
+        if "')" in shstr:
+            shstr = shstr.replace(",)", "+2)")
         else:
-            t = "C2C"
-        if r2c and inplace:
-            tmp = list(d0.shape)
-            tmp[-1] -= 2
-            shstr = str(tuple(tmp)).replace(" ", "")
-            if "')" in shstr:
-                shstr = shstr.replace(",)", "+2)")
-            else:
-                shstr = shstr.replace(")", "+2)")
-        else:
-            shstr = str(d0.shape).replace(" ", "")
-        shax = str(axes).replace(" ", "")
-        red = max(0, min(int((ni / tol - 0.2) * 255), 255))
-        stol = "\x1b[38;2;%d;0;0m%6.2e < %6.2e (%5.3f)\x1b[0m" % (red, ni, tol, ni / tol)
+            shstr = shstr.replace(")", "+2)")
+    else:
+        shstr = str(d0.shape).replace(" ", "")
+    shax = str(axes).replace(" ", "")
+    red = max(0, min(int((ni / tol - 0.2) * 255), 255))
+    stol = "\x1b[38;2;%d;0;0m%6.2e < %6.2e (%5.3f)\x1b[0m" % (red, ni, tol, ni / tol)
 
-        verb_out = "%8s %4s %13s axes=%10s ndim=%4s %10s lut=%4s inplace=%d " \
-                   " norm=%4s %5s: n2=%6.2e ninf=%s %5s %d" % \
-                   (backend, t, shstr, shax, str(ndim), str(d0.dtype),
-                    str(use_lut), int(inplace), str(norm), "FFT", n2, stol, ni < tol, src_unchanged_fft)
+    verb_out = "%8s %4s %14s axes=%10s ndim=%4s %10s lut=%4s inplace=%d " \
+               " norm=%4s %5s: n2=%6.2e ninf=%s %5s %d" % \
+               (backend, t, shstr, shax, str(ndim), str(d0.dtype),
+                str(use_lut), int(inplace), str(norm), "FFT", n2, stol, ni < tol, src_unchanged_fft)
+
     t3 = timeit.default_timer()
 
     # IFFT - from original array to avoid error propagation
@@ -305,15 +310,21 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
 
     src_unchanged_ifft = np.all(np.equal(d_gpu.get(), d0))
 
+    red = max(0, min(int((nii / tol - 0.) * 2550), 255))
+    stol = "\x1b[38;2;%d;0;0m%6.2e < %6.2e (%5.3f)\x1b[0m" % (red, nii, tol, nii / tol)
+    verb_out += "%5s: n2=%6.2e ninf=%s %5s %d" % ("iFFT", n2i, stol, nii < tol, src_unchanged_ifft)
+
     if verbose:
-        red = max(0, min(int((nii / tol - 0.) * 2550), 255))
-        stol = "\x1b[38;2;%d;0;0m%6.2e < %6.2e (%5.3f)\x1b[0m" % (red, nii, tol, nii / tol)
-        verb_out += "%5s: n2=%6.2e ninf=%s %5s %d" % ("iFFT", n2i, stol, nii < tol, src_unchanged_ifft)
         print(verb_out)
+
     t4 = timeit.default_timer()
 
+    res = {"n2": n2, "ni": ni, "n2i": n2i, "nii": nii, "tol": tol, "dt_array": t1 - t0, "dt_app": t2 - t1,
+           "dt_fft": t3 - t2, "dt_ifft": t4 - t3, "src_unchanged_fft": src_unchanged_fft,
+           "src_unchanged_ifft": src_unchanged_ifft, "tol_test": max(ni, nii) < tol, "str": verb_out,
+           "backend": backend, "shape": shape0, "ndim": ndim, "axes": axes, "dtype": dtype0, "inplace": inplace,
+           "norm": norm, "use_lut": use_lut, "r2c": r2c, "dct": dct}
+
     if return_array:
-        return n2, ni, n2i, nii, tol, t1 - t0, t2 - t1, t3 - t2, t4 - t3, \
-               src_unchanged_fft, src_unchanged_ifft, max(ni, nii) < tol, d0
-    return n2, ni, n2i, nii, tol, t1 - t0, t2 - t1, t3 - t2, t4 - t3, \
-           src_unchanged_fft, src_unchanged_ifft, max(ni, nii) < tol
+        res["d0"] = d0
+    return res

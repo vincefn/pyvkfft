@@ -166,7 +166,7 @@ class sdist_vkfft(sdist):
 
 
 ext_modules = []
-install_requires = ['numpy']
+install_requires = ['numpy', 'psutil']
 exclude_packages = ['examples', 'test']
 CUDA = None
 OPENCL = None

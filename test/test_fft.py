@@ -1,5 +1,18 @@
+# -*- coding: utf-8 -*-
+
+# PyVkFFT
+#   (c) 2021- : ESRF-European Synchrotron Radiation Facility
+#       authors:
+#         Vincent Favre-Nicolin, favre@esrf.fr
+#
+#
+# pyvkfft unit tests.
+
 import os
+import sys
 import unittest
+import multiprocessing
+import psutil
 import numpy as np
 
 try:
@@ -39,6 +52,27 @@ except ImportError:
 try:
     import pyopencl as cl
     import pyopencl.array as cla
+
+    # Create some context on the first available GPU
+    if 'PYOPENCL_CTX' in os.environ:
+        ctx = cl.create_some_context()
+    else:
+        ctx = None
+        # Find the first OpenCL GPU available and use it, unless
+        for p in cl.get_platforms():
+            for d in p.get_devices():
+                if d.type & cl.device_type.GPU == 0:
+                    continue
+                ctx = cl.Context(devices=(d,))
+                break
+            if ctx is not None:
+                break
+    cq = cl.CommandQueue(ctx)
+    if 'cl_khr_fp64' in cq.device.extensions:
+        has_cl_fp64 = True
+    else:
+        has_cl_fp64 = False
+
     has_pyopencl = True
 except ImportError:
     has_pyopencl = False
@@ -49,26 +83,6 @@ class TestFFT(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.verbose = True
-        if has_pyopencl:
-            # Create some context on the first available GPU
-            if 'PYOPENCL_CTX' in os.environ:
-                cls.ctx = cl.create_some_context()
-            else:
-                cls.ctx = None
-                # Find the first OpenCL GPU available and use it, unless
-                for p in cl.get_platforms():
-                    for d in p.get_devices():
-                        if d.type & cl.device_type.GPU == 0:
-                            continue
-                        cls.ctx = cl.Context(devices=(d,))
-                        break
-                    if cls.ctx is not None:
-                        break
-            cls.queue = cl.CommandQueue(cls.ctx)
-            if 'cl_khr_fp64' in cls.queue.device.extensions:
-                cls.has_cl_fp64 = True
-            else:
-                cls.has_cl_fp64 = False
 
     def test_backend(self):
         self.assertTrue(has_pycuda or has_pyopencl or has_cupy,
@@ -93,8 +107,8 @@ class TestFFT(unittest.TestCase):
                 dc = cp.array(ascent().astype(np.complex64))
                 dr = cp.array(ascent().astype(np.float32))
             else:
-                dc = cla.to_device(self.queue, ascent().astype(np.complex64))
-                dr = cla.to_device(self.queue, ascent().astype(np.float32))
+                dc = cla.to_device(cq, ascent().astype(np.complex64))
+                dr = cla.to_device(cq, ascent().astype(np.float32))
             # C2C, new destination array
             d = vkfftn(dc)
             d = vkifftn(d)
@@ -118,7 +132,8 @@ class TestFFT(unittest.TestCase):
             d2 = vkdctn(dr, d2)
             dr = vkidctn(d2, dr)
 
-    def run_fft(self, vbackend, vn, dims_max=4, ndim_max=3, vtype=(np.complex64, np.complex128),
+    def run_fft(self, vbackend, vn, dims_max=4, ndim_max=3, shuffle_axes=True,
+                vtype=(np.complex64, np.complex128),
                 vlut="auto", vinplace=(True, False), vnorm=(0, 1),
                 vr2c=(False,), vdct=(False,), verbose=False, dry_run=False):
         """
@@ -127,6 +142,10 @@ class TestFFT(unittest.TestCase):
         :param vn: list of transform sizes to test
         :param dims_max: max number of dimensions for the array (up to 4)
         :param ndim_max: max transform dimension
+        :param shuffle_axes: if True, all possible axes combinations will be tried for
+            the given shape of the array and the number of transform dimensions, e.g.
+            for a 3D array and ndim=2 this would try (-1, -2), (-1, -3) and (-2,-3).
+            This applies only to C2C transforms.
         :param vtype: list of array types among float32, float64, complex64, complex128
         :param vlut: if "auto" (the default), will test useLUT=None and True, except for
             double precision where LUT is always enabled. Can be a list of values among
@@ -148,8 +167,7 @@ class TestFFT(unittest.TestCase):
                             for dct in vdct:
                                 # Setup use of either ndim or axes, also test skipping dimensions
                                 ndim_axes = [(ndim0, None)]
-                                if not r2c and not dct:
-                                    # Test custom axes only for C2C
+                                if shuffle_axes and not (r2c or dct):
                                     for i in range(1, 2 ** (ndim0 - 1)):
                                         axes = []
                                         for ii in range(ndim0):
@@ -193,13 +211,16 @@ class TestFFT(unittest.TestCase):
                                                                       r2c=r2c, dct=dct):
                                                         ct += 1
                                                         if not dry_run:
-                                                            n2, ni, n2i, nii, tol, dt1, dt2, dt3, dt4, \
-                                                            src1, src2, res = \
-                                                                test_accuracy(backend, sh, ndim, axes, dtype, inplace,
-                                                                              norm, use_lut, r2c=r2c, dct=dct,
-                                                                              stream=None, queue=self.queue,
-                                                                              return_array=False, init_array=d0,
-                                                                              verbose=verbose)
+                                                            res = test_accuracy(backend, sh, ndim, axes, dtype, inplace,
+                                                                                norm, use_lut, r2c=r2c, dct=dct,
+                                                                                stream=None, queue=cq,
+                                                                                return_array=False, init_array=d0,
+                                                                                verbose=verbose)
+                                                            ni, n2 = res["ni"], res["n2"]
+                                                            nii, n2i = res["nii"], res["n2i"]
+                                                            tol = res["tol"]
+                                                            src1 = res["src_unchanged_fft"]
+                                                            src2 = res["src_unchanged_ifft"]
                                                             self.assertTrue(ni < tol, "Accuracy mismatch after FFT, "
                                                                                       "n2=%8e ni=%8e>%8e" %
                                                                             (n2, ni, tol))
@@ -229,7 +250,7 @@ class TestFFT(unittest.TestCase):
         for dry_run in [True, False]:
             for backend in vbackend:
                 vtype = (np.complex64, np.complex128)
-                if backend == "pyopencl" and not self.has_cl_fp64:
+                if backend == "pyopencl" and not has_cl_fp64:
                     vtype = (np.complex64,)
                 v = self.verbose and not dry_run
                 ct += self.run_fft([backend], [30, 34], vtype=vtype, verbose=v, dry_run=dry_run)
@@ -251,7 +272,7 @@ class TestFFT(unittest.TestCase):
         for dry_run in [True, False]:
             for backend in vbackend:
                 vtype = (np.float32, np.float64)
-                if backend == "pyopencl" and not self.has_cl_fp64:
+                if backend == "pyopencl" and not has_cl_fp64:
                     vtype = (np.float32,)
                 v = self.verbose and not dry_run
                 ct += self.run_fft([backend], [30, 34], vtype=vtype, vr2c=(True,), verbose=v, dry_run=dry_run)
@@ -273,7 +294,7 @@ class TestFFT(unittest.TestCase):
         for dry_run in [True, False]:
             for backend in vbackend:
                 vtype = (np.float32, np.float64)
-                if backend == "pyopencl" and not self.has_cl_fp64:
+                if backend == "pyopencl" and not has_cl_fp64:
                     vtype = (np.float32,)
                 v = self.verbose and not dry_run
                 ct += self.run_fft([backend], [30, 34], vtype=vtype, vnorm=[1], vdct=range(1, 5), verbose=v,
@@ -314,12 +335,231 @@ class TestFFT(unittest.TestCase):
                     self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
 
 
+def test_accuracy_kwargs(kwargs):
+    # We can't pickle the opencl queue, so it is selected here.
+    return test_accuracy(**kwargs, queue=cq)
+
+
+def exhaustive_test(backend, vn, ndim, dtype, inplace, norm, use_lut, r2c=False, dct=False, nproc=None,
+                    verbose=True, return_res=False):
+    """
+    Run tests on a large range of sizes using multiprocessing. Manual function.
+
+    :param backend: either 'pyopencl', 'pycuda' or 'cupy'
+    :param vn: the list/iterable of sizes n.
+    :param ndim: the number of dimensions. The array shape will be [n]*ndim
+    :param dtype: either np.complex64 or np.complex128, or np.float32/np.float64 for r2c & dct
+    :param inplace: True or False
+    :param norm: either 0, 1 or "ortho"
+    :param use_lut: if True,1, False or 0, will trigger useLUT=1 or 0 for VkFFT.
+        If None, the default VkFFT behaviour is used. Always True by default
+        for double precision, so no need to force it.
+    :param r2c: if True, test an r2c transform. If inplace, the last dimension
+        (x, fastest axis) must be even
+    :param dct: either 1, 2, 3 or 4 to test different dct. Only norm=1 is can be
+        tested (native scipy/pyfftw normalisation).
+    :param nproc: the maximum number of parallel process to use. If None, the
+        number of detected cores will be used (this may use too much memory !)
+    :param verbose: if True, prints 1 line per test
+    :param return_res: if True, return the list of result dictionaries.
+    :return: True if all tests passed, False otherwise. If return_res is True, return
+        the list of result dictionaris instead.
+    """
+    try:
+        # Get the real number of processor cores available
+        # os.sched_getaffinity is only available on some *nix platforms
+        nproc1 = len(os.sched_getaffinity(0)) * psutil.cpu_count(logical=False) // psutil.cpu_count(logical=True)
+    except AttributeError:
+        nproc1 = os.cpu_count()
+    if nproc is None:
+        nproc = nproc1
+    else:
+        nproc = min(nproc, nproc1)
+    # Generate the list of configurations as kwargs for test_accuracy()
+    vkwargs = []
+    for n in vn:
+        kwargs = {"backend": backend, "shape": [n] * ndim, "ndim": ndim, "axes": None, "dtype": dtype,
+                  "inplace": inplace, "norm": norm, "use_lut": use_lut, "r2c": r2c, "dct": dct, "stream": None,
+                  "verbose": False}
+        vkwargs.append(kwargs)
+    vok = []
+    vres = []
+    # Need to use spawn to handle the GPU context
+    with multiprocessing.get_context('spawn').Pool(nproc) as pool:
+        for res in pool.imap(test_accuracy_kwargs, vkwargs):
+            # TODO: this should better be logged
+            if verbose:
+                print(res['str'])
+            ni, n2 = res["ni"], res["n2"]
+            nii, n2i = res["nii"], res["n2i"]
+            tol = res["tol"]
+            ok = max(ni, nii) < tol
+            if not inplace:
+                ok = ok and res["src_unchanged_fft"]
+                if not r2c:
+                    ok = ok and res["src_unchanged_ifft"]
+            vok.append(ok)
+            if return_res:
+                vres.append(res)
+    if return_res:
+        return vres
+    return np.alltrue(vok)
+
+
+class TestExhaustiveFFT(unittest.TestCase):
+    def run_exhaustive(self, backend, vn, ndim, dtype, inplace, norm, use_lut, r2c=False, dct=False, nproc=None,
+                       verbose=False):
+        """
+        Run tests on a large range of sizes using multiprocessing
+
+        :param backend: either 'pyopencl', 'pycuda' or 'cupy'
+        :param vn: the list/iterable of sizes n.
+        :param ndim: the number of dimensions. The array shape will be [n]*ndim
+        :param dtype: either np.complex64 or np.complex128, or np.float32/np.float64 for r2c & dct
+        :param inplace: True or False
+        :param norm: either 0, 1 or "ortho"
+        :param use_lut: if True,1, False or 0, will trigger useLUT=1 or 0 for VkFFT.
+            If None, the default VkFFT behaviour is used. Always True by default
+            for double precision, so no need to force it.
+        :param r2c: if True, test an r2c transform. If inplace, the last dimension
+            (x, fastest axis) must be even
+        :param dct: either 1, 2, 3 or 4 to test different dct. Only norm=1 is can be
+            tested (native scipy/pyfftw normalisation).
+        :param nproc: the maximum number of parallel process to use. If None, the
+            number of detected cores will be used (this may use too much memory !)
+        :return: nothing
+        """
+        try:
+            # Get the real number of processor cores available
+            # os.sched_getaffinity is only available on some *nix platforms
+            nproc1 = len(os.sched_getaffinity(0)) * psutil.cpu_count(logical=False) // psutil.cpu_count(logical=True)
+        except AttributeError:
+            nproc1 = os.cpu_count()
+        if nproc is None:
+            nproc = nproc1
+        else:
+            nproc = min(nproc, nproc1)
+        # Generate the list of configurations as kwargs for test_accuracy()
+        vkwargs = []
+        for n in vn:
+            kwargs = {"backend": backend, "shape": [n] * ndim, "ndim": ndim, "axes": None, "dtype": dtype,
+                      "inplace": inplace, "norm": norm, "use_lut": use_lut, "r2c": r2c, "dct": dct, "stream": None,
+                      "verbose": False}
+            vkwargs.append(kwargs)
+        # Need to use spawn to handle the GPU context
+        with multiprocessing.get_context('spawn').Pool(nproc) as pool:
+            for res in pool.imap(test_accuracy_kwargs, vkwargs):
+                with self.subTest(backend=backend, n=n, ndim=ndim, dtype=dtype, norm=norm,
+                                  use_lut=use_lut, inplace=inplace, r2c=r2c, dct=dct):
+                    if verbose:
+                        print(res['str'])
+                    ni, n2 = res["ni"], res["n2"]
+                    nii, n2i = res["nii"], res["n2i"]
+                    tol = res["tol"]
+                    src1 = res["src_unchanged_fft"]
+                    src2 = res["src_unchanged_ifft"]
+                    self.assertTrue(ni < tol, "Accuracy mismatch after FFT, n2=%8e ni=%8e>%8e" % (n2, ni, tol))
+                    self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, n2=%8e ni=%8e>%8e" % (n2, nii, tol))
+                    if not inplace:
+                        self.assertTrue(src1, "The source array was modified during the FFT")
+                        if not r2c:
+                            self.assertTrue(src2, "The source array was modified during the iFFT")
+
+    def test_exhaustive_c2c(self):
+        """Exhaustive C2C tests, without shuffling axes"""
+        vbackend = []
+        if has_pycuda:
+            vbackend.append("pycuda")
+        if has_cupy:
+            vbackend.append("cupy")
+        if has_pyopencl:
+            vbackend.append("pyopencl")
+        for backend in vbackend:
+            vtype = (np.float32, np.float64)
+            if backend == "pyopencl" and not has_cl_fp64:
+                vtype = (np.float32,)
+            for dtype in vtype:
+                vlut = [None]
+                if dtype == np.float32:
+                    vlut += [True]
+                for inplace in [True, False]:
+                    for norm in [0, 1]:
+                        for lut in vlut:
+                            self.run_exhaustive(backend, range(2, 15000), ndim=1, dtype=dtype, inplace=inplace,
+                                                norm=norm, use_lut=lut, nproc=16, verbose=True)
+                            self.run_exhaustive(backend, range(2, 4500), ndim=2, dtype=dtype, inplace=inplace,
+                                                norm=norm, use_lut=lut, nproc=16, verbose=True)
+                            self.run_exhaustive(backend, range(2, 550), ndim=3, dtype=dtype, inplace=inplace,
+                                                norm=norm, use_lut=lut, nproc=4, verbose=True)
+
+    def test_exhaustive_r2c(self):
+        """Exhaustive C2C tests, without shuffling axes"""
+        vbackend = []
+        if has_pycuda:
+            vbackend.append("pycuda")
+        if has_cupy:
+            vbackend.append("cupy")
+        if has_pyopencl:
+            vbackend.append("pyopencl")
+        for backend in vbackend:
+            vtype = (np.float32, np.float64)
+            if backend == "pyopencl" and not has_cl_fp64:
+                vtype = (np.float32,)
+            for dtype in vtype:
+                vlut = [None]
+                if dtype == np.float32:
+                    vlut += [True]
+                for inplace in [True, False]:
+                    for norm in [0, 1]:
+                        for lut in vlut:
+                            step = 2 if inplace else 1
+                            self.run_exhaustive(backend, range(2, 15000), ndim=1, dtype=dtype, inplace=inplace,
+                                                norm=norm, use_lut=lut, r2c=True, nproc=16, verbose=True)
+                            self.run_exhaustive(backend, range(2, 4500, step), ndim=2, dtype=dtype, inplace=inplace,
+                                                norm=norm, use_lut=lut, r2c=True, nproc=16, verbose=True)
+                            self.run_exhaustive(backend, range(2, 550, step), ndim=3, dtype=dtype, inplace=inplace,
+                                                norm=norm, use_lut=lut, r2c=True, nproc=4, verbose=True)
+
+    def test_exhaustive_dct(self):
+        """Exhaustive C2C tests, without shuffling axes"""
+        vbackend = []
+        if has_pycuda:
+            vbackend.append("pycuda")
+        if has_cupy:
+            vbackend.append("cupy")
+        if has_pyopencl:
+            vbackend.append("pyopencl")
+        for backend in vbackend:
+            vtype = (np.float32, np.float64)
+            if backend == "pyopencl" and not has_cl_fp64:
+                vtype = (np.float32,)
+            for dct in range(1,4+1):
+                for dtype in vtype:
+                    vlut = [None]
+                    if dtype == np.float32:
+                        vlut += [True]
+                    for inplace in [True, False]:
+                        for lut in vlut:
+                            # Not sure what the allowed range is for DCT, so test a smaller one
+                            self.run_exhaustive(backend, range(2, 550), ndim=1, dtype=dtype, inplace=inplace,
+                                                norm=1, use_lut=lut, dct=dct, nproc=16, verbose=True)
+                            self.run_exhaustive(backend, range(2, 550), ndim=2, dtype=dtype, inplace=inplace,
+                                                norm=1, use_lut=lut, dct=dct, nproc=16, verbose=True)
+                            self.run_exhaustive(backend, range(2, 275), ndim=3, dtype=dtype, inplace=inplace,
+                                                norm=1, use_lut=lut, dct=dct, nproc=4, verbose=True)
+
+
 def suite():
     test_suite = unittest.TestSuite()
     load_tests = unittest.defaultTestLoader.loadTestsFromTestCase
     test_suite.addTest(load_tests(TestFFT))
+    if "--exhaustive" in sys.argv:
+        test_suite.addTest(load_tests(TestExhaustiveFFT))
     return test_suite
 
 
 if __name__ == '__main__':
     unittest.main(defaultTest='suite', verbosity=2)
+    # print(exhaustive_test("pycuda", range(2, 1100), ndim=1, dtype=np.float32, inplace=True, norm=0, use_lut=None))
+    # print(exhaustive_test("pycuda", range(2, 4500), ndim=2, dtype=np.float32, inplace=True, norm=0, use_lut=None))
+    # print(exhaustive_test("pycuda", range(2, 550), ndim=3, dtype=np.float32, inplace=True, norm=0, use_lut=None))
