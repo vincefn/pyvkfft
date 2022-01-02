@@ -8,8 +8,11 @@
 #
 # Functions for accuracy tests.
 
-import numpy as np
+import os
+import multiprocessing
 import timeit
+import psutil
+import numpy as np
 from numpy.fft import fftn, ifftn, rfftn, irfftn
 
 try:
@@ -34,9 +37,31 @@ try:
     import pyopencl.array as cla
     from pyvkfft.opencl import VkFFTApp as clVkFFTApp, primes
 
+    # Create some context on the first available GPU
+    if 'PYOPENCL_CTX' in os.environ:
+        ctx = cl.create_some_context()
+    else:
+        ctx = None
+        # Find the first OpenCL GPU available and use it, unless
+        for p in cl.get_platforms():
+            for d in p.get_devices():
+                if d.type & cl.device_type.GPU == 0:
+                    continue
+                ctx = cl.Context(devices=(d,))
+                break
+            if ctx is not None:
+                break
+    cq = cl.CommandQueue(ctx)
+    if 'cl_khr_fp64' in cq.device.extensions:
+        has_cl_fp64 = True
+    else:
+        has_cl_fp64 = False
+
     has_opencl = True
 except ImportError:
+    cq = None
     has_opencl = False
+    has_cl_fp64 = False
 
 try:
     from pyvkfft.cuda import VkFFTApp as cuVkFFTApp, primes, has_pycuda, has_cupy
@@ -328,3 +353,77 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
     if return_array:
         res["d0"] = d0
     return res
+
+
+def test_accuracy_kwargs(kwargs):
+    # We can't pickle the opencl queue, so it is selected here.
+    # This function must be defined here so it can be used with a multiprocessing pool
+    # in test_fft, otherwise this will fail, see:
+    # https://stackoverflow.com/questions/41385708/multiprocessing-example-giving-attributeerror
+    return test_accuracy(**kwargs, queue=cq)
+
+
+def exhaustive_test(backend, vn, ndim, dtype, inplace, norm, use_lut, r2c=False, dct=False, nproc=None,
+                    verbose=True, return_res=False):
+    """
+    Run tests on a large range of sizes using multiprocessing. Manual function.
+
+    :param backend: either 'pyopencl', 'pycuda' or 'cupy'
+    :param vn: the list/iterable of sizes n.
+    :param ndim: the number of dimensions. The array shape will be [n]*ndim
+    :param dtype: either np.complex64 or np.complex128, or np.float32/np.float64 for r2c & dct
+    :param inplace: True or False
+    :param norm: either 0, 1 or "ortho"
+    :param use_lut: if True,1, False or 0, will trigger useLUT=1 or 0 for VkFFT.
+        If None, the default VkFFT behaviour is used. Always True by default
+        for double precision, so no need to force it.
+    :param r2c: if True, test an r2c transform. If inplace, the last dimension
+        (x, fastest axis) must be even
+    :param dct: either 1, 2, 3 or 4 to test different dct. Only norm=1 is can be
+        tested (native scipy/pyfftw normalisation).
+    :param nproc: the maximum number of parallel process to use. If None, the
+        number of detected cores will be used (this may use too much memory !)
+    :param verbose: if True, prints 1 line per test
+    :param return_res: if True, return the list of result dictionaries.
+    :return: True if all tests passed, False otherwise. If return_res is True, return
+        the list of result dictionaris instead.
+    """
+    try:
+        # Get the real number of processor cores available
+        # os.sched_getaffinity is only available on some *nix platforms
+        nproc1 = len(os.sched_getaffinity(0)) * psutil.cpu_count(logical=False) // psutil.cpu_count(logical=True)
+    except AttributeError:
+        nproc1 = os.cpu_count()
+    if nproc is None:
+        nproc = nproc1
+    else:
+        nproc = min(nproc, nproc1)
+    # Generate the list of configurations as kwargs for test_accuracy()
+    vkwargs = []
+    for n in vn:
+        kwargs = {"backend": backend, "shape": [n] * ndim, "ndim": ndim, "axes": None, "dtype": dtype,
+                  "inplace": inplace, "norm": norm, "use_lut": use_lut, "r2c": r2c, "dct": dct, "stream": None,
+                  "verbose": False}
+        vkwargs.append(kwargs)
+    vok = []
+    vres = []
+    # Need to use spawn to handle the GPU context
+    with multiprocessing.get_context('spawn').Pool(nproc) as pool:
+        for res in pool.imap(test_accuracy_kwargs, vkwargs):
+            # TODO: this should better be logged
+            if verbose:
+                print(res['str'])
+            ni, n2 = res["ni"], res["n2"]
+            nii, n2i = res["nii"], res["n2i"]
+            tol = res["tol"]
+            ok = max(ni, nii) < tol
+            if not inplace:
+                ok = ok and res["src_unchanged_fft"]
+                if not r2c:
+                    ok = ok and res["src_unchanged_ifft"]
+            vok.append(ok)
+            if return_res:
+                vres.append(res)
+    if return_res:
+        return vres
+    return np.alltrue(vok)
