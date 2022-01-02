@@ -266,7 +266,7 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         tmp = list(d0.shape)
         tmp[-1] -= 2
         shstr = str(tuple(tmp)).replace(" ", "")
-        if "')" in shstr:
+        if ",)" in shstr:
             shstr = shstr.replace(",)", "+2)")
         else:
             shstr = shstr.replace(")", "+2)")

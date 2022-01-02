@@ -315,8 +315,8 @@ class TestFFT(unittest.TestCase):
                     self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
 
 
-class TestExhaustiveFFT(unittest.TestCase):
-    def run_exhaustive(self, backend, vn, ndim, dtype, inplace, norm, use_lut, r2c=False, dct=False, nproc=None,
+class TestFFTSystematic(unittest.TestCase):
+    def run_systematic(self, backend, vn, ndim, dtype, inplace, norm, use_lut, r2c=False, dct=False, nproc=None,
                        verbose=False):
         """
         Run tests on a large range of sizes using multiprocessing
@@ -374,8 +374,8 @@ class TestExhaustiveFFT(unittest.TestCase):
                         if not r2c:
                             self.assertTrue(src2, "The source array was modified during the iFFT")
 
-    def test_exhaustive_c2c(self):
-        """Exhaustive C2C tests, without shuffling axes"""
+    def test_systematic_c2c(self):
+        """Systematic C2C tests, without shuffling axes"""
         vbackend = []
         if has_pycuda:
             vbackend.append("pycuda")
@@ -401,8 +401,8 @@ class TestExhaustiveFFT(unittest.TestCase):
                             self.run_exhaustive(backend, range(2, 550), ndim=3, dtype=dtype, inplace=inplace,
                                                 norm=norm, use_lut=lut, nproc=4, verbose=True)
 
-    def test_exhaustive_r2c(self):
-        """Exhaustive C2C tests, without shuffling axes"""
+    def test_systematic_r2c(self):
+        """Systematic R2C tests, without shuffling axes"""
         vbackend = []
         if has_pycuda:
             vbackend.append("pycuda")
@@ -429,8 +429,8 @@ class TestExhaustiveFFT(unittest.TestCase):
                             self.run_exhaustive(backend, range(2, 550, step), ndim=3, dtype=dtype, inplace=inplace,
                                                 norm=norm, use_lut=lut, r2c=True, nproc=4, verbose=True)
 
-    def test_exhaustive_dct(self):
-        """Exhaustive C2C tests, without shuffling axes"""
+    def test_systematic_dct(self):
+        """Systematic DCT tests, without shuffling axes"""
         vbackend = []
         if has_pycuda:
             vbackend.append("pycuda")
@@ -451,9 +451,9 @@ class TestExhaustiveFFT(unittest.TestCase):
                         for lut in vlut:
                             # Not sure what the allowed range is for DCT, so test a smaller one
                             self.run_exhaustive(backend, range(2, 550), ndim=1, dtype=dtype, inplace=inplace,
-                                                norm=1, use_lut=lut, dct=dct, nproc=16, verbose=True)
+                                                norm=1, use_lut=lut, dct=dct, nproc=8, verbose=True)
                             self.run_exhaustive(backend, range(2, 550), ndim=2, dtype=dtype, inplace=inplace,
-                                                norm=1, use_lut=lut, dct=dct, nproc=16, verbose=True)
+                                                norm=1, use_lut=lut, dct=dct, nproc=8, verbose=True)
                             self.run_exhaustive(backend, range(2, 275), ndim=3, dtype=dtype, inplace=inplace,
                                                 norm=1, use_lut=lut, dct=dct, nproc=4, verbose=True)
 
@@ -463,7 +463,7 @@ def suite():
     load_tests = unittest.defaultTestLoader.loadTestsFromTestCase
     test_suite.addTest(load_tests(TestFFT))
     if "--exhaustive" in sys.argv:
-        test_suite.addTest(load_tests(TestExhaustiveFFT))
+        test_suite.addTest(load_tests(TestFFTSystematic))
     return test_suite
 
 
