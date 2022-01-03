@@ -1,6 +1,6 @@
 import unittest
 
-from .test_fft import suite as test_fft_suite
+from .test_fft import suite as test_fft_suite, TestFFT, TestFFTSystematic
 
 
 def suite():

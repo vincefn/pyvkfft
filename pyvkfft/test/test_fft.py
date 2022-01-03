@@ -12,7 +12,6 @@ import os
 import sys
 import unittest
 import multiprocessing
-import psutil
 import numpy as np
 
 try:
@@ -21,6 +20,7 @@ except ImportError:
     def ascent():
         return np.random.randint(0, 255, (512, 512))
 
+from pyvkfft.base import primes
 from pyvkfft.fft import fftn as vkfftn, ifftn as vkifftn, rfftn as vkrfftn, \
     irfftn as vkirfftn, dctn as vkdctn, idctn as vkidctn
 from pyvkfft.accuracy import test_accuracy, test_accuracy_kwargs, exhaustive_test, fftn, cq, has_cl_fp64
@@ -316,6 +316,64 @@ class TestFFT(unittest.TestCase):
 
 
 class TestFFTSystematic(unittest.TestCase):
+    # @classmethod
+    # def setUpClass(cls) -> None:
+    #     cls.axes = None
+    #     cls.dct = False
+    #     cls.bluestein = False
+    #     cls.inplace = False
+    #     cls.db = False
+    #     cls.dry_run = False
+    #     cls.dtype = np.float32
+    #     cls.lut = None
+    #     cls.ndim = 1
+    #     cls.ndims = None
+    #     cls.norm = 1
+    #     cls.nproc = 1
+    #     cls.r2c = False
+    #     cls.radix = None
+    #     cls.range = 2, 128
+    #     cls.vbackend = None
+    #     cls.verbose = False
+    #     cls.vn = None
+
+    def setUp(self) -> None:
+        if self.vbackend is None:
+            self.vbackend = []
+            if has_pycuda:
+                self.vbackend.append("pycuda")
+            if has_cupy:
+                self.vbackend.append("cupy")
+            if has_pyopencl:
+                self.vbackend.append("pyopencl")
+        self.assertTrue(not self.bluestein or self.radix is None, "Cannot select both Bluestein and radix")
+        if not self.bluestein and self.radix is None:
+            self.vn = range(self.range[0], self.range[1] + 1)
+        else:
+            self.vn = []
+            if self.r2c:  # and self.inplace TODO
+                step = 2
+            else:
+                step = 1
+            for n in range(self.range[0], self.range[1] + 1, step):
+                if self.bluestein:
+                    if max(primes(n)) > 13:
+                        self.vn.append(n)
+                else:
+                    # This could go faster with numpy, but maybe not worth it
+                    p = primes(n)[1:]
+                    if len(self.radix):
+                        ok = True
+                        for i in p:
+                            if i not in self.radix:
+                                ok = False
+                                break
+                        if ok:
+                            self.vn.append(n)
+                    elif max(p) <= 13:
+                        self.vn.append(n)
+        self.assertTrue(len(self.vn), "The list of sizes to test is empty !")
+
     def run_systematic(self, backend, vn, ndim, dtype, inplace, norm, use_lut, r2c=False, dct=False, nproc=None,
                        verbose=False):
         """
@@ -338,16 +396,6 @@ class TestFFTSystematic(unittest.TestCase):
             number of detected cores will be used (this may use too much memory !)
         :return: nothing
         """
-        try:
-            # Get the real number of processor cores available
-            # os.sched_getaffinity is only available on some *nix platforms
-            nproc1 = len(os.sched_getaffinity(0)) * psutil.cpu_count(logical=False) // psutil.cpu_count(logical=True)
-        except AttributeError:
-            nproc1 = os.cpu_count()
-        if nproc is None:
-            nproc = nproc1
-        else:
-            nproc = min(nproc, nproc1)
         # Generate the list of configurations as kwargs for test_accuracy()
         vkwargs = []
         for n in vn:
@@ -374,7 +422,36 @@ class TestFFTSystematic(unittest.TestCase):
                         if not r2c:
                             self.assertTrue(src2, "The source array was modified during the iFFT")
 
-    def test_systematic_c2c(self):
+    def test_systematic(self):
+        # Generate the list of configurations as kwargs for test_accuracy()
+        vkwargs = []
+        for backend in self.vbackend:
+            for n in self.vn:
+                kwargs = {"backend": backend, "shape": [n] * self.ndim, "ndim": self.ndim, "axes": self.axes,
+                          "dtype": self.dtype, "inplace": self.inplace, "norm": self.norm, "use_lut": self.lut,
+                          "r2c": self.r2c, "dct": self.dct, "stream": None, "verbose": self.verbose}
+                vkwargs.append(kwargs)
+        # Need to use spawn to handle the GPU context
+        with multiprocessing.get_context('spawn').Pool(self.nproc) as pool:
+            for res in pool.imap(test_accuracy_kwargs, vkwargs):
+                with self.subTest(backend=backend, n=max(res['shape']), ndim=self.ndim,
+                                  dtype=self.dtype, norm=self.norm, use_lut=self.lut,
+                                  inplace=self.inplace, r2c=self.r2c, dct=self.dct):
+                    if self.verbose:
+                        print(res['str'])
+                    ni, n2 = res["ni"], res["n2"]
+                    nii, n2i = res["nii"], res["n2i"]
+                    tol = res["tol"]
+                    src1 = res["src_unchanged_fft"]
+                    src2 = res["src_unchanged_ifft"]
+                    self.assertTrue(ni < tol, "Accuracy mismatch after FFT, n2=%8e ni=%8e>%8e" % (n2, ni, tol))
+                    self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, n2=%8e ni=%8e>%8e" % (n2, nii, tol))
+                    if not self.inplace:
+                        self.assertTrue(src1, "The source array was modified during the FFT")
+                        if not self.r2c:
+                            self.assertTrue(src2, "The source array was modified during the iFFT")
+
+    def _test_systematic_c2c(self):
         """Systematic C2C tests, without shuffling axes"""
         vbackend = []
         if has_pycuda:
@@ -401,7 +478,7 @@ class TestFFTSystematic(unittest.TestCase):
                             self.run_exhaustive(backend, range(2, 550), ndim=3, dtype=dtype, inplace=inplace,
                                                 norm=norm, use_lut=lut, nproc=4, verbose=True)
 
-    def test_systematic_r2c(self):
+    def _test_systematic_r2c(self):
         """Systematic R2C tests, without shuffling axes"""
         vbackend = []
         if has_pycuda:
@@ -429,7 +506,7 @@ class TestFFTSystematic(unittest.TestCase):
                             self.run_exhaustive(backend, range(2, 550, step), ndim=3, dtype=dtype, inplace=inplace,
                                                 norm=norm, use_lut=lut, r2c=True, nproc=4, verbose=True)
 
-    def test_systematic_dct(self):
+    def _test_systematic_dct(self):
         """Systematic DCT tests, without shuffling axes"""
         vbackend = []
         if has_pycuda:
