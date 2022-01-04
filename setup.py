@@ -246,7 +246,7 @@ scripts = ['pyvkfft/scripts/pyvkfft_test.py']
 
 console_scripts = []
 for s in scripts:
-    s1 = os.path.split(s)[1]
+    s1 = os.path.splitext(os.path.split(s)[1])[0]
     s0 = os.path.splitext(s)[0]
     console_scripts.append("%s = %s:main" % (s1.replace('_', '-'), s0.replace('/', '.')))
 

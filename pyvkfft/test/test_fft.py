@@ -60,10 +60,6 @@ except ImportError:
 
 class TestFFT(unittest.TestCase):
 
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.verbose = True
-
     def test_backend(self):
         self.assertTrue(has_pycuda or has_pyopencl or has_cupy,
                         "Either pycuda, pyopencl or cupy must be available")
@@ -429,7 +425,7 @@ class TestFFTSystematic(unittest.TestCase):
             for n in self.vn:
                 kwargs = {"backend": backend, "shape": [n] * self.ndim, "ndim": self.ndim, "axes": self.axes,
                           "dtype": self.dtype, "inplace": self.inplace, "norm": self.norm, "use_lut": self.lut,
-                          "r2c": self.r2c, "dct": self.dct, "stream": None, "verbose": self.verbose}
+                          "r2c": self.r2c, "dct": self.dct, "stream": None, "verbose": False}
                 vkwargs.append(kwargs)
         # Need to use spawn to handle the GPU context
         with multiprocessing.get_context('spawn').Pool(self.nproc) as pool:

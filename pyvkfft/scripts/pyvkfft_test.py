@@ -16,20 +16,6 @@ import numpy as np
 from pyvkfft.test import TestFFT, TestFFTSystematic
 
 
-def main():
-    parser = argparse.ArgumentParser(prog='pyvkfft-test',
-                                     description='Run pyvkfft unittest, short or long (systematic)')
-    parser.add_argument('-b', '--backend', action='store', nargs='*',
-                        help="single or multiple GPU backends",
-                        choices=['pycuda', 'cupy', 'pyopencl', 'all'],
-                        default='all')
-
-    args = parser.parse_args()
-
-    print(args)
-    # run_tests()
-
-
 def suite_default():
     suite = unittest.TestSuite()
     load_tests = unittest.defaultTestLoader.loadTestsFromTestCase
@@ -44,29 +30,29 @@ def suite_systematic():
     return suite
 
 
-if __name__ == '__main__':
-    # main()
+def main():
     parser = argparse.ArgumentParser(prog='pyvkfft-test',
                                      description='Run pyvkfft unit tests, regular or systematic')
     parser.add_argument('--mailto', action='store',
                         help="Email address the results will be sent to")
     parser.add_argument('--mailto-fail', action='store',
                         help="Email address the results will be sent to, only if the test fails")
+    parser.add_argument('--silent', action='store_true',
+                        help="Use this to minimise the written output "
+                             "(note that tests can take a long time be patient")
     parser.add_argument('--systematic', action='store_true',
                         help="Perform a systematic accuracy test over a range of array sizes.\n"
                              "Without this argument a faster test (a few minutes) will be "
                              "performed with selected array sizes for all possible transforms.")
-    parser.add_argument('-v', '--verbose', action='store_true',
-                        help="Verbose output")
     sysgrp = parser.add_argument_group("systematic", "Options for --systematic:")
     sysgrp.add_argument('--axes', action='store', nargs='*', type=int,
                         help="transform axes: x (fastest) is 1,"
                              "y is 2, z is 3, e.g. '--axes 1', '--axes 2 3'."
                              "The default is to perform the transform along the ndim fastest "
                              "axes. Using this overrides --ndim")
-    sysgrp.add_argument('--backend', action='store', nargs='*',
+    sysgrp.add_argument('--backend', action='store', nargs='+',
                         help="Choose single or multiple GPU backends,"
-                             "'all' (the default) will automatically select the available ones.",
+                             "by default all available backends are selected.",
                         choices=['pycuda', 'cupy', 'pyopencl'])
     sysgrp.add_argument('--bluestein', action='store_true',
                         help="Only perform transform with non-radix dimensions, i.e. the "
@@ -84,7 +70,7 @@ if __name__ == '__main__':
     sysgrp.add_argument('--dct', nargs='*', action='store', type=int,
                         help="Test direct cosine transforms (default is c2c):"
                              " '--dct' (defaults to dct 2), '--dct 1'",
-                        choices=[None, 1, 2, 3, 4])
+                        choices=[1, 2, 3, 4])
     sysgrp.add_argument('--double', action='store_true',
                         help="Use double precision (float64/complex128) instead of single")
     sysgrp.add_argument('--dry-run', action='store_true',
@@ -112,7 +98,7 @@ if __name__ == '__main__':
                         help="Number of parallel process to use to speed up tests. "
                              "Make sure the sum of parallel process will not use too much "
                              "GPU memory",
-                        default=['1'], type=int)
+                        default=[1], type=int)
     sysgrp.add_argument('--r2c', action='store_true', help="Test real-to-complex transform "
                                                            "(default is c2c)")
     sysgrp.add_argument('--radix', action='store', nargs='*', type=int,
@@ -120,41 +106,50 @@ if __name__ == '__main__':
                              "radix transforms are allowed. Alternatively a list can be given: "
                              "'--radix 2' (only 2**n array sizes), '--radix 2 3 5' "
                              "(only 2**N1 * 3**N2 * 5**N3)",
-                        choices=[None, 2, 3, 5, 7, 11, 13])
+                        choices=[2, 3, 5, 7, 11, 13])
     sysgrp.add_argument('--range', action='store', nargs=2, type=int,
                         help="Range of array sizes [min, max] along each transform dimension, "
                              "'--range 2 128'",
                         default=[2, 128])
 
-    parser.print_help()
+    # parser.print_help()
     args = parser.parse_args()
-    print(args)
 
+    # We modify class attributes to pass arguments - not a great approach but works..
     if args.systematic:
-        TestFFTSystematic.axes = args.axes
-        TestFFTSystematic.bluestein = args.bluestein
-        TestFFTSystematic.dct = False if args.dct is None else args.dct[0] if len(args.dct) else 2
-        TestFFTSystematic.db = args.db
-        TestFFTSystematic.dry_run = args.dry_run
-        TestFFTSystematic.dtype = np.float64 if args.double else np.float32
-        TestFFTSystematic.inplace = args.inplace
-        TestFFTSystematic.lut = args.lut
-        TestFFTSystematic.ndim = args.ndim[0]
-        TestFFTSystematic.ndims = args.ndims
-        TestFFTSystematic.norm = args.norm[0]
-        TestFFTSystematic.nproc = args.nproc[0]
-        TestFFTSystematic.r2c = args.r2c
-        TestFFTSystematic.radix = args.radix
-        TestFFTSystematic.range = args.range
-        TestFFTSystematic.vbackend = args.backend
-        TestFFTSystematic.verbose = args.verbose
-        TestFFTSystematic.vn = args.range
-        if args.verbose:
-            unittest.main(defaultTest='suite_systematic', verbosity=2, argv=sys.argv[:1])
+        t = TestFFTSystematic
+        t.axes = args.axes
+        t.bluestein = args.bluestein
+        t.dct = False if args.dct is None else args.dct[0] if len(args.dct) else 2
+        t.db = args.db
+        t.dry_run = args.dry_run
+        t.dtype = np.float64 if args.double else np.float32
+        t.inplace = args.inplace
+        t.lut = args.lut
+        t.ndim = args.ndim[0]
+        t.ndims = args.ndims
+        t.norm = args.norm[0]
+        t.nproc = args.nproc[0]
+        t.r2c = args.r2c
+        t.radix = args.radix
+        t.range = args.range
+        t.vbackend = args.backend
+        t.verbose = not args.silent
+        t.vn = args.range
+        suite = unittest.defaultTestLoader.loadTestsFromTestCase(t)
+        if t.verbose:
+            unittest.TextTestRunner(verbosity=2).run(suite)
         else:
-            unittest.main(defaultTest='suite_systematic', verbosity=1, argv=sys.argv[:1])
+            unittest.TextTestRunner(verbosity=1).run(suite)
     else:
-        if args.verbose:
-            unittest.main(defaultTest='suite_default', verbosity=2, argv=sys.argv[:1])
+        t = TestFFT
+        t.verbose = not args.silent
+        suite = unittest.defaultTestLoader.loadTestsFromTestCase(t)
+        if t.verbose:
+            unittest.TextTestRunner(verbosity=2).run(suite)
         else:
-            unittest.main(defaultTest='suite_default', verbosity=1, argv=sys.argv[:1])
+            unittest.TextTestRunner(verbosity=1).run(suite)
+
+
+if __name__ == '__main__':
+    main()
