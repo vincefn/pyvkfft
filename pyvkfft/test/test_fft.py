@@ -425,7 +425,8 @@ class TestFFTSystematic(unittest.TestCase):
             for n in self.vn:
                 kwargs = {"backend": backend, "shape": [n] * self.ndim, "ndim": self.ndim, "axes": self.axes,
                           "dtype": self.dtype, "inplace": self.inplace, "norm": self.norm, "use_lut": self.lut,
-                          "r2c": self.r2c, "dct": self.dct, "stream": None, "verbose": False}
+                          "r2c": self.r2c, "dct": self.dct, "stream": None, "verbose": False,
+                          "colour_output": self.colour}
                 vkwargs.append(kwargs)
         # Need to use spawn to handle the GPU context
         with multiprocessing.get_context('spawn').Pool(self.nproc) as pool:

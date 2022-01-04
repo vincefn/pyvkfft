@@ -33,6 +33,8 @@ def suite_systematic():
 def main():
     parser = argparse.ArgumentParser(prog='pyvkfft-test',
                                      description='Run pyvkfft unit tests, regular or systematic')
+    parser.add_argument('--colour', action='store_true',
+                        help="Use colour depending on how good the measured accuracy is")
     parser.add_argument('--mailto', action='store',
                         help="Email address the results will be sent to")
     parser.add_argument('--mailto-fail', action='store',
@@ -120,6 +122,7 @@ def main():
         t = TestFFTSystematic
         t.axes = args.axes
         t.bluestein = args.bluestein
+        t.colour = args.colour
         t.dct = False if args.dct is None else args.dct[0] if len(args.dct) else 2
         t.db = args.db
         t.dry_run = args.dry_run
@@ -144,6 +147,7 @@ def main():
     else:
         t = TestFFT
         t.verbose = not args.silent
+        t.colour = args.colour
         suite = unittest.defaultTestLoader.loadTestsFromTestCase(t)
         if t.verbose:
             unittest.TextTestRunner(verbosity=2).run(suite)
