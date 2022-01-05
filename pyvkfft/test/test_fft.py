@@ -12,6 +12,9 @@ import os
 import sys
 import unittest
 import multiprocessing
+import sqlite3
+import socket
+import time
 import numpy as np
 
 try:
@@ -414,19 +417,55 @@ class TestFFTSystematic(unittest.TestCase):
                           "r2c": self.r2c, "dct": self.dct, "stream": None, "verbose": False,
                           "colour_output": self.colour}
                 vkwargs.append(kwargs)
+        if self.db is not None:
+            # TODO secure the db with a context 'with'
+            db = sqlite3.connect(self.db)
+            dbc = db.cursor()
+            dbc.execute('CREATE TABLE IF NOT EXISTS pyvkfft_test (epoch int, hostname int,'
+                        'backend text, language text, transform text, axes text, array_shape text,'
+                        'ndims int, ndim int, precision int, inplace int, norm int, lut int,'
+                        'n int, n2_fft float, n2_ifft float, ni_fft float, ni_ifft float, tolerance float,'
+                        'dt_app float, dt_fft float, dt_ifft float, src_unchanged_fft int, src_unchanged_ifft int,'
+                        'gpu_name text, success int, error int, vkfft_error_code int)')
+            db.commit()
+            hostname = socket.gethostname()
+            lang = 'opencl' if 'opencl' in backend else 'cuda'
+            if self.r2c:
+                transform = "R2C"
+            elif self.dct:
+                transform = "DCT%d" % self.dct
+            else:
+                transform = "C2C"
+
         # Need to use spawn to handle the GPU context
         with multiprocessing.get_context('spawn').Pool(self.nproc) as pool:
             for res in pool.imap(test_accuracy_kwargs, vkwargs):
                 with self.subTest(backend=backend, n=max(res['shape']), ndim=self.ndim,
                                   dtype=self.dtype, norm=self.norm, use_lut=self.lut,
                                   inplace=self.inplace, r2c=self.r2c, dct=self.dct):
-                    if self.verbose:
-                        print(res['str'])
                     ni, n2 = res["ni"], res["n2"]
                     nii, n2i = res["nii"], res["n2i"]
                     tol = res["tol"]
                     src1 = res["src_unchanged_fft"]
                     src2 = res["src_unchanged_ifft"]
+                    succ = max(ni, nii) < tol
+                    if not self.inplace:
+                        if not src1:
+                            succ = False
+                        elif not self.r2c and not src2:
+                            succ = False
+                    if self.db is not None:
+                        dbc.execute('INSERT INTO pyvkfft_test VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'
+                                    '?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                                    (time.time(), hostname, backend, lang, transform,
+                                     str(res['axes']).encode('ascii'), str(res['shape']).encode('ascii'),
+                                     len(res['shape']), self.ndim, np.dtype(self.dtype).itemsize,
+                                     self.inplace, self.norm, self.lut, int(max(res['shape'])), float(n2), float(n2i),
+                                     float(ni), float(nii), float(tol), res["dt_app"], res["dt_fft"], res["dt_ifft"],
+                                     int(src1), int(src2), res["gpu_name"].encode('ascii'), int(succ), 0, 0))
+                        db.commit()
+                    if self.verbose:
+                        print(res['str'])
                     self.assertTrue(ni < tol, "Accuracy mismatch after FFT, n2=%8e ni=%8e>%8e" % (n2, ni, tol))
                     self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, n2=%8e ni=%8e>%8e" % (n2, nii, tol))
                     if not self.inplace:

@@ -69,7 +69,7 @@ def main():
                              "exists, the results are added to the file. Fields stored"
                              "include HOSTNAME, EPOCH, BACKEND, LANGUAGE, TRANSFORM (c2c, r2c or "
                              "dct1/2/3/4, AXES, ARRAY_SHAPE, NDIMS, NDIM, PRECISION, INPLACE,"
-                             "NORM, LUT, N, ACCURACY_FFT, ACCURACY_IFFT, TOLERANCE,"
+                             "NORM, LUT, N, N2_FFT, N2_IFFT, NI_FFT, NI_IFFT, TOLERANCE,"
                              "DT_APP, DT_FFT, DT_IFFT, SRC_UNCHANGED_FFT, SRC_UNCHANGED_IFFT, "
                              "GPU_NAME, SUCCESS, ERROR, VKFFT_ERROR_CODE")
     sysgrp.add_argument('--dct', nargs='*', action='store', type=int,
@@ -119,7 +119,6 @@ def main():
 
     # parser.print_help()
     args = parser.parse_args()
-    print(args)
 
     # We modify class attributes to pass arguments - not a great approach but works..
     if args.systematic:
@@ -128,7 +127,7 @@ def main():
         t.bluestein = args.bluestein
         t.colour = args.colour
         t.dct = False if args.dct is None else args.dct[0] if len(args.dct) else 2
-        t.db = args.db
+        t.db = args.db[0] if args.db is not None else None
         t.dry_run = args.dry_run
         t.dtype = np.float64 if args.double else np.float32
         t.inplace = args.inplace

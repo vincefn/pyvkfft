@@ -39,19 +39,19 @@ try:
 
     # Create some context on the first available GPU
     if 'PYOPENCL_CTX' in os.environ:
-        ctx = cl.create_some_context()
+        cl_ctx = cl.create_some_context()
     else:
-        ctx = None
+        cl_ctx = None
         # Find the first OpenCL GPU available and use it, unless
         for p in cl.get_platforms():
             for d in p.get_devices():
                 if d.type & cl.device_type.GPU == 0:
                     continue
-                ctx = cl.Context(devices=(d,))
+                cl_ctx = cl.Context(devices=(d,))
                 break
-            if ctx is not None:
+            if cl_ctx is not None:
                 break
-    cq = cl.CommandQueue(ctx)
+    cq = cl.CommandQueue(cl_ctx)
     if 'cl_khr_fp64' in cq.device.extensions:
         has_cl_fp64 = True
     else:
@@ -358,11 +358,18 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
 
     t4 = timeit.default_timer()
 
+    if backend == "pyopencl":
+        gpu_name = cl_ctx.devices[0].name
+    elif backend == "pycuda":
+        gpu_name = cu_drv.Device(0).name()
+    else:
+        gpu_name = ""
+
     res = {"n2": n2, "ni": ni, "n2i": n2i, "nii": nii, "tol": tol, "dt_array": t1 - t0, "dt_app": t2 - t1,
            "dt_fft": t3 - t2, "dt_ifft": t4 - t3, "src_unchanged_fft": src_unchanged_fft,
            "src_unchanged_ifft": src_unchanged_ifft, "tol_test": max(ni, nii) < tol, "str": verb_out,
            "backend": backend, "shape": shape0, "ndim": ndim, "axes": axes, "dtype": dtype0, "inplace": inplace,
-           "norm": norm, "use_lut": use_lut, "r2c": r2c, "dct": dct}
+           "norm": norm, "use_lut": use_lut, "r2c": r2c, "dct": dct, "gpu_name": gpu_name}
 
     if return_array:
         res["d0"] = d0
