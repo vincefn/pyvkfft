@@ -167,7 +167,7 @@ class sdist_vkfft(sdist):
 
 ext_modules = []
 install_requires = ['numpy', 'psutil']
-exclude_packages = ['examples', 'test']
+exclude_packages = ['examples']
 CUDA = None
 OPENCL = None
 
@@ -241,6 +241,15 @@ class bdist_egg_disabled(bdist_egg):
         sys.exit("Aborting building of eggs. Please use `pip install .` to install from source.")
 
 
+# Console scripts, available e.g. as 'pyvkfft-test'
+scripts = ['pyvkfft/scripts/pyvkfft_test.py']
+
+console_scripts = []
+for s in scripts:
+    s1 = os.path.splitext(os.path.split(s)[1])[0]
+    s0 = os.path.splitext(s)[0]
+    console_scripts.append("%s = %s:main" % (s1.replace('_', '-'), s0.replace('/', '.')))
+
 setup(name="pyvkfft",
       version=__version__,
       description="Python wrapper for the CUDA and OpenCL backends of VkFFT,"
@@ -267,4 +276,6 @@ setup(name="pyvkfft",
                 'bdist_egg': bdist_egg if 'bdist_egg' in sys.argv else bdist_egg_disabled
                 },
       install_requires=install_requires,
-      test_suite="test")
+      test_suite="test",
+      entry_points={'console_scripts': console_scripts},
+      )

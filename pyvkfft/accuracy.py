@@ -89,7 +89,8 @@ def li(a, b):
 
 
 def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c=False, dct=False,
-                  stream=None, queue=None, return_array=False, init_array=None, verbose=False):
+                  stream=None, queue=None, return_array=False, init_array=None, verbose=False,
+                  colour_output=False):
     """
     Measure the
     :param backend: either 'pyopencl', 'pycuda' or 'cupy'
@@ -117,6 +118,7 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         fields), to save time. The correct type will be applied.
         If None, a random array is generated.
     :param verbose: if True, print a 1-line info for both fft and ifft results
+    :param colour_output: if True, use some colour to tag the quality of the accuracy
     :return: a dictionary with (l2_fft, li_fft, l2_ifft, li_ifft, tol, dt_array,
         dt_app, dt_fft, dt_ifft, src_unchanged_fft, src_unchanged_ifft, tol_test, str),
         with the L2 and Linf normalised norms comparing pyvkfft's result with either
@@ -273,13 +275,16 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
     else:
         shstr = str(d0.shape).replace(" ", "")
     shax = str(axes).replace(" ", "")
-    red = max(0, min(int((ni / tol - 0.2) * 255), 255))
-    stol = "\x1b[38;2;%d;0;0m%6.2e < %6.2e (%5.3f)\x1b[0m" % (red, ni, tol, ni / tol)
+    if colour_output:
+        red = max(0, min(int((ni / tol - 0.2) * 255), 255))
+        stol = "\x1b[48;2;%d;0;0m%6.2e < %6.2e (%5.3f)\x1b[0m" % (red, ni, tol, ni / tol)
+    else:
+        stol = "%6.2e < %6.2e (%5.3f)" % (ni, tol, ni / tol)
 
     verb_out = "%8s %4s %14s axes=%10s ndim=%4s %10s lut=%4s inplace=%d " \
-               " norm=%4s %5s: n2=%6.2e ninf=%s %5s %d" % \
+               " norm=%4s %5s: n2=%6.2e ninf=%s %d" % \
                (backend, t, shstr, shax, str(ndim), str(d0.dtype),
-                str(use_lut), int(inplace), str(norm), "FFT", n2, stol, ni < tol, src_unchanged_fft)
+                str(use_lut), int(inplace), str(norm), "FFT", n2, stol, src_unchanged_fft)
 
     t3 = timeit.default_timer()
 
@@ -335,9 +340,18 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
 
     src_unchanged_ifft = np.all(np.equal(d_gpu.get(), d0))
 
-    red = max(0, min(int((nii / tol - 0.) * 2550), 255))
-    stol = "\x1b[38;2;%d;0;0m%6.2e < %6.2e (%5.3f)\x1b[0m" % (red, nii, tol, nii / tol)
-    verb_out += "%5s: n2=%6.2e ninf=%s %5s %d" % ("iFFT", n2i, stol, nii < tol, src_unchanged_ifft)
+    if max(ni, nii) <= tol and (inplace or src_unchanged_fft) and \
+            (inplace or src_unchanged_ifft or (r2c and ndim > 1)):
+        success = 'OK'
+    else:
+        success = 'FAIL'
+
+    if colour_output:
+        red = max(0, min(int((nii / tol - 0.2) * 255), 255))
+        stol = "\x1b[48;2;%d;0;0m%6.2e < %6.2e (%5.3f)\x1b[0m" % (red, nii, tol, nii / tol)
+    else:
+        stol = "%6.2e < %6.2e (%5.3f)" % (nii, tol, nii / tol)
+    verb_out += "%5s: n2=%6.2e ninf=%s %d %4s" % ("iFFT", n2i, stol, src_unchanged_ifft, success)
 
     if verbose:
         print(verb_out)
@@ -386,7 +400,7 @@ def exhaustive_test(backend, vn, ndim, dtype, inplace, norm, use_lut, r2c=False,
     :param verbose: if True, prints 1 line per test
     :param return_res: if True, return the list of result dictionaries.
     :return: True if all tests passed, False otherwise. If return_res is True, return
-        the list of result dictionaris instead.
+        the list of result dictionaries instead.
     """
     try:
         # Get the real number of processor cores available
