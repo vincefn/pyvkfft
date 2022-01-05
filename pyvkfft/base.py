@@ -136,6 +136,39 @@ def primes(n):
     return v
 
 
+def radix_gen(nmax, radix, even=False, exclude_one=True, inverted=False, nmin=None):
+    """
+    Generate an array of integers which are only multiple of powers
+    of base integers, e.g. 2**N1 * 3**N2 * 5**N3 etc...
+    :param nmax: the maximum integer to return (included)
+    :param radix: the list/tuple of base integers - which don't need
+        to be primes
+    :param even: if True, only return even numbers
+    :param exclude_one: if True (the default), exclude 1
+    :param inverted: if True, the returned array will only include
+        integers which are NOT in the form 2**N1 * 3**N2 * 5**N3...
+    :param nmin: if not None, the integer values returned will be >=nmin
+    :return: the numpy array of integers, sorted
+    """
+    a = np.ones(1, dtype=np.int64)
+    for i in range(len(radix)):
+        a = a * radix[i] ** np.arange(int(np.floor(np.log(nmax) / np.log(radix[i]))) + 1)[:, np.newaxis]
+        a = a.flatten()
+        a = a[a <= nmax]
+    if inverted:
+        b = np.arange(nmax + 1)
+        b[a] = 0
+        a = b.take(np.nonzero(b)[0])
+    if even:
+        a = a[(a % 2) == 0]
+    if nmin is not None:
+        a = a[a >= nmin]
+    a.sort()
+    if exclude_one and a[0] == 1:
+        return a[1:]
+    return a
+
+
 def calc_transform_axes(shape, axes=None, ndim=None):
     """ Compute the final shape of the array to be passed
     to VkFFT, and the axes for which the transform should

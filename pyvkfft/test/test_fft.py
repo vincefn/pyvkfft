@@ -20,7 +20,7 @@ except ImportError:
     def ascent():
         return np.random.randint(0, 255, (512, 512))
 
-from pyvkfft.base import primes
+from pyvkfft.base import primes, radix_gen
 from pyvkfft.fft import fftn as vkfftn, ifftn as vkifftn, rfftn as vkrfftn, \
     irfftn as vkirfftn, dctn as vkdctn, idctn as vkidctn
 from pyvkfft.accuracy import test_accuracy, test_accuracy_kwargs, exhaustive_test, fftn, cq, has_cl_fp64
@@ -346,28 +346,15 @@ class TestFFTSystematic(unittest.TestCase):
         if not self.bluestein and self.radix is None:
             self.vn = range(self.range[0], self.range[1] + 1)
         else:
-            self.vn = []
-            if self.r2c:  # and self.inplace TODO
-                step = 2
+            if self.r2c and 2 not in self.radix:  # and inplace ?
+                raise RuntimeError("For r2c, the x/fastest axis must be even (requires radix-2)")
+            if self.bluestein:
+                self.vn = radix_gen(self.range[1], (2, 3, 5, 7, 11, 13), even=self.r2c,
+                                    inverted=True, nmin=self.range[0])
             else:
-                step = 1
-            for n in range(self.range[0], self.range[1] + 1, step):
-                if self.bluestein:
-                    if max(primes(n)) > 13:
-                        self.vn.append(n)
-                else:
-                    # This could go faster with numpy, but maybe not worth it
-                    p = primes(n)[1:]
-                    if len(self.radix):
-                        ok = True
-                        for i in p:
-                            if i not in self.radix:
-                                ok = False
-                                break
-                        if ok:
-                            self.vn.append(n)
-                    elif max(p) <= 13:
-                        self.vn.append(n)
+                if len(self.radix) == 0:
+                    self.radix = [2, 3, 5, 7, 11, 13]
+                self.vn = radix_gen(self.range[1], self.radix, even=self.r2c, nmin=self.range[0])
         self.assertTrue(len(self.vn), "The list of sizes to test is empty !")
 
     def run_systematic(self, backend, vn, ndim, dtype, inplace, norm, use_lut, r2c=False, dct=False, nproc=None,
