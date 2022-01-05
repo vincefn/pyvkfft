@@ -10,6 +10,7 @@
 # pyvkfft script to run short or long unit tests
 
 import argparse
+import os.path
 import sys
 import unittest
 import numpy as np
@@ -37,8 +38,10 @@ def main():
                         help="Use colour depending on how good the measured accuracy is")
     parser.add_argument('--mailto', action='store',
                         help="Email address the results will be sent to")
-    parser.add_argument('--mailto-fail', action='store',
+    parser.add_argument('--mailto_fail', action='store',
                         help="Email address the results will be sent to, only if the test fails")
+    parser.add_argument('--mailto_smtp', action='store', default="localhost",
+                        help="SMTP server address to mail the results")
     parser.add_argument('--silent', action='store_true',
                         help="Use this to minimise the written output "
                              "(note that tests can take a long time be patient")
@@ -116,6 +119,7 @@ def main():
 
     # parser.print_help()
     args = parser.parse_args()
+    print(args)
 
     # We modify class attributes to pass arguments - not a great approach but works..
     if args.systematic:
@@ -141,18 +145,63 @@ def main():
         t.vn = args.range
         suite = unittest.defaultTestLoader.loadTestsFromTestCase(t)
         if t.verbose:
-            unittest.TextTestRunner(verbosity=2).run(suite)
+            res = unittest.TextTestRunner(verbosity=2).run(suite)
         else:
-            unittest.TextTestRunner(verbosity=1).run(suite)
+            res = unittest.TextTestRunner(verbosity=1).run(suite)
     else:
         t = TestFFT
         t.verbose = not args.silent
         t.colour = args.colour
         suite = unittest.defaultTestLoader.loadTestsFromTestCase(t)
         if t.verbose:
-            unittest.TextTestRunner(verbosity=2).run(suite)
+            res = unittest.TextTestRunner(verbosity=2).run(suite)
         else:
-            unittest.TextTestRunner(verbosity=1).run(suite)
+            res = unittest.TextTestRunner(verbosity=1).run(suite)
+
+    sub = os.path.split(sys.argv[0])[-1]
+    for i in range(len(sys.argv)):
+        arg = sys.argv[i]
+        if 'mail' not in arg and 'mail' not in sys.argv[i - 1]:
+            sub += " " + arg
+    info = "Running:\n%s\n" % sub
+
+    nb_err_fail = len(res.errors) + len(res.failures)
+    if len(res.errors):
+        info += "\nERRORS:\n\n"
+        for t, s in res.errors:
+            tid = t.id()
+            tid1 = tid.split('.')[-1]
+            tid0 = tid.split('.' + tid1)[0]
+            info += '%s (%s):\n' % (tid1, tid0) + s
+    if len(res.failures):
+        info += "\nFAILURES:\n\n"
+        for t, s in res.failures:
+            tid = t.id()
+            tid1 = tid.split('.')[-1]
+            tid0 = tid.split('.' + tid1)[0]
+            info += '%s (%s):\n\n' % (tid1, tid0) + s + '\n\n'
+
+    if args.mailto_fail is not None and (nb_err_fail > 0) or args.mailto is not None:
+        import smtplib
+        try:
+            from email.message import EmailMessage
+
+            msg = EmailMessage()
+            msg['From'] = 'favre@esrf.fr'
+            msg['to'] = args.mailto if args.mailto is not None else args.mailto_fail
+            msg['Subject'] = '[fail=%d error=%d] %s' % \
+                             (len(res.failures), len(res.errors), sub)
+            print("Mailing results:\nFrom: %s\nTo: %sSubject: %s" % (msg['to'], msg['to'], msg['Subject']))
+            msg.set_content(info)
+
+            s = smtplib.SMTP(args.mailto_smtp)
+            s.send_message(msg)
+            s.quit()
+            print("Sent message with subject: %s" % msg['Subject'])
+        except (ConnectionRefusedError, smtplib.SMTPConnectError):
+            print("Could not connect to SMTP server (%s) to send email." % args.mailto_smtp)
+
+    sys.exit(int(nb_err_fail > 0))
 
 
 if __name__ == '__main__':

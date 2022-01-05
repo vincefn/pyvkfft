@@ -345,16 +345,15 @@ class TestFFTSystematic(unittest.TestCase):
         self.assertTrue(not self.bluestein or self.radix is None, "Cannot select both Bluestein and radix")
         if not self.bluestein and self.radix is None:
             self.vn = range(self.range[0], self.range[1] + 1)
+        elif self.bluestein:
+            self.vn = radix_gen(self.range[1], (2, 3, 5, 7, 11, 13), even=self.r2c,
+                                inverted=True, nmin=self.range[0])
         else:
+            if len(self.radix) == 0:
+                self.radix = [2, 3, 5, 7, 11, 13]
             if self.r2c and 2 not in self.radix:  # and inplace ?
                 raise RuntimeError("For r2c, the x/fastest axis must be even (requires radix-2)")
-            if self.bluestein:
-                self.vn = radix_gen(self.range[1], (2, 3, 5, 7, 11, 13), even=self.r2c,
-                                    inverted=True, nmin=self.range[0])
-            else:
-                if len(self.radix) == 0:
-                    self.radix = [2, 3, 5, 7, 11, 13]
-                self.vn = radix_gen(self.range[1], self.radix, even=self.r2c, nmin=self.range[0])
+            self.vn = radix_gen(self.range[1], self.radix, even=self.r2c, nmin=self.range[0])
         self.assertTrue(len(self.vn), "The list of sizes to test is empty !")
 
     def run_systematic(self, backend, vn, ndim, dtype, inplace, norm, use_lut, r2c=False, dct=False, nproc=None,
