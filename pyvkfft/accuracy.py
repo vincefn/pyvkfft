@@ -11,6 +11,8 @@
 import os
 import multiprocessing
 import timeit
+import atexit
+
 import psutil
 import numpy as np
 from numpy.fft import fftn, ifftn, rfftn, irfftn
@@ -37,37 +39,14 @@ try:
     import pyopencl.array as cla
     from pyvkfft.opencl import VkFFTApp as clVkFFTApp, primes
 
-    # Create some context on the first available GPU
-    if 'PYOPENCL_CTX' in os.environ:
-        cl_ctx = cl.create_some_context()
-    else:
-        cl_ctx = None
-        # Find the first OpenCL GPU available and use it, unless
-        for p in cl.get_platforms():
-            for d in p.get_devices():
-                if d.type & cl.device_type.GPU == 0:
-                    continue
-                cl_ctx = cl.Context(devices=(d,))
-                break
-            if cl_ctx is not None:
-                break
-    cq = cl.CommandQueue(cl_ctx)
-    if 'cl_khr_fp64' in cq.device.extensions:
-        has_cl_fp64 = True
-    else:
-        has_cl_fp64 = False
-
     has_opencl = True
 except ImportError:
-    cq = None
     has_opencl = False
-    has_cl_fp64 = False
 
 try:
     from pyvkfft.cuda import VkFFTApp as cuVkFFTApp, primes, has_pycuda, has_cupy
 
     if has_pycuda:
-        import pycuda.autoinit
         import pycuda.driver as cu_drv
         import pycuda.gpuarray as cua
 
@@ -76,6 +55,81 @@ try:
 except ImportError:
     has_cupy = False
     has_pycuda = False
+
+# Dictionnary of cuda/opencl (device, context). Will be initialised on-demand.
+# This is needed for multiprocessing.
+# The pyopencl entry is a tuple with (device, context, queue, has_cl_fp64)
+gpu_ctx_dic = {}
+
+
+def init_ctx(backend, gpu_name=None, verbose=False):
+    if backend in gpu_ctx_dic:
+        return
+    if backend == "pycuda":
+        cu_drv.init()
+        d = None
+        if gpu_name is not None:
+            for i in range(cu_drv.Device.count()):
+                if gpu_name.lower() in cu_drv.Device(i).name().lower():
+                    d = cu_drv.Device(i)
+                    break
+        else:
+            d = cu_drv.Device(0)
+        if d is None:
+            if gpu_name is not None:
+                raise RuntimeError("Selected backend is pycuda, but no device found (name=%s)" % gpu_name)
+            else:
+                raise RuntimeError("Selected backend is pycuda, but no device found")
+        gpu_ctx_dic["pycuda"] = (d, d.make_context())
+        if verbose:
+            print("Selected device for pycuda: %s" % d.name())
+    elif backend == "pyopencl":
+        d = None
+        for p in cl.get_platforms():
+            if d is not None:
+                break
+            for d0 in p.get_devices():
+                if d0.type & cl.device_type.GPU:
+                    if gpu_name is not None:
+                        if gpu_name.lower() in d0.name.lower():
+                            d = d0
+                    else:
+                        d = d0
+                if d is not None:
+                    break
+        if d is None:
+            if gpu_name is not None:
+                raise RuntimeError("Selected backend is pyopencl, but no device found (name=%s)" % gpu_name)
+            else:
+                raise RuntimeError("Selected backend is pyopencl, but no device found")
+        cl_ctx = cl.Context([d])
+        cq = cl.CommandQueue(cl_ctx)
+        gpu_ctx_dic["pyopencl"] = d, cl_ctx, cq, 'cl_khr_fp64' in cq.device.extensions
+        if verbose:
+            print("Selected device for pyopencl: %s [%s]" % (d.name, p.name))
+    elif backend == "cupy":
+        # Is it possible to select a device by name with cupy ?
+        # The name does not appear in the device attributes
+        gpu_ctx_dic["cupy"] = cp.cuda.Device(0).use()
+
+        # TODO: The following somehow helps initialising cupy, not sure why it's useful.
+        #  (some context auto-init...). Otherwise a cuLaunchKernel error occurs with
+        #  the first transform.
+        cupy_a = cp.array(np.zeros((128, 128), dtype=np.float32))
+        cupy_a.sum()
+    else:
+        raise RuntimeError("init_ctx: unknown backend ", backend)
+
+
+def cleanup_cu_ctx():
+    # Is that really clean ?
+    if has_pycuda:
+        if cu_drv.Context is not None:
+            while cu_drv.Context.get_current() is not None:
+                cu_drv.Context.pop()
+
+
+atexit.register(cleanup_cu_ctx)
 
 
 def l2(a, b):
@@ -89,7 +143,7 @@ def li(a, b):
 
 
 def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c=False, dct=False,
-                  stream=None, queue=None, return_array=False, init_array=None, verbose=False,
+                  gpu_name=None, stream=None, queue=None, return_array=False, init_array=None, verbose=False,
                   colour_output=False):
     """
     Measure the
@@ -109,6 +163,8 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         (x, fastest axis) must be even
     :param dct: either 1, 2, 3 or 4 to test different dct. Only norm=1 is can be
         tested (native scipy/pyfftw normalisation).
+    :param gpu_name: the name of the gpu to use. If None, the first available
+        for the backend will be used.
     :param stream: the cuda stream to use, or None
     :param queue: the opencl queue to use (mandatory for the 'pyopencl' backend)
     :param return_array: if True, will return the generated random array so it can be
@@ -137,6 +193,9 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         return_array, ini_array and verbose.
     """
     t0 = timeit.default_timer()
+    init_ctx(backend, gpu_name=gpu_name, verbose=False)
+    if backend == "pyopencl" and queue is None:
+        queue = gpu_ctx_dic["pyopencl"][2]
     shape0 = shape
     dtype0 = dtype
     if dtype in (np.complex64, np.float32):
@@ -359,9 +418,9 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
     t4 = timeit.default_timer()
 
     if backend == "pyopencl":
-        gpu_name = cl_ctx.devices[0].name
+        gpu_name = gpu_ctx_dic["pyopencl"][0].name
     elif backend == "pycuda":
-        gpu_name = cu_drv.Device(0).name()
+        gpu_name = gpu_ctx_dic["pycuda"][0].name()
     else:
         gpu_name = ""
 
@@ -377,11 +436,10 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
 
 
 def test_accuracy_kwargs(kwargs):
-    # We can't pickle the opencl queue, so it is selected here.
     # This function must be defined here so it can be used with a multiprocessing pool
     # in test_fft, otherwise this will fail, see:
     # https://stackoverflow.com/questions/41385708/multiprocessing-example-giving-attributeerror
-    return test_accuracy(**kwargs, queue=cq)
+    return test_accuracy(**kwargs)
 
 
 def exhaustive_test(backend, vn, ndim, dtype, inplace, norm, use_lut, r2c=False, dct=False, nproc=None,

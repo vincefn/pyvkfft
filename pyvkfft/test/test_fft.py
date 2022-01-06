@@ -26,10 +26,9 @@ except ImportError:
 from pyvkfft.base import primes, radix_gen
 from pyvkfft.fft import fftn as vkfftn, ifftn as vkifftn, rfftn as vkrfftn, \
     irfftn as vkirfftn, dctn as vkdctn, idctn as vkidctn
-from pyvkfft.accuracy import test_accuracy, test_accuracy_kwargs, exhaustive_test, fftn, cq, has_cl_fp64
+from pyvkfft.accuracy import test_accuracy, test_accuracy_kwargs, fftn, init_ctx, gpu_ctx_dic
 
 try:
-    import pycuda.autoinit
     import pycuda.gpuarray as cua
 
     import pycuda.driver as cu_drv
@@ -41,12 +40,6 @@ except ImportError:
 
 try:
     import cupy as cp
-
-    # TODO: The following somehow helps initialising cupy, not sure why it's useful.
-    #  (some context auto-init...). Otherwise a cuLaunchKernel error occurs with
-    #  the first transform.
-    cupy_a = cp.array(np.zeros((128, 128), dtype=np.float32))
-    cupy_a.sum()
 
     has_cupy = True
 except ImportError:
@@ -62,6 +55,9 @@ except ImportError:
 
 
 class TestFFT(unittest.TestCase):
+    gpu = None
+    nproc = 1
+    verbose = False
 
     def test_backend(self):
         self.assertTrue(has_pycuda or has_pyopencl or has_cupy,
@@ -79,37 +75,40 @@ class TestFFT(unittest.TestCase):
             vbackend.append("pyopencl")
 
         for backend in vbackend:
-            if backend == "pycuda":
-                dc = cua.to_gpu(ascent().astype(np.complex64))
-                dr = cua.to_gpu(ascent().astype(np.float32))
-            elif backend == "cupy":
-                dc = cp.array(ascent().astype(np.complex64))
-                dr = cp.array(ascent().astype(np.float32))
-            else:
-                dc = cla.to_device(cq, ascent().astype(np.complex64))
-                dr = cla.to_device(cq, ascent().astype(np.float32))
-            # C2C, new destination array
-            d = vkfftn(dc)
-            d = vkifftn(d)
-            # C2C in-place
-            d = vkfftn(d, d)
-            d = vkifftn(d, d)
-            # C2C out-of-place
-            d2 = d.copy()
-            d2 = vkfftn(d, d2)
-            d = vkifftn(d2, d)
+            with self.subTest(backend=backend):
+                init_ctx(backend, gpu_name=self.gpu, verbose=False)
+                if backend == "pycuda":
+                    dc = cua.to_gpu(ascent().astype(np.complex64))
+                    dr = cua.to_gpu(ascent().astype(np.float32))
+                elif backend == "cupy":
+                    dc = cp.array(ascent().astype(np.complex64))
+                    dr = cp.array(ascent().astype(np.float32))
+                else:
+                    cq = gpu_ctx_dic["pyopencl"][2]
+                    dc = cla.to_device(cq, ascent().astype(np.complex64))
+                    dr = cla.to_device(cq, ascent().astype(np.float32))
+                # C2C, new destination array
+                d = vkfftn(dc)
+                d = vkifftn(d)
+                # C2C in-place
+                d = vkfftn(d, d)
+                d = vkifftn(d, d)
+                # C2C out-of-place
+                d2 = d.copy()
+                d2 = vkfftn(d, d2)
+                d = vkifftn(d2, d)
 
-            # R2C, new destination array
-            d = vkrfftn(dr)
-            d = vkirfftn(d)
+                # R2C, new destination array
+                d = vkrfftn(dr)
+                d = vkirfftn(d)
 
-            # DCT, new destination array
-            d = vkdctn(dr)
-            d = vkidctn(d)
-            # DCT, out-of-place
-            d2 = dr.copy()
-            d2 = vkdctn(dr, d2)
-            dr = vkidctn(d2, dr)
+                # DCT, new destination array
+                d = vkdctn(dr)
+                d = vkidctn(d)
+                # DCT, out-of-place
+                d2 = dr.copy()
+                d2 = vkdctn(dr, d2)
+                dr = vkidctn(d2, dr)
 
     def run_fft(self, vbackend, vn, dims_max=4, ndim_max=3, shuffle_axes=True,
                 vtype=(np.complex64, np.complex128),
@@ -135,10 +134,13 @@ class TestFFT(unittest.TestCase):
         :param vdct: a list among False/0, 1, 2, 3, 4 to test various DCT
         :param verbose: True or False - prints two lines per test (FFT and iFFT result)
         :param dry_run: if True, only count the number of test to run
-        :return: the number of tests performed
+        :return: the number of tests performed, and the list of kwargs (dry run)
         """
         ct = 0
+        vkwargs = []
         for backend in vbackend:
+            init_ctx(backend, gpu_name=self.gpu, verbose=False)
+            cq = gpu_ctx_dic["pyopencl"][2] if backend == "pyopencl" else None
             for n in vn:
                 for dims in range(1, dims_max + 1):
                     for ndim0 in range(1, min(dims, ndim_max) + 1):
@@ -192,6 +194,7 @@ class TestFFT(unittest.TestCase):
                                                         if not dry_run:
                                                             res = test_accuracy(backend, sh, ndim, axes, dtype, inplace,
                                                                                 norm, use_lut, r2c=r2c, dct=dct,
+                                                                                gpu_name=self.gpu,
                                                                                 stream=None, queue=cq,
                                                                                 return_array=False, init_array=d0,
                                                                                 verbose=verbose)
@@ -213,7 +216,39 @@ class TestFFT(unittest.TestCase):
                                                                     self.assertTrue(src2,
                                                                                     "The source array was modified "
                                                                                     "during the iFFT")
-        return ct
+                                                        else:
+                                                            kwargs = {"backend": backend, "shape": sh,
+                                                                      "ndim": ndim, "axes": axes,
+                                                                      "dtype": dtype, "inplace": inplace,
+                                                                      "norm": norm, "use_lut": use_lut,
+                                                                      "r2c": r2c, "dct": dct,
+                                                                      "gpu_name": self.gpu, "stream": None,
+                                                                      "verbose": False,
+                                                                      "colour_output": self.colour}
+                                                            vkwargs.append(kwargs)
+
+        return ct, vkwargs
+
+    def run_fft_parallel(self, vkwargs):
+        # Need to use spawn to handle the GPU context
+        with multiprocessing.get_context('spawn').Pool(self.nproc) as pool:
+            for res in pool.imap(test_accuracy_kwargs, vkwargs):
+                with self.subTest(backend=res['backend'], n=max(res['shape']), ndim=res['ndim'],
+                                  dtype=res['dtype'], norm=res['norm'], use_lut=res['use_lut'],
+                                  inplace=res['inplace'], r2c=res['r2c'], dct=res['dct']):
+                    ni, n2 = res["ni"], res["n2"]
+                    nii, n2i = res["nii"], res["n2i"]
+                    tol = res["tol"]
+                    src1 = res["src_unchanged_fft"]
+                    src2 = res["src_unchanged_ifft"]
+                    if self.verbose:
+                        print(res['str'])
+                    self.assertTrue(ni < tol, "Accuracy mismatch after FFT, n2=%8e ni=%8e>%8e" % (n2, ni, tol))
+                    self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, n2=%8e ni=%8e>%8e" % (n2, nii, tol))
+                    if not res['inplace']:
+                        self.assertTrue(src1, "The source array was modified during the FFT")
+                        if not res['r2c']:
+                            self.assertTrue(src2, "The source array was modified during the iFFT")
 
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
     def test_c2c(self):
@@ -225,17 +260,28 @@ class TestFFT(unittest.TestCase):
             vbackend.append("cupy")
         if has_pyopencl:
             vbackend.append("pyopencl")
-        ct = 0
-        for dry_run in [True, False]:
-            for backend in vbackend:
+        for backend in vbackend:
+            init_ctx(backend, gpu_name=self.gpu, verbose=False)
+            has_cl_fp64 = gpu_ctx_dic["pyopencl"][3] if backend == "pyopencl" else True
+            ct = 0
+            vkwargs = []
+            for dry_run in [True, False]:
                 vtype = (np.complex64, np.complex128)
                 if backend == "pyopencl" and not has_cl_fp64:
                     vtype = (np.complex64,)
                 v = self.verbose and not dry_run
-                ct += self.run_fft([backend], [30, 34], vtype=vtype, verbose=v, dry_run=dry_run)
-                ct += self.run_fft([backend], [808], vtype=vtype, dims_max=2, verbose=v, dry_run=dry_run)
-            if dry_run and self.verbose:
-                print("Running %d C2C tests" % ct)
+                if dry_run or self.nproc == 1:
+                    tmp = self.run_fft([backend], [30, 34], vtype=vtype, verbose=v, dry_run=dry_run, shuffle_axes=False)
+                    ct += tmp[0]
+                    vkwargs += tmp[1]
+                    tmp = self.run_fft([backend], [808], vtype=vtype, dims_max=2, verbose=v, dry_run=dry_run,
+                                       shuffle_axes=False)
+                    ct += tmp[0]
+                    vkwargs += tmp[1]
+                else:
+                    self.run_fft_parallel(vkwargs)
+                if dry_run and self.verbose:
+                    print("Running %d C2C tests (backend: %s)" % (ct, backend))
 
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
     def test_r2c(self):
@@ -247,17 +293,28 @@ class TestFFT(unittest.TestCase):
             vbackend.append("cupy")
         if has_pyopencl:
             vbackend.append("pyopencl")
-        ct = 0
-        for dry_run in [True, False]:
-            for backend in vbackend:
+        for backend in vbackend:
+            init_ctx(backend, gpu_name=self.gpu, verbose=False)
+            has_cl_fp64 = gpu_ctx_dic["pyopencl"][3] if backend == "pyopencl" else True
+            ct = 0
+            vkwargs = []
+            for dry_run in [True, False]:
                 vtype = (np.float32, np.float64)
                 if backend == "pyopencl" and not has_cl_fp64:
                     vtype = (np.float32,)
                 v = self.verbose and not dry_run
-                ct += self.run_fft([backend], [30, 34], vtype=vtype, vr2c=(True,), verbose=v, dry_run=dry_run)
-                ct += self.run_fft([backend], [808], vtype=vtype, dims_max=2, vr2c=(True,), verbose=v, dry_run=dry_run)
-            if dry_run and self.verbose:
-                print("Running %d R2C tests" % ct)
+                if dry_run or self.nproc == 1:
+                    tmp = self.run_fft([backend], [30, 34], vtype=vtype, vr2c=(True,), verbose=v, dry_run=dry_run)
+                    ct += tmp[0]
+                    vkwargs += tmp[1]
+                    tmp = self.run_fft([backend], [808], vtype=vtype, dims_max=2, vr2c=(True,),
+                                       verbose=v, dry_run=dry_run)
+                    ct += tmp[0]
+                    vkwargs += tmp[1]
+                else:
+                    self.run_fft_parallel(vkwargs)
+                if dry_run and self.verbose:
+                    print("Running %d R2C tests (backend: %s)" % (ct, backend))
 
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
     def test_dct(self):
@@ -269,17 +326,25 @@ class TestFFT(unittest.TestCase):
             vbackend.append("cupy")
         if has_pyopencl:
             vbackend.append("pyopencl")
-        ct = 0
-        for dry_run in [True, False]:
-            for backend in vbackend:
+        for backend in vbackend:
+            init_ctx(backend, gpu_name=self.gpu, verbose=False)
+            has_cl_fp64 = gpu_ctx_dic["pyopencl"][3] if backend == "pyopencl" else True
+            ct = 0
+            vkwargs = []
+            for dry_run in [True, False]:
                 vtype = (np.float32, np.float64)
                 if backend == "pyopencl" and not has_cl_fp64:
                     vtype = (np.float32,)
                 v = self.verbose and not dry_run
-                ct += self.run_fft([backend], [30, 34], vtype=vtype, vnorm=[1], vdct=range(1, 5), verbose=v,
-                                   dry_run=dry_run)
-            if dry_run and self.verbose:
-                print("Running %d DCT tests" % ct)
+                if dry_run or self.nproc == 1:
+                    tmp = self.run_fft([backend], [30, 34], vtype=vtype, vnorm=[1], vdct=range(1, 5), verbose=v,
+                                       dry_run=dry_run)
+                    ct += tmp[0]
+                    vkwargs += tmp[1]
+                else:
+                    self.run_fft_parallel(vkwargs)
+                if dry_run and self.verbose:
+                    print("Running %d DCT tests (backend: %s)" % (ct, backend))
 
     @unittest.skipIf(not has_pycuda, "pycuda is not available")
     def test_pycuda_streams(self):
@@ -288,6 +353,7 @@ class TestFFT(unittest.TestCase):
         """
         for dtype in (np.complex64, np.complex128):
             with self.subTest(dtype=dtype):
+                init_ctx("pycuda", gpu_name=self.gpu, verbose=False)
                 if dtype == np.complex64:
                     rtol = 1e-6
                 else:
@@ -314,27 +380,26 @@ class TestFFT(unittest.TestCase):
                     self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
 
 
+# The class parameters are written in pyvkfft_test.main()
 class TestFFTSystematic(unittest.TestCase):
-    # @classmethod
-    # def setUpClass(cls) -> None:
-    #     cls.axes = None
-    #     cls.dct = False
-    #     cls.bluestein = False
-    #     cls.inplace = False
-    #     cls.db = False
-    #     cls.dry_run = False
-    #     cls.dtype = np.float32
-    #     cls.lut = None
-    #     cls.ndim = 1
-    #     cls.ndims = None
-    #     cls.norm = 1
-    #     cls.nproc = 1
-    #     cls.r2c = False
-    #     cls.radix = None
-    #     cls.range = 2, 128
-    #     cls.vbackend = None
-    #     cls.verbose = False
-    #     cls.vn = None
+    axes = None
+    bluestein = False
+    colour = False
+    dct = False
+    db = None
+    dtype = np.float32
+    gpu = None
+    inplace = False
+    lut = False
+    ndim = 1
+    # t.ndims = args.ndims
+    norm = 1
+    nproc = 1
+    r2c = False
+    radix = None
+    range = 2, 128
+    vbackend = None
+    verbose = True
 
     def setUp(self) -> None:
         if self.vbackend is None:
@@ -345,6 +410,8 @@ class TestFFTSystematic(unittest.TestCase):
                 self.vbackend.append("cupy")
             if has_pyopencl:
                 self.vbackend.append("pyopencl")
+                init_ctx("pyopencl", gpu_name=self.gpu, verbose=False)
+                self.cq, self.has_cl_fp64 = gpu_ctx_dic["pyopencl"][2:]
         self.assertTrue(not self.bluestein or self.radix is None, "Cannot select both Bluestein and radix")
         if not self.bluestein and self.radix is None:
             self.vn = range(self.range[0], self.range[1] + 1)
@@ -414,7 +481,7 @@ class TestFFTSystematic(unittest.TestCase):
             for n in self.vn:
                 kwargs = {"backend": backend, "shape": [n] * self.ndim, "ndim": self.ndim, "axes": self.axes,
                           "dtype": self.dtype, "inplace": self.inplace, "norm": self.norm, "use_lut": self.lut,
-                          "r2c": self.r2c, "dct": self.dct, "stream": None, "verbose": False,
+                          "r2c": self.r2c, "dct": self.dct, "gpu_name": self.gpu, "stream": None, "verbose": False,
                           "colour_output": self.colour}
                 vkwargs.append(kwargs)
         if self.db is not None:
@@ -484,7 +551,7 @@ class TestFFTSystematic(unittest.TestCase):
             vbackend.append("pyopencl")
         for backend in vbackend:
             vtype = (np.float32, np.float64)
-            if backend == "pyopencl" and not has_cl_fp64:
+            if backend == "pyopencl" and not self.has_cl_fp64:
                 vtype = (np.float32,)
             for dtype in vtype:
                 vlut = [None]
@@ -511,7 +578,7 @@ class TestFFTSystematic(unittest.TestCase):
             vbackend.append("pyopencl")
         for backend in vbackend:
             vtype = (np.float32, np.float64)
-            if backend == "pyopencl" and not has_cl_fp64:
+            if backend == "pyopencl" and not self.has_cl_fp64:
                 vtype = (np.float32,)
             for dtype in vtype:
                 vlut = [None]
@@ -539,7 +606,7 @@ class TestFFTSystematic(unittest.TestCase):
             vbackend.append("pyopencl")
         for backend in vbackend:
             vtype = (np.float32, np.float64)
-            if backend == "pyopencl" and not has_cl_fp64:
+            if backend == "pyopencl" and not self.has_cl_fp64:
                 vtype = (np.float32,)
             for dct in range(1, 4 + 1):
                 for dtype in vtype:
@@ -561,8 +628,6 @@ def suite():
     test_suite = unittest.TestSuite()
     load_tests = unittest.defaultTestLoader.loadTestsFromTestCase
     test_suite.addTest(load_tests(TestFFT))
-    if "--exhaustive" in sys.argv:
-        test_suite.addTest(load_tests(TestFFTSystematic))
     return test_suite
 
 
