@@ -112,7 +112,7 @@ class VkFFTApp(VkFFTAppBase):
             raise RuntimeError("Error creating VkFFTConfiguration. Was the OpenCL context properly initialised ?")
         res = ctypes.c_int(0)
         self.app = _vkfft_opencl.init_app(self.config, queue.int_ptr, ctypes.byref(res))
-        check_vkfft_result(res)
+        check_vkfft_result(res, shape, dtype, ndim, inplace, norm, r2c, dct, axes, "opencl")
         if self.app is None:
             raise RuntimeError("Error creating VkFFTApplication. Was the OpenCL context properly initialised ?")
 
@@ -167,7 +167,8 @@ class VkFFTApp(VkFFTAppBase):
                 if src.data.int_ptr != dest.data.int_ptr:
                     raise RuntimeError("VkFFTApp.fft: dest is not None but this is an inplace transform")
             res = _vkfft_opencl.fft(self.app, int(src.data.int_ptr), int(src.data.int_ptr), int(self.queue.int_ptr))
-            check_vkfft_result(res)
+            check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
+                               self.dct, backend="opencl")
             if self.norm == "ortho":
                 src *= self._get_fft_scale(norm=0)
             if self.r2c:
@@ -184,7 +185,8 @@ class VkFFTApp(VkFFTAppBase):
             if self.r2c:
                 assert (dest.size == src.size // src.shape[-1] * (src.shape[-1] // 2 + 1))
             res = _vkfft_opencl.fft(self.app, int(src.data.int_ptr), int(dest.data.int_ptr), int(self.queue.int_ptr))
-            check_vkfft_result(res)
+            check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
+                               self.dct, backend="opencl")
             if self.norm == "ortho":
                 dest *= self._get_fft_scale(norm=0)
             return dest
@@ -203,7 +205,8 @@ class VkFFTApp(VkFFTAppBase):
                 if src.data.int_ptr != dest.data.int_ptr:
                     raise RuntimeError("VkFFTApp.fft: dest!=src but this is an inplace transform")
             res = _vkfft_opencl.ifft(self.app, int(src.data.int_ptr), int(src.data.int_ptr), int(self.queue.int_ptr))
-            check_vkfft_result(res)
+            check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
+                               self.dct, backend="opencl")
             if self.norm == "ortho":
                 src *= self._get_ifft_scale(norm=0)
             if self.r2c:
@@ -226,7 +229,8 @@ class VkFFTApp(VkFFTAppBase):
             else:
                 res = _vkfft_opencl.ifft(self.app, int(src.data.int_ptr), int(dest.data.int_ptr),
                                          int(self.queue.int_ptr))
-            check_vkfft_result(res)
+            check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
+                               self.dct, backend="opencl")
             if self.norm == "ortho":
                 dest *= self._get_ifft_scale(norm=0)
             return dest

@@ -21,15 +21,16 @@ try:
     # We prefer scipy over numpy for fft, and we can also test dct
     from scipy.fft import dctn, idctn, fftn, ifftn, rfftn, irfftn
 
-    has_scipy_dct = True
+    has_dct_ref = True
 except ImportError:
-    has_scipy_dct = False
+    has_dct_ref = False
     print("Install scipy if you want to test dct transforms")
 
 try:
     from pyfftw.interfaces.scipy_fft import dctn, idctn, fftn, ifftn, rfftn, irfftn
 
     has_pyfftw = True
+    has_dct_ref = True
 except ImportError:
     has_pyfftw = False
     print("Install pyfftw if you want greater accuracy tests")
@@ -66,6 +67,8 @@ def init_ctx(backend, gpu_name=None, verbose=False):
     if backend in gpu_ctx_dic:
         return
     if backend == "pycuda":
+        if not has_pycuda:
+            raise RuntimeError("init_ctx: backend=%s is not available" % backend)
         cu_drv.init()
         d = None
         if gpu_name is not None:
@@ -84,6 +87,8 @@ def init_ctx(backend, gpu_name=None, verbose=False):
         if verbose:
             print("Selected device for pycuda: %s" % d.name())
     elif backend == "pyopencl":
+        if not has_opencl:
+            raise RuntimeError("init_ctx: backend=%s is not available" % backend)
         d = None
         for p in cl.get_platforms():
             if d is not None:
@@ -108,6 +113,8 @@ def init_ctx(backend, gpu_name=None, verbose=False):
         if verbose:
             print("Selected device for pyopencl: %s [%s]" % (d.name, p.name))
     elif backend == "cupy":
+        if not has_cupy:
+            raise RuntimeError("init_ctx: backend=%s is not available" % backend)
         # Is it possible to select a device by name with cupy ?
         # The name does not appear in the device attributes
         gpu_ctx_dic["cupy"] = cp.cuda.Device(0).use()

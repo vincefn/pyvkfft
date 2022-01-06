@@ -118,7 +118,7 @@ class VkFFTApp(VkFFTAppBase):
             raise RuntimeError("Error creating VkFFTConfiguration. Was the CUDA context properly initialised ?")
         res = ctypes.c_int(0)
         self.app = _vkfft_cuda.init_app(self.config, ctypes.byref(res))
-        check_vkfft_result(res)
+        check_vkfft_result(res, shape, dtype, ndim, inplace, norm, r2c, dct, axes, "cuda")
         if self.app is None:
             raise RuntimeError("Error creating VkFFTApplication. Was the CUDA driver initialised ?")
         if has_pycuda:
@@ -198,7 +198,8 @@ class VkFFTApp(VkFFTAppBase):
             if src_ptr != dest_ptr:
                 raise RuntimeError("VkFFTApp.fft: dest is not None but this is an inplace transform")
             res = _vkfft_cuda.fft(self.app, int(src_ptr), int(src_ptr))
-            check_vkfft_result(res)
+            check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
+                               self.dct, backend="cuda")
             if self.norm == "ortho":
                 src *= self._get_fft_scale(norm=0)
             if self.r2c:
@@ -215,7 +216,8 @@ class VkFFTApp(VkFFTAppBase):
             if self.r2c:
                 assert (dest.size == src.size // src.shape[-1] * (src.shape[-1] // 2 + 1))
             res = _vkfft_cuda.fft(self.app, int(src_ptr), int(dest_ptr))
-            check_vkfft_result(res)
+            check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
+                               self.dct, backend="cuda")
             if self.norm == "ortho":
                 dest *= self._get_fft_scale(norm=0)
             return dest
@@ -249,7 +251,8 @@ class VkFFTApp(VkFFTAppBase):
                 if src_ptr != dest_ptr:
                     raise RuntimeError("VkFFTApp.fft: dest!=src but this is an inplace transform")
             res = _vkfft_cuda.ifft(self.app, int(src_ptr), int(src_ptr))
-            check_vkfft_result(res)
+            check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
+                               self.dct, backend="cuda")
             if self.norm == "ortho":
                 src *= self._get_ifft_scale(norm=0)
             if self.r2c:
@@ -270,7 +273,8 @@ class VkFFTApp(VkFFTAppBase):
                 res = _vkfft_cuda.ifft(self.app, int(dest_ptr), int(src_ptr))
             else:
                 res = _vkfft_cuda.ifft(self.app, int(src_ptr), int(dest_ptr))
-            check_vkfft_result(res)
+            check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
+                               self.dct, backend="cuda")
             if self.norm == "ortho":
                 dest *= self._get_ifft_scale(norm=0)
             return dest

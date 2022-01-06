@@ -26,7 +26,7 @@ except ImportError:
 from pyvkfft.base import primes, radix_gen
 from pyvkfft.fft import fftn as vkfftn, ifftn as vkifftn, rfftn as vkrfftn, \
     irfftn as vkirfftn, dctn as vkdctn, idctn as vkidctn
-from pyvkfft.accuracy import test_accuracy, test_accuracy_kwargs, fftn, init_ctx, gpu_ctx_dic
+from pyvkfft.accuracy import test_accuracy, test_accuracy_kwargs, fftn, init_ctx, gpu_ctx_dic, has_dct_ref
 
 try:
     import pycuda.gpuarray as cua
@@ -212,7 +212,7 @@ class TestFFT(unittest.TestCase):
                                                             if not inplace:
                                                                 self.assertTrue(src1, "The source array was modified "
                                                                                       "during the FFT")
-                                                                if not r2c:
+                                                                if not r2c or ndim == 1:
                                                                     self.assertTrue(src2,
                                                                                     "The source array was modified "
                                                                                     "during the iFFT")
@@ -247,7 +247,7 @@ class TestFFT(unittest.TestCase):
                     self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, n2=%8e ni=%8e>%8e" % (n2, nii, tol))
                     if not res['inplace']:
                         self.assertTrue(src1, "The source array was modified during the FFT")
-                        if not res['r2c']:
+                        if not res['r2c'] or res["ndim"] == 1:
                             self.assertTrue(src2, "The source array was modified during the iFFT")
 
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
@@ -317,6 +317,7 @@ class TestFFT(unittest.TestCase):
                     print("Running %d R2C tests (backend: %s)" % (ct, backend))
 
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
+    @unittest.skipIf(not has_dct_ref, "scipy and pyfftw are not available - cannot test DCT")
     def test_dct(self):
         """Run DCT tests"""
         vbackend = []
@@ -471,7 +472,7 @@ class TestFFTSystematic(unittest.TestCase):
                     self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, n2=%8e ni=%8e>%8e" % (n2, nii, tol))
                     if not inplace:
                         self.assertTrue(src1, "The source array was modified during the FFT")
-                        if not r2c:
+                        if not r2c or ndim == 1:
                             self.assertTrue(src2, "The source array was modified during the iFFT")
 
     def test_systematic(self):
@@ -537,91 +538,8 @@ class TestFFTSystematic(unittest.TestCase):
                     self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, n2=%8e ni=%8e>%8e" % (n2, nii, tol))
                     if not self.inplace:
                         self.assertTrue(src1, "The source array was modified during the FFT")
-                        if not self.r2c:
+                        if not self.r2c or self.ndim == 1:
                             self.assertTrue(src2, "The source array was modified during the iFFT")
-
-    def _test_systematic_c2c(self):
-        """Systematic C2C tests, without shuffling axes"""
-        vbackend = []
-        if has_pycuda:
-            vbackend.append("pycuda")
-        if has_cupy:
-            vbackend.append("cupy")
-        if has_pyopencl:
-            vbackend.append("pyopencl")
-        for backend in vbackend:
-            vtype = (np.float32, np.float64)
-            if backend == "pyopencl" and not self.has_cl_fp64:
-                vtype = (np.float32,)
-            for dtype in vtype:
-                vlut = [None]
-                if dtype == np.float32:
-                    vlut += [True]
-                for inplace in [True, False]:
-                    for norm in [0, 1]:
-                        for lut in vlut:
-                            self.run_exhaustive(backend, range(2, 15000), ndim=1, dtype=dtype, inplace=inplace,
-                                                norm=norm, use_lut=lut, nproc=16, verbose=True)
-                            self.run_exhaustive(backend, range(2, 4500), ndim=2, dtype=dtype, inplace=inplace,
-                                                norm=norm, use_lut=lut, nproc=16, verbose=True)
-                            self.run_exhaustive(backend, range(2, 550), ndim=3, dtype=dtype, inplace=inplace,
-                                                norm=norm, use_lut=lut, nproc=4, verbose=True)
-
-    def _test_systematic_r2c(self):
-        """Systematic R2C tests, without shuffling axes"""
-        vbackend = []
-        if has_pycuda:
-            vbackend.append("pycuda")
-        if has_cupy:
-            vbackend.append("cupy")
-        if has_pyopencl:
-            vbackend.append("pyopencl")
-        for backend in vbackend:
-            vtype = (np.float32, np.float64)
-            if backend == "pyopencl" and not self.has_cl_fp64:
-                vtype = (np.float32,)
-            for dtype in vtype:
-                vlut = [None]
-                if dtype == np.float32:
-                    vlut += [True]
-                for inplace in [True, False]:
-                    for norm in [0, 1]:
-                        for lut in vlut:
-                            step = 2 if inplace else 1
-                            self.run_exhaustive(backend, range(2, 15000), ndim=1, dtype=dtype, inplace=inplace,
-                                                norm=norm, use_lut=lut, r2c=True, nproc=16, verbose=True)
-                            self.run_exhaustive(backend, range(2, 4500, step), ndim=2, dtype=dtype, inplace=inplace,
-                                                norm=norm, use_lut=lut, r2c=True, nproc=16, verbose=True)
-                            self.run_exhaustive(backend, range(2, 550, step), ndim=3, dtype=dtype, inplace=inplace,
-                                                norm=norm, use_lut=lut, r2c=True, nproc=4, verbose=True)
-
-    def _test_systematic_dct(self):
-        """Systematic DCT tests, without shuffling axes"""
-        vbackend = []
-        if has_pycuda:
-            vbackend.append("pycuda")
-        if has_cupy:
-            vbackend.append("cupy")
-        if has_pyopencl:
-            vbackend.append("pyopencl")
-        for backend in vbackend:
-            vtype = (np.float32, np.float64)
-            if backend == "pyopencl" and not self.has_cl_fp64:
-                vtype = (np.float32,)
-            for dct in range(1, 4 + 1):
-                for dtype in vtype:
-                    vlut = [None]
-                    if dtype == np.float32:
-                        vlut += [True]
-                    for inplace in [True, False]:
-                        for lut in vlut:
-                            # Not sure what the allowed range is for DCT, so test a smaller one
-                            self.run_exhaustive(backend, range(2, 550), ndim=1, dtype=dtype, inplace=inplace,
-                                                norm=1, use_lut=lut, dct=dct, nproc=8, verbose=True)
-                            self.run_exhaustive(backend, range(2, 550), ndim=2, dtype=dtype, inplace=inplace,
-                                                norm=1, use_lut=lut, dct=dct, nproc=8, verbose=True)
-                            self.run_exhaustive(backend, range(2, 275), ndim=3, dtype=dtype, inplace=inplace,
-                                                norm=1, use_lut=lut, dct=dct, nproc=4, verbose=True)
 
 
 def suite():

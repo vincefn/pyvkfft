@@ -201,7 +201,7 @@ def main():
             res = unittest.TextTestRunner(verbosity=1).run(suite)
 
     sub = os.path.split(sys.argv[0])[-1]
-    for i in range(len(sys.argv)):
+    for i in range(1, len(sys.argv)):
         arg = sys.argv[i]
         if 'mail' not in arg and 'mail' not in sys.argv[i - 1]:
             sub += " " + arg
@@ -211,19 +211,22 @@ def main():
 
     nb_err_fail = len(res.errors) + len(res.failures)
     if len(res.errors):
-        info += "\nERRORS:\n\n"
+        info += "\n\nERRORS:\n\n"
         for t, s in res.errors:
             tid = t.id()
-            tid1 = tid.split('.')[-1]
-            tid0 = tid.split('.' + tid1)[0]
-            info += '%s (%s):\n' % (tid1, tid0) + s
+            tid1 = tid.split('(')[0].split('.')[-1]
+            tid0, tid2 = tid.split('.' + tid1)
+            info += "=" * 70 + "\n" + '%s %s [%s]:\n' % (tid1, tid2, tid0)
+            info += "-" * 70 + "\n" + s + "\n"
+
     if len(res.failures):
-        info += "\nFAILURES:\n\n"
+        info += "\n\nFAILURES:\n\n"
         for t, s in res.failures:
             tid = t.id()
-            tid1 = tid.split('.')[-1]
-            tid0 = tid.split('.' + tid1)[0]
-            info += '%s (%s):\n\n' % (tid1, tid0) + s + '\n\n'
+            tid1 = tid.split('(')[0].split('.')[-1]
+            tid0, tid2 = tid.split('.' + tid1)
+            info += "=" * 70 + "\n" + '%s %s [%s]:\n' % (tid1, tid2, tid0)
+            info += "-" * 70 + "\n" + s + "\n"
 
     if args.mailto_fail is not None and (nb_err_fail > 0) or args.mailto is not None:
         import smtplib

@@ -251,21 +251,60 @@ def calc_transform_axes(shape, axes=None, ndim=None):
     return shape1, skip_axis, ndim1
 
 
-def check_vkfft_result(res):
+def check_vkfft_result(res, shape=None, dtype=None, ndim=None, inplace=None,
+                       norm=None, r2c=None, dct=None, axes=None, backend=None):
     """
     Check VkFFTResult code.
 
     :param res: the result code from launching a transform.
+    :param shape: shape of the array
+    :param dtype: data type of the array
+    :param ndim: number of transform dimensions
+    :param inplace: True or False
+    :param norm: 0 or1 or "ortho"
+    :param r2c: True or False
+    :param dct: False, 1, 2, 3 or 4
+    :param axes: transform axes
+    :param backend: the backend
     :raises RuntimeError: if res != 0
     """
     if isinstance(res, ctypes.c_int):
         res = res.value
     if res != 0:
+        s = ""
+        if r2c:
+            s += "R2C "
+        elif dct:
+            s += "DCT%d " % dct
+        else:
+            s += "C2C "
+        if r2c and inplace and shape is not None:
+            tmp = list(shape)
+            tmp[-1] -= 2
+            shstr = str(tuple(tmp)).replace(" ", "")
+            if ",)" in shstr:
+                s += shstr.replace(",)", "+2)") + " "
+            else:
+                s+= shstr.replace(")", "+2)") + " "
+        else:
+            s += str(shape).replace(" ", "") + " "
+        if dtype is not None:
+            s += str(dtype) + " "
+        if axes is not None:
+            s += str(axes).replace(" ", "") + " "
+        if ndim is not None:
+            s += "%dD " % ndim
+        if inplace:
+            s += "inplace "
+        if norm:
+            s += "norm=%s " % str(norm)
+        if backend is not None:
+            s += "[%s]" % backend
         try:
             r = VkFFTResult(res)
-            raise RuntimeError("VkFFT error %d: %s" % (res, r.name))
+            raise RuntimeError("VkFFT error %d: %s %s" % (res, r.name, s))
         except ValueError:
-            raise RuntimeError("VkFFT error %d (unknown)" % res)
+            raise RuntimeError("VkFFT error %d (unknown) %s" % (res, s))
 
 
 class VkFFTApp:
