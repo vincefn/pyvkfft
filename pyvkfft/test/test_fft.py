@@ -8,13 +8,13 @@
 #
 # pyvkfft unit tests.
 
-import os
-import sys
+
 import unittest
 import multiprocessing
 import sqlite3
 import socket
 import time
+import timeit
 import numpy as np
 
 try:
@@ -198,6 +198,7 @@ class TestFFT(unittest.TestCase):
                                                                                 stream=None, queue=cq,
                                                                                 return_array=False, init_array=d0,
                                                                                 verbose=verbose)
+                                                            npr = primes(n)
                                                             ni, n2 = res["ni"], res["n2"]
                                                             nii, n2i = res["nii"], res["n2i"]
                                                             tol = res["tol"]
@@ -212,7 +213,11 @@ class TestFFT(unittest.TestCase):
                                                             if not inplace:
                                                                 self.assertTrue(src1, "The source array was modified "
                                                                                       "during the FFT")
-                                                                if not r2c or ndim == 1:
+                                                                nmaxr2c1d = 3072 * (1 + int(
+                                                                    self.dtype in (np.float32, np.complex64)))
+                                                                if not self.r2c or \
+                                                                        (self.ndim == 1 and max(npr) <= 13) \
+                                                                        and n <= nmaxr2c1d:
                                                                     self.assertTrue(src2,
                                                                                     "The source array was modified "
                                                                                     "during the iFFT")
@@ -236,6 +241,8 @@ class TestFFT(unittest.TestCase):
                 with self.subTest(backend=res['backend'], n=max(res['shape']), ndim=res['ndim'],
                                   dtype=res['dtype'], norm=res['norm'], use_lut=res['use_lut'],
                                   inplace=res['inplace'], r2c=res['r2c'], dct=res['dct']):
+                    n = max(res['shape'])
+                    npr = primes(n)
                     ni, n2 = res["ni"], res["n2"]
                     nii, n2i = res["nii"], res["n2i"]
                     tol = res["tol"]
@@ -247,7 +254,10 @@ class TestFFT(unittest.TestCase):
                     self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, n2=%8e ni=%8e>%8e" % (n2, nii, tol))
                     if not res['inplace']:
                         self.assertTrue(src1, "The source array was modified during the FFT")
-                        if not res['r2c'] or res["ndim"] == 1:
+                        nmaxr2c1d = 3072 * (1 + int(self.dtype in (np.float32, np.complex64)))
+                        if not self.r2c or (self.ndim == 1 and max(npr) <= 13) and n <= nmaxr2c1d:
+                            # Only 1D radix C2R do not alter the source array,
+                            # if n<= 3072 or 6144 (assuming 48kb shared memory)
                             self.assertTrue(src2, "The source array was modified during the iFFT")
 
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
@@ -459,10 +469,12 @@ class TestFFTSystematic(unittest.TestCase):
         # Need to use spawn to handle the GPU context
         with multiprocessing.get_context('spawn').Pool(nproc) as pool:
             for res in pool.imap(test_accuracy_kwargs, vkwargs):
-                with self.subTest(backend=backend, n=n, ndim=ndim, dtype=dtype, norm=norm,
+                with self.subTest(backend=backend, n=max(res['shape']), ndim=ndim, dtype=dtype, norm=norm,
                                   use_lut=use_lut, inplace=inplace, r2c=r2c, dct=dct):
                     if verbose:
                         print(res['str'])
+                    n = max(res['shape'])
+                    npr = primes(n)
                     ni, n2 = res["ni"], res["n2"]
                     nii, n2i = res["nii"], res["n2i"]
                     tol = res["tol"]
@@ -472,7 +484,8 @@ class TestFFTSystematic(unittest.TestCase):
                     self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, n2=%8e ni=%8e>%8e" % (n2, nii, tol))
                     if not inplace:
                         self.assertTrue(src1, "The source array was modified during the FFT")
-                        if not r2c or ndim == 1:
+                        nmaxr2c1d = 3072 * (1 + int(self.dtype in (np.float32, np.complex64)))
+                        if not self.r2c or (self.ndim == 1 and max(npr) <= 13) and n <= nmaxr2c1d:
                             self.assertTrue(src2, "The source array was modified during the iFFT")
 
     def test_systematic(self):
@@ -507,10 +520,15 @@ class TestFFTSystematic(unittest.TestCase):
 
         # Need to use spawn to handle the GPU context
         with multiprocessing.get_context('spawn').Pool(self.nproc) as pool:
+            t0 = timeit.default_timer()
+            if self.verbose:
+                print("Starting %d tests..." % (len(vkwargs)))
             for res in pool.imap(test_accuracy_kwargs, vkwargs):
                 with self.subTest(backend=backend, n=max(res['shape']), ndim=self.ndim,
                                   dtype=self.dtype, norm=self.norm, use_lut=self.lut,
                                   inplace=self.inplace, r2c=self.r2c, dct=self.dct):
+                    n = max(res['shape'])
+                    npr = primes(n)
                     ni, n2 = res["ni"], res["n2"]
                     nii, n2i = res["nii"], res["n2i"]
                     tol = res["tol"]
@@ -538,8 +556,14 @@ class TestFFTSystematic(unittest.TestCase):
                     self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, n2=%8e ni=%8e>%8e" % (n2, nii, tol))
                     if not self.inplace:
                         self.assertTrue(src1, "The source array was modified during the FFT")
-                        if not self.r2c or self.ndim == 1:
-                            self.assertTrue(src2, "The source array was modified during the iFFT")
+                        nmaxr2c1d = 3072 * (1 + int(self.dtype in (np.float32, np.complex64)))
+                        if not self.r2c or (self.ndim == 1 and max(npr) <= 13) and n <= nmaxr2c1d:
+                            # Only 1D radix C2R do not alter the source array, if n<=?
+                            self.assertTrue(src2,
+                                            "The source array was modified during the iFFT %d %d" % (n, nmaxr2c1d))
+            if self.verbose:
+                print("Finished %d tests in %s" %
+                      (len(vkwargs), time.strftime("%Hh %Mm %Ss", time.gmtime(timeit.default_timer() - t0))))
 
 
 def suite():

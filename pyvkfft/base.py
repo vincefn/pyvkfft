@@ -285,7 +285,7 @@ def check_vkfft_result(res, shape=None, dtype=None, ndim=None, inplace=None,
             if ",)" in shstr:
                 s += shstr.replace(",)", "+2)") + " "
             else:
-                s+= shstr.replace(")", "+2)") + " "
+                s += shstr.replace(")", "+2)") + " "
         else:
             s += str(shape).replace(" ", "") + " "
         if dtype is not None:

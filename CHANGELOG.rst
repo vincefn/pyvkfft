@@ -1,5 +1,7 @@
-Version 2021.2.2 (2021-11-XX)
+Version 2022.1.0 (2022-01-XX)
 -----------------------------
+* Added accuracy unit tests, which can be used systematically
+  using the 'pyvkfft-test' installed script
 * Update to VkFFT 1.2.X, with support for DCT types 1, 2, 3 and 4,
   also fixing DCT issues (see https://github.com/DTolm/VkFFT/issues/48).
   DCT calculations now match scipy.

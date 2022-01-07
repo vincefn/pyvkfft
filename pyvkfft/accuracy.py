@@ -275,9 +275,14 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
 
     # Tolerance estimated from accuracy notebook
     if dtype in (np.complex64, np.float32):
-        tol = 1e-6 + 4e-7 * np.log10(s ** 2)
+        tol = 2e-6 + 5e-7 * np.log10(s ** 2)
     else:
         tol = 5e-15 + 5e-16 * np.log10(s ** 2)
+
+    n = max(shape)
+    bluestein = max(primes(n)) > 13
+    if bluestein:
+        tol *= 2
 
     # FFT
     if inplace:
@@ -406,8 +411,10 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
 
     src_unchanged_ifft = np.all(np.equal(d_gpu.get(), d0))
 
+    # Max N for radix 1D C2R transforms to not overwrite source
+    nmaxr2c1d = 3072 * (1 + int(dtype in (np.float32, np.complex64)))
     if max(ni, nii) <= tol and (inplace or src_unchanged_fft) and \
-            (inplace or src_unchanged_ifft or (r2c and ndim > 1)):
+            (inplace or src_unchanged_ifft or (r2c and ndim > 1 or n > nmaxr2c1d or bluestein)):
         success = 'OK'
     else:
         success = 'FAIL'
