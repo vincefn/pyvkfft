@@ -33,7 +33,6 @@ try:
     has_dct_ref = True
 except ImportError:
     has_pyfftw = False
-    print("Install pyfftw if you want greater accuracy tests")
 
 try:
     import pyopencl as cl
