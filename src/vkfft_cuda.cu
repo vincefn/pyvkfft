@@ -221,18 +221,34 @@ VkFFTApplication* init_app(const VkFFTConfiguration* config, int *res)
 
 int fft(VkFFTApplication* app, void *in, void *out)
 {
+  // Modify the original app only to avoid allocating
+  // new buffer pointers in memory
   *(app->configuration.buffer) = out;
   *(app->configuration.inputBuffer) = in;
   *(app->configuration.outputBuffer) = out;
-  return VkFFTAppend(app, -1, NULL);
+
+  VkFFTLaunchParams par = {};
+  par.buffer =  app->configuration.buffer;
+  par.inputBuffer = app->configuration.inputBuffer;
+  par.outputBuffer = app->configuration.outputBuffer;
+
+  return VkFFTAppend(app, -1, &par);
 }
 
 int ifft(VkFFTApplication* app, void *in, void *out)
 {
+  // Modify the original app only to avoid allocating
+  // new buffer pointers in memory
   *(app->configuration.buffer) = out;
   *(app->configuration.inputBuffer) = in;
   *(app->configuration.outputBuffer) = out;
-  return VkFFTAppend(app, 1, NULL);
+
+  VkFFTLaunchParams par = {};
+  par.buffer =  app->configuration.buffer;
+  par.inputBuffer = app->configuration.inputBuffer;
+  par.outputBuffer = app->configuration.outputBuffer;
+
+  return VkFFTAppend(app, 1, &par);
 }
 
 /** Free memory allocated during make_config()

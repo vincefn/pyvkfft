@@ -180,6 +180,8 @@ int fft(VkFFTApplication* app, void *in, void *out, void* queue)
 {
   cl_command_queue q = (cl_command_queue) queue;
 
+  // Modify the original app only to avoid allocating
+  // new buffer pointers in memory
   *(app->configuration.buffer) = (cl_mem)out;
   *(app->configuration.inputBuffer) = (cl_mem)in;
   *(app->configuration.outputBuffer) = (cl_mem)out;
@@ -198,6 +200,8 @@ int ifft(VkFFTApplication* app, void *in, void *out, void* queue)
 {
   cl_command_queue q = (cl_command_queue) queue;
 
+  // Modify the original app only to avoid allocating
+  // new buffer pointers in memory
   *(app->configuration.buffer) = (cl_mem)out;
   *(app->configuration.inputBuffer) = (cl_mem)in;
   *(app->configuration.outputBuffer) = (cl_mem)out;
