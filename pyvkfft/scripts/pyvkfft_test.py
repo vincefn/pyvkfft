@@ -34,6 +34,110 @@ def suite_systematic():
     return suite
 
 
+def make_html_pre_post(overwrite=False):
+    if ('pyvkfft-test1000.html' not in os.listdir()) or overwrite:
+        # Need the html header, styles and the results' table beginning
+        tmp = '<!DOCTYPE html>\n <html>\n <head> <style>\n' \
+              'th, td { border: 1px solid grey;}\n' \
+              '.center {margin-left: auto;  margin-right: auto; text-align:center}\n' \
+              '.results {width:100%%; max-width:1920px}\n' \
+              '.cell_transform {background-color: #ccf;}\n' \
+              '.active, .cell_transform:hover {background-color: #aaf;}\n' \
+              '.toggle_graph {' \
+              '  background-color: transparent;' \
+              '  border: none;' \
+              '  cursor: pointer;' \
+              '  padding:0;' \
+              '  outline: none;' \
+              '  height: 100%%' \
+              '  width: 100%%' \
+              '}\n' \
+              '.cell_error {background-color: #fcc;}\n' \
+              '.active, .cell_error:hover {background-color: #faa;}\n' \
+              '.toggle_error {' \
+              '  background-color: transparent;' \
+              '  border: none;' \
+              '  cursor: pointer;' \
+              '  padding:0;' \
+              '  outline: none;' \
+              '  height: 100%%' \
+              '  width: 100%%' \
+              '}\n' \
+              '.toggle_fail {' \
+              '  background-color: transparent;' \
+              '  border: none;' \
+              '  cursor: pointer;' \
+              '  padding:0;' \
+              '  outline: none;' \
+              '  height: 100%%' \
+              '  width: 100%%' \
+              '}\n' \
+              '.label_ok {' \
+              'background-color: #00ff00;' \
+              'font-weight: bold;' \
+              'color: #000;' \
+              '}\n' \
+              '</style>\n' \
+              '</head>\n' \
+              '<body>\n' \
+              '<div class="center">' \
+              '<h2>pyVkFFT test results</h2>\n' \
+              '<h3>host : %s</h3>\n' \
+              '<table class="results">\n' \
+              '   <thead>\n' \
+              '       <tr>\n' \
+              '           <th>GPU</th>' \
+              '           <th>backend</th>' \
+              '           <th>transform</th>' \
+              '           <th>ndim</th>' \
+              '           <th>range</th>' \
+              '           <th>radix</th>' \
+              '           <th>dtype</th>' \
+              '           <th>LUT</th>' \
+              '           <th>norm</th>' \
+              '           <th>duration</th>' \
+              '           <th>FAIL</th>' \
+              '           <th>ERROR</th>' \
+              '       </tr>\n' \
+              '   </thead>\n' \
+              '<tbody class="center">\n' % socket.gethostname()
+        open("pyvkfft-test1000.html", "w").write(tmp)
+    if ('pyvkfft-test1999.html' not in os.listdir()) or overwrite:
+        tmp = '</tbody>\n' \
+              '</tbody\n' \
+              '</table>\n' \
+              '</div>\n' \
+              '  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>' \
+              '     <script id="rendered-js" >\n' \
+              '        $(document).ready(function ()' \
+              '        {\n' \
+              '           $(".toggle_graph").click(function () ' \
+              '              {$(this).parents().nextUntil(".row_results", ".graph").toggle();  });\n' \
+              '           $(".toggle_fail").click(function () ' \
+              '              {$(this).parents().nextUntil(".row_results", ".failures").toggle();  });\n' \
+              '           $(".toggle_error").click(function () ' \
+              '              {$(this).parents().nextUntil(".row_results", ".errors").toggle();  });\n' \
+              '        });\n' \
+              '</script>' \
+              '' \
+              '</body>\n' \
+              '</html>'
+        open("pyvkfft-test1999.html", "w").write(tmp)
+
+
+def name_next_file(pattern="pyvkfft-test%04d.html"):
+    """
+    Find the first unused name for a file, starting at i=1
+    :param pattern: the pattern for the file name.
+    :return: the filename
+    """
+    lsdir = os.listdir()
+    for i in range(1001, 1999):
+        if pattern % i not in lsdir:
+            return pattern % i
+    raise RuntimeError("name_next_file: '%s' files all used from 1001 to 1998. Maybe cleanup ?" % pattern)
+
+
 def main():
     t0 = timeit.default_timer()
     epilog = "Examples:\n" \
@@ -76,12 +180,12 @@ def main():
     parser.add_argument('--colour', action='store_true',
                         help="Use colour depending on how good the measured accuracy is")
     parser.add_argument('--html', action='store', nargs='*',
-                        help="Summarises the results in html row(s). If no parameters"
-                             "are given, this is saved to 'pyvkfft-test.html'. If one parameter"
-                             "is given, it is used as filename. Extra parameters allowed"
-                             "are 'pre' and 'post' which will trigger the writing of the"
-                             "beginning (body, macros, table...) and end of the html file."
-                             "The output includes the graph if --graph is used.")
+                        help="Summarises the results in html row(s). This is saved to "
+                             "'pyvkfft-test%04d.html', starting at i=1001 and incrementing. "
+                             "Files with i=1000 and i=1999 are the beginning and the end of the"
+                             "html file, which can be concatenated to form a valid html page."
+                             "If --graph is also used, this includes a graph of the accuracy "
+                             "which can be displayed by clicking on the type of transform.")
     parser.add_argument('--gpu', action='store',
                         help="Name (or sub-string) of the GPU to use")
     parser.add_argument('--mailto', action='store',
@@ -176,6 +280,9 @@ def main():
 
     # parser.print_help()
     args = parser.parse_args()
+    if args.graph is not None:
+        if not len(args.graph):
+            args.graph = name_next_file("pyvkfft-test%03d.svg")
 
     # We modify class attributes to pass arguments - not a great approach but works..
     if args.systematic:
@@ -189,11 +296,6 @@ def main():
         t.dtype = np.float64 if args.double else np.float32
         t.gpu = args.gpu
         t.graph = args.graph
-        if args.html:
-            if t.graph is not None:
-                if not len(t.graph):
-                    raise RuntimeError("You must supply a filename for the graph when "
-                                       "using both --html and --graph")
         t.inplace = args.inplace
         t.lut = args.lut
         t.ndim = args.ndim[0]
@@ -236,73 +338,8 @@ def main():
     nb_err_fail = len(res.errors) + len(res.failures)
 
     if args.html is not None:
+        make_html_pre_post(overwrite=False)
         html = ''
-        if 'pre' in args.html:
-            # Need the html header, styles and the results' table beginning
-            html += '<!DOCTYPE html>\n <html>\n <head> <style>\n' \
-                    'th, td { border: 1px solid grey;}\n' \
-                    '.center {margin-left: auto;  margin-right: auto; text-align:center}\n' \
-                    '.results {width:100%%; max-width:1920px}\n' \
-                    '.cell_transform {background-color: #ccf;}\n' \
-                    '.active, .cell_transform:hover {background-color: #aaf;}\n' \
-                    '.toggle_graph {' \
-                    '  background-color: transparent;' \
-                    '  border: none;' \
-                    '  cursor: pointer;' \
-                    '  padding:0;' \
-                    '  outline: none;' \
-                    '  height: 100%%' \
-                    '  width: 100%%' \
-                    '}\n' \
-                    '.cell_error {background-color: #fcc;}\n' \
-                    '.active, .cell_error:hover {background-color: #faa;}\n' \
-                    '.toggle_error {' \
-                    '  background-color: transparent;' \
-                    '  border: none;' \
-                    '  cursor: pointer;' \
-                    '  padding:0;' \
-                    '  outline: none;' \
-                    '  height: 100%%' \
-                    '  width: 100%%' \
-                    '}\n' \
-                    '.toggle_fail {' \
-                    '  background-color: transparent;' \
-                    '  border: none;' \
-                    '  cursor: pointer;' \
-                    '  padding:0;' \
-                    '  outline: none;' \
-                    '  height: 100%%' \
-                    '  width: 100%%' \
-                    '}\n' \
-                    '.label_ok {' \
-                    'background-color: #00ff00;' \
-                    'font-weight: bold;' \
-                    'color: #000;' \
-                    '}\n' \
-                    '</style>\n' \
-                    '</head>\n' \
-                    '<body>\n' \
-                    '<div class="center">' \
-                    '<h2>pyVkFFT test results</h2>\n' \
-                    '<h3>host : %s</h3>\n' \
-                    '<table class="results">\n' \
-                    '   <thead>\n' \
-                    '       <tr>\n' \
-                    '           <th>GPU</th>' \
-                    '           <th>backend</th>' \
-                    '           <th>transform</th>' \
-                    '           <th>ndim</th>' \
-                    '           <th>range</th>' \
-                    '           <th>radix</th>' \
-                    '           <th>dtype</th>' \
-                    '           <th>LUT</th>' \
-                    '           <th>norm</th>' \
-                    '           <th>duration</th>' \
-                    '           <th>FAIL</th>' \
-                    '           <th>ERROR</th>' \
-                    '       </tr>\n' \
-                    '   </thead>\n' \
-                    '<tbody class="center">\n' % socket.gethostname()
         # One row for the summary
         html += '<tr class="row_results">'
         html += '<td>%s</td><td>' % (args.gpu if args.gpu is not None else '-')
@@ -310,8 +347,16 @@ def main():
             html += a + ' '
         html += '</td>'
         if args.systematic:
-            tmp = '<td class="cell_transform"><input class="toggle_graph" type="button"' \
-                  'value="%s" style="width:100%%; height:100%%"></td>'
+            has_graph = False
+            print(args.graph, args.graph is not None, os.path.exists(args.graph), os.system("ls -la %s" % args.graph))
+            if args.graph is not None:
+                if os.path.exists(args.graph):
+                    has_graph = True
+            if has_graph:
+                tmp = '<td class="cell_transform"><input class="toggle_graph" type="button"' \
+                      'value="%s" style="width:100%%; height:100%%"></td>'
+            else:
+                tmp = '<td>%s</td>'
             if args.r2c:
                 html += tmp % 'R2C'
             elif args.dct:
@@ -341,7 +386,7 @@ def main():
 
         if len(res.failures):
             html += '<td class="cell_error"> <input class="toggle_fail" type="button" ' \
-                    'value="%d" style="width:100%%; height:100%%"></td>' % len(res.errors)
+                    'value="%d" style="width:100%%; height:100%%"></td>' % len(res.failures)
         else:
             html += '<td class="label_ok"> 0 </td>'
 
@@ -353,8 +398,9 @@ def main():
         html += '</tr>\n'
 
         if args.systematic and args.graph is not None:
-            print("html+systematic+graph")
-            html += '<tr class="graph" style="display: none"><td colspan=12><img src="%s"></td></tr>' % args.graph
+            if os.path.exists(args.graph):
+                # Else some failure prevented actually producing the graph
+                html += '<tr class="graph" style="display: none"><td colspan=12><img src="%s"></td></tr>' % args.graph
 
     if len(res.errors):
         tmp = "\n\nERRORS:\n\n"
@@ -365,7 +411,7 @@ def main():
             tmp += "=" * 70 + "\n" + '%s %s [%s]:\n' % (tid1, tid2, tid0)
             tmp += "-" * 70 + "\n" + s + "\n"
         info += tmp
-        if args.html:
+        if args.html is not None:
             html += '<tr class="errors" style="display: none; text-align: left; font-family: monospace">' \
                     '<td colspan=12><pre>%s</pre></td></tr>' % tmp
 
@@ -378,7 +424,7 @@ def main():
             tmp += "=" * 70 + "\n" + '%s %s [%s]:\n' % (tid1, tid2, tid0)
             tmp += "-" * 70 + "\n" + s + "\n"
         info += tmp
-        if args.html:
+        if args.html is not None:
             html += '<tr class="failures" style="display: none; text-align: left; font-family: monospace">' \
                     '<td colspan=12><pre>%s</pre></td></tr>' % tmp
 
@@ -402,29 +448,10 @@ def main():
             print("Could not connect to SMTP server (%s) to send email." % args.mailto_smtp)
 
     if args.html is not None:
-        if 'post' in args.html:
-            html += '</tbody>\n' \
-                    '</tbody\n' \
-                    '</table>\n' \
-                    '</div>\n' \
-                    '  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>' \
-                    '     <script id="rendered-js" >\n' \
-                    '        $(document).ready(function ()' \
-                    '        {\n' \
-                    '           $(".toggle_graph").click(function () ' \
-                    '              {$(this).parents().nextUntil(".row_results", ".graph").toggle();  });\n' \
-                    '           $(".toggle_fail").click(function () ' \
-                    '              {$(this).parents().nextUntil(".row_results", ".failures").toggle();  });\n' \
-                    '           $(".toggle_error").click(function () ' \
-                    '              {$(this).parents().nextUntil(".row_results", ".errors").toggle();  });\n' \
-                    '        });\n' \
-                    '</script>' \
-                    '' \
-                    '</body>\n' \
-                    '</html>'
-        html_out = 'pyvkfft-test.html'
         if len(args.html):
             html_out = args.html[0]
+        else:
+            html_out = name_next_file("pyvkfft-test%03d.html")
         with open(html_out, 'w') as f:
             f.write(html)
 
