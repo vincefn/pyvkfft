@@ -40,7 +40,7 @@ def make_html_pre_post(overwrite=False):
         tmp = '<!DOCTYPE html>\n <html>\n <head> <style>\n' \
               'th, td { border: 1px solid grey;}\n' \
               '.center {margin-left: auto;  margin-right: auto; text-align:center}\n' \
-              '.results {width:100%%; max-width:1920px}\n' \
+              '.results {width:100%%; max-width:1920px; margin-left: auto;  margin-right: auto}\n' \
               '.cell_transform {background-color: #ccf;}\n' \
               '.active, .cell_transform:hover {background-color: #aaf;}\n' \
               '.toggle_graph {' \
