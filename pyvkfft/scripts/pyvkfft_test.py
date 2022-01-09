@@ -128,6 +128,11 @@ def main():
     sysgrp.add_argument('--inplace', action='store_true',
                         help="Use inplace transforms (NB: for R2C with ndim>=2, the x-axis "
                              "must be even-sized)")
+    sysgrp.add_argument('--graph', action='store', nargs="?", const="",
+                        help="Save the graph of the accuracy as a function of the size"
+                             "to the given filename (if no name is given, it will be "
+                             "automatically generated)."
+                             "Requires matplotlib, and scipy for linear regression.")
     sysgrp.add_argument('--lut', action='store_true',
                         help="Force the use of a LUT for the transform, to improve accuracy. "
                              "By default VkFFT will activate the LUT on some GPU with less "
@@ -171,6 +176,7 @@ def main():
         # t.dry_run = args.dry_run
         t.dtype = np.float64 if args.double else np.float32
         t.gpu = args.gpu
+        t.graph = args.graph
         t.inplace = args.inplace
         t.lut = args.lut
         t.ndim = args.ndim[0]

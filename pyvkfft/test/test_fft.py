@@ -23,6 +23,7 @@ except ImportError:
     def ascent():
         return np.random.randint(0, 255, (512, 512))
 
+from pyvkfft.version import __version__, vkfft_version
 from pyvkfft.base import primes, radix_gen
 from pyvkfft.fft import fftn as vkfftn, ifftn as vkifftn, rfftn as vkrfftn, \
     irfftn as vkirfftn, dctn as vkdctn, idctn as vkidctn
@@ -52,6 +53,15 @@ try:
     has_pyopencl = True
 except ImportError:
     has_pyopencl = False
+
+
+def latex_float(f):
+    float_str = "{0:.2g}".format(f)
+    if "e" in float_str:
+        base, exponent = float_str.split("e")
+        return r"{0} \times 10^{{{1}}}".format(base, int(exponent))
+    else:
+        return float_str
 
 
 class TestFFT(unittest.TestCase):
@@ -398,6 +408,7 @@ class TestFFTSystematic(unittest.TestCase):
     dct = False
     db = None
     dtype = np.float32
+    graph = None
     gpu = None
     inplace = False
     lut = False
@@ -521,6 +532,11 @@ class TestFFTSystematic(unittest.TestCase):
             else:
                 transform = "C2C"
 
+        # For graph output
+        nb = len(vkwargs)
+        vn, vni, vn2, vnii, vn2i, vblue = [], [], [], [], [], []
+        gpu_name = "GPU"
+
         # Need to use spawn to handle the GPU context
         with multiprocessing.get_context('spawn').Pool(self.nproc) as pool:
             t0 = timeit.default_timer()
@@ -541,6 +557,16 @@ class TestFFTSystematic(unittest.TestCase):
                     src1 = res["src_unchanged_fft"]
                     src2 = res["src_unchanged_ifft"]
                     succ = max(ni, nii) < tol
+
+                    vn.append(n)
+                    vblue.append(max(npr) > 13)
+                    vni.append(ni)
+                    vn2.append(n2)
+                    vn2i.append(n2i)
+                    vnii.append(nii)
+                    if len(vn) == 1:
+                        gpu_name = res["gpu_name"]
+
                     if not self.inplace:
                         if not src1:
                             succ = False
@@ -563,13 +589,74 @@ class TestFFTSystematic(unittest.TestCase):
                     if not self.inplace:
                         self.assertTrue(src1, "The source array was modified during the FFT")
                         nmaxr2c1d = 3072 * (1 + int(self.dtype in (np.float32, np.complex64)))
-                        if not self.r2c or (self.ndim == 1 and max(npr) <= 13) and n <= nmaxr2c1d:
+                        if not self.r2c or (self.ndim == 1 and max(npr) <= 13) and n < nmaxr2c1d:
                             # Only 1D radix C2R do not alter the source array, if n<=?
                             self.assertTrue(src2,
                                             "The source array was modified during the iFFT %d %d" % (n, nmaxr2c1d))
             if self.verbose:
                 print("Finished %d tests in %s" %
                       (len(vkwargs), time.strftime("%Hh %Mm %Ss", time.gmtime(timeit.default_timer() - t0))))
+
+        if self.graph is not None:
+            if self.r2c:
+                t = "R2C"
+            elif self.dct:
+                t = "DCT%d" % self.dct
+            else:
+                t = "C2C"
+
+            tmp = ""
+            if self.lut:
+                tmp += "_lut"
+            if self.inplace:
+                tmp += "_inplace"
+
+            r = ""
+            if self.radix is not None:
+                r = "_radix"
+                for k in self.radix:
+                    r += "-%d" % k
+            elif self.bluestein:
+                r = "_bluestein"
+
+            tit = "%s %s pyvkfft %s VkFFT %s" % (gpu_name, self.vbackend[0], __version__, vkfft_version())
+            suptit = " %s %dD%s N=%d-%d norm=%d %s%s" % \
+                     (t, self.ndim, r, self.range[0], self.range[1], self.norm, str(np.dtype(np.float32)), tmp)
+
+            import matplotlib.pyplot as plt
+            from scipy import stats
+            plt.figure(figsize=(8, 5))
+
+            x = np.array(vn, dtype=np.float32)
+            xl = self.ndim * np.log10(x)  # Use the size of the array
+            ms = 4
+            plt.semilogx(vn, vni, 'ob', label=r"$[FFT]L_{\infty}$", alpha=0.2, ms=ms)
+            plt.semilogx(vn, vnii, 'og', label=r"$[IFFT]L_{\infty}$", alpha=0.2, ms=ms)
+
+            r2 = stats.linregress(xl, np.array(vn2, dtype=np.float32))
+            plt.semilogx(vn, vn2, "^b", ms=ms,
+                         label=r"$[FFT]L2\approx %s+%s\log(size)$" % (latex_float(r2[1]), latex_float(r2[0])))
+
+            r2i = stats.linregress(xl, np.array(vn2i, dtype=np.float32))
+            plt.semilogx(vn, vn2, "vg", ms=ms,
+                         label=r"$[IFFT]L2\approx %s+%s\log(size)$" % (latex_float(r2i[1]), latex_float(r2i[0])))
+
+            plt.semilogx(x, r2[1] + r2[0] * xl, "b-")
+            plt.semilogx(x, r2i[1] + r2i[0] * xl, "g-")
+            plt.title(tit.replace('_', ' '), fontsize=10)
+            plt.suptitle(suptit, fontsize=12)
+            plt.grid(True)
+            plt.legend(loc='upper left')
+            plt.xlabel("N", loc='right')
+            plt.tight_layout()
+            graph = self.graph
+            if not len(graph):
+                graph = "%s_%s_%s_%dD%s_%d-%d_norm%d_%s%s.svg" % \
+                        (gpu_name.replace(' ', ''), self.vbackend[0], t, self.ndim, r, self.range[0],
+                         self.range[1], self.norm, str(np.dtype(np.float32)), tmp)
+            plt.savefig(graph)
+            if self.verbose:
+                print("Saved accuracy graph to: %s" % graph)
 
 
 def suite():
@@ -581,6 +668,3 @@ def suite():
 
 if __name__ == '__main__':
     unittest.main(defaultTest='suite', verbosity=2)
-    # print(exhaustive_test("pycuda", range(2, 1100), ndim=1, dtype=np.float32, inplace=True, norm=0, use_lut=None))
-    # print(exhaustive_test("pycuda", range(2, 4500), ndim=2, dtype=np.float32, inplace=True, norm=0, use_lut=None))
-    # print(exhaustive_test("pycuda", range(2, 550), ndim=3, dtype=np.float32, inplace=True, norm=0, use_lut=None))
