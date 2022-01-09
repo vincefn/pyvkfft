@@ -413,7 +413,7 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
     # Max N for radix 1D C2R transforms to not overwrite source
     nmaxr2c1d = 3072 * (1 + int(dtype in (np.float32, np.complex64)))
     if max(ni, nii) <= tol and (inplace or src_unchanged_fft) and \
-            (inplace or src_unchanged_ifft or (r2c and ndim > 1 or n > nmaxr2c1d or bluestein)):
+            (inplace or src_unchanged_ifft or (r2c and ndim > 1 or n >= nmaxr2c1d or bluestein)):
         success = 'OK'
     else:
         success = 'FAIL'

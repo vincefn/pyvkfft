@@ -216,7 +216,7 @@ class TestFFT(unittest.TestCase):
                                                                 nmaxr2c1d = 3072 * (1 + int(
                                                                     dtype in (np.float32, np.complex64)))
                                                                 if not r2c or (ndim == 1 and max(npr) <= 13) \
-                                                                        and n <= nmaxr2c1d:
+                                                                        and n < nmaxr2c1d:
                                                                     self.assertTrue(src2,
                                                                                     "The source array was modified "
                                                                                     "during the iFFT")
@@ -254,7 +254,7 @@ class TestFFT(unittest.TestCase):
                     if not res['inplace']:
                         self.assertTrue(src1, "The source array was modified during the FFT")
                         nmaxr2c1d = 3072 * (1 + int(res['dtype'] in (np.float32, np.complex64)))
-                        if not res['r2c'] or (res['ndim'] == 1 and max(npr) <= 13) and n <= nmaxr2c1d:
+                        if not res['r2c'] or (res['ndim'] == 1 and max(npr) <= 13) and n < nmaxr2c1d:
                             # Only 1D radix C2R do not alter the source array,
                             # if n<= 3072 or 6144 (assuming 48kb shared memory)
                             self.assertTrue(src2, "The source array was modified during the iFFT")
@@ -488,7 +488,7 @@ class TestFFTSystematic(unittest.TestCase):
                     if not inplace:
                         self.assertTrue(src1, "The source array was modified during the FFT")
                         nmaxr2c1d = 3072 * (1 + int(self.dtype in (np.float32, np.complex64)))
-                        if not self.r2c or (self.ndim == 1 and max(npr) <= 13) and n <= nmaxr2c1d:
+                        if not self.r2c or (self.ndim == 1 and max(npr) <= 13) and n < nmaxr2c1d:
                             self.assertTrue(src2, "The source array was modified during the iFFT")
 
     def test_systematic(self):
