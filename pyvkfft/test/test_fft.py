@@ -448,60 +448,6 @@ class TestFFTSystematic(unittest.TestCase):
             self.vn = radix_gen(self.range[1], self.radix, even=self.r2c, nmin=self.range[0])
         self.assertTrue(len(self.vn), "The list of sizes to test is empty !")
 
-    def run_systematic(self, backend, vn, ndim, dtype, inplace, norm, use_lut, r2c=False, dct=False, nproc=None,
-                       verbose=False):
-        """
-        Run tests on a large range of sizes using multiprocessing
-
-        :param backend: either 'pyopencl', 'pycuda' or 'cupy'
-        :param vn: the list/iterable of sizes n.
-        :param ndim: the number of dimensions. The array shape will be [n]*ndim
-        :param dtype: either np.complex64 or np.complex128, or np.float32/np.float64 for r2c & dct
-        :param inplace: True or False
-        :param norm: either 0, 1 or "ortho"
-        :param use_lut: if True,1, False or 0, will trigger useLUT=1 or 0 for VkFFT.
-            If None, the default VkFFT behaviour is used. Always True by default
-            for double precision, so no need to force it.
-        :param r2c: if True, test an r2c transform. If inplace, the last dimension
-            (x, fastest axis) must be even
-        :param dct: either 1, 2, 3 or 4 to test different dct. Only norm=1 is can be
-            tested (native scipy/pyfftw normalisation).
-        :param nproc: the maximum number of parallel process to use. If None, the
-            number of detected cores will be used (this may use too much memory !)
-        :return: nothing
-        """
-        # Generate the list of configurations as kwargs for test_accuracy()
-        vkwargs = []
-        for n in vn:
-            kwargs = {"backend": backend, "shape": [n] * ndim, "ndim": ndim, "axes": None, "dtype": dtype,
-                      "inplace": inplace, "norm": norm, "use_lut": use_lut, "r2c": r2c, "dct": dct, "stream": None,
-                      "verbose": False}
-            vkwargs.append(kwargs)
-        # Need to use spawn to handle the GPU context
-        with multiprocessing.get_context('spawn').Pool(nproc) as pool:
-            results = pool.imap(test_accuracy_kwargs, vkwargs, chunksize=1)
-            for i in range(len(vkwargs)):
-                v = vkwargs[i]
-                with self.subTest(backend=v['backend'], n=max(v['shape']), ndim=ndim, dtype=dtype, norm=norm,
-                                  use_lut=use_lut, inplace=inplace, r2c=r2c, dct=dct):
-                    res = results.next(timeout=self.timeout)
-                    if verbose:
-                        print(res['str'])
-                    n = max(res['shape'])
-                    npr = primes(n)
-                    ni, n2 = res["ni"], res["n2"]
-                    nii, n2i = res["nii"], res["n2i"]
-                    tol = res["tol"]
-                    src1 = res["src_unchanged_fft"]
-                    src2 = res["src_unchanged_ifft"]
-                    self.assertTrue(ni < tol, "Accuracy mismatch after FFT, n2=%8e ni=%8e>%8e" % (n2, ni, tol))
-                    self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, n2=%8e ni=%8e>%8e" % (n2, nii, tol))
-                    if not inplace:
-                        self.assertTrue(src1, "The source array was modified during the FFT")
-                        nmaxr2c1d = 3072 * (1 + int(self.dtype in (np.float32, np.complex64)))
-                        if not self.r2c or (self.ndim == 1 and max(npr) <= 13) and n < nmaxr2c1d:
-                            self.assertTrue(src2, "The source array was modified during the iFFT")
-
     def test_systematic(self):
         # Generate the list of configurations as kwargs for test_accuracy()
         vkwargs = []
@@ -533,71 +479,97 @@ class TestFFTSystematic(unittest.TestCase):
                 transform = "C2C"
 
         # For graph output
-        nb = len(vkwargs)
         vn, vni, vn2, vnii, vn2i, vblue = [], [], [], [], [], []
         gpu_name = "GPU"
 
-        # Need to use spawn to handle the GPU context
-        with multiprocessing.get_context('spawn').Pool(self.nproc) as pool:
-            t0 = timeit.default_timer()
-            if self.verbose:
-                print("Starting %d tests..." % (len(vkwargs)))
-            results = pool.imap(test_accuracy_kwargs, vkwargs, chunksize=1)
-            for i in range(len(vkwargs)):
-                v = vkwargs[i]
-                with self.subTest(backend=backend, n=max(v['shape']), ndim=self.ndim,
-                                  dtype=self.dtype, norm=self.norm, use_lut=self.lut,
-                                  inplace=self.inplace, r2c=self.r2c, dct=self.dct):
-                    res = results.next(timeout=self.timeout)
-                    n = max(res['shape'])
-                    npr = primes(n)
-                    ni, n2 = res["ni"], res["n2"]
-                    nii, n2i = res["nii"], res["n2i"]
-                    tol = res["tol"]
-                    src1 = res["src_unchanged_fft"]
-                    src2 = res["src_unchanged_ifft"]
-                    succ = max(ni, nii) < tol
+        if self.verbose:
+            print("Starting %d tests..." % (len(vkwargs)))
+        t0 = timeit.default_timer()
 
-                    vn.append(n)
-                    vblue.append(max(npr) > 13)
-                    vni.append(ni)
-                    vn2.append(n2)
-                    vn2i.append(n2i)
-                    vnii.append(nii)
-                    if len(vn) == 1:
-                        gpu_name = res["gpu_name"]
+        # Handle timeouts if for some weird reason a process hangs indefinitely
+        nb_timeout = 0
+        i_start = 0
 
-                    if not self.inplace:
-                        if not src1:
-                            succ = False
-                        elif not self.r2c and not src2:
-                            succ = False
-                    if self.db is not None:
-                        dbc.execute('INSERT INTO pyvkfft_test VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'
-                                    '?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                                    (time.time(), hostname, backend, lang, transform,
-                                     str(res['axes']).encode('ascii'), str(res['shape']).encode('ascii'),
-                                     len(res['shape']), self.ndim, np.dtype(self.dtype).itemsize,
-                                     self.inplace, self.norm, self.lut, int(max(res['shape'])), float(n2), float(n2i),
-                                     float(ni), float(nii), float(tol), res["dt_app"], res["dt_fft"], res["dt_ifft"],
-                                     int(src1), int(src2), res["gpu_name"].encode('ascii'), int(succ), 0, 0))
-                        db.commit()
-                    if self.verbose:
-                        print(res['str'])
-                    self.assertTrue(ni < tol, "Accuracy mismatch after FFT, n2=%8e ni=%8e>%8e" % (n2, ni, tol))
-                    self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, n2=%8e ni=%8e>%8e" % (n2, nii, tol))
-                    if not self.inplace:
-                        self.assertTrue(src1, "The source array was modified during the FFT")
-                        nmaxr2c1d = 3072 * (1 + int(self.dtype in (np.float32, np.complex64)))
-                        if not self.r2c or (self.ndim == 1 and max(npr) <= 13) and n < nmaxr2c1d:
-                            # Only 1D radix C2R do not alter the source array, if n<=?
-                            self.assertTrue(src2,
-                                            "The source array was modified during the iFFT %d %d" % (n, nmaxr2c1d))
-            if self.verbose:
-                print("Finished %d tests in %s" %
-                      (len(vkwargs), time.strftime("%Hh %Mm %Ss", time.gmtime(timeit.default_timer() - t0))))
+        while True:
+            timeout = False
+            # Need to use spawn to handle the GPU context
+            with multiprocessing.get_context('spawn').Pool(self.nproc) as pool:
+                results = pool.imap(test_accuracy_kwargs, vkwargs[i_start:], chunksize=1)
+                for i in range(i_start, len(vkwargs)):
+                    v = vkwargs[i]
+                    with self.subTest(backend=backend, n=max(v['shape']), ndim=self.ndim,
+                                      dtype=self.dtype, norm=self.norm, use_lut=self.lut,
+                                      inplace=self.inplace, r2c=self.r2c, dct=self.dct):
+                        try:
+                            res = results.next(timeout=self.timeout)
+                        except multiprocessing.TimeoutError as ex:
+                            # NB: the timeout won't change the next() result, so will need
+                            # to terminate & restart the pool
+                            timeout = True
+                            raise ex
+                        n = max(res['shape'])
+                        npr = primes(n)
+                        ni, n2 = res["ni"], res["n2"]
+                        nii, n2i = res["nii"], res["n2i"]
+                        tol = res["tol"]
+                        src1 = res["src_unchanged_fft"]
+                        src2 = res["src_unchanged_ifft"]
+                        succ = max(ni, nii) < tol
 
-        if self.graph is not None:
+                        vn.append(n)
+                        vblue.append(max(npr) > 13)
+                        vni.append(ni)
+                        vn2.append(n2)
+                        vn2i.append(n2i)
+                        vnii.append(nii)
+                        if len(vn) == 1:
+                            gpu_name = res["gpu_name"]
+
+                        if not self.inplace:
+                            if not src1:
+                                succ = False
+                            elif not self.r2c and not src2:
+                                succ = False
+                        if self.db is not None:
+                            dbc.execute('INSERT INTO pyvkfft_test VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'
+                                        '?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                                        (time.time(), hostname, backend, lang, transform,
+                                         str(res['axes']).encode('ascii'), str(res['shape']).encode('ascii'),
+                                         len(res['shape']), self.ndim, np.dtype(self.dtype).itemsize,
+                                         self.inplace, self.norm, self.lut, int(max(res['shape'])), float(n2),
+                                         float(n2i),
+                                         float(ni), float(nii), float(tol), res["dt_app"], res["dt_fft"],
+                                         res["dt_ifft"],
+                                         int(src1), int(src2), res["gpu_name"].encode('ascii'), int(succ), 0, 0))
+                            db.commit()
+                        if self.verbose:
+                            print(res['str'])
+                        self.assertTrue(ni < tol, "Accuracy mismatch after FFT, n2=%8e ni=%8e>%8e" % (n2, ni, tol))
+                        self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, n2=%8e ni=%8e>%8e" % (n2, nii, tol))
+                        if not self.inplace:
+                            self.assertTrue(src1, "The source array was modified during the FFT")
+                            nmaxr2c1d = 3072 * (1 + int(self.dtype in (np.float32, np.complex64)))
+                            if not self.r2c or (self.ndim == 1 and max(npr) <= 13) and n < nmaxr2c1d:
+                                # Only 1D radix C2R do not alter the source array, if n<=?
+                                self.assertTrue(src2,
+                                                "The source array was modified during the iFFT %d %d" % (n, nmaxr2c1d))
+                    if timeout:
+                        # One process is stuck, must kill the pool and start again
+                        if self.verbose:
+                            print("Timeout for N=%d. Re-starting the pool..." % max(v['shape']))
+                        i_start = i + 1
+                        pool.terminate()
+                        nb_timeout += 1
+                        break
+            if not timeout or i_start >= len(vkwargs):
+                break
+            if nb_timeout >= 4:
+                raise RuntimeError("4 multiprocessing timeouts while testing... giving up")
+        if self.verbose:
+            print("Finished %d tests in %s" %
+                  (len(vkwargs), time.strftime("%Hh %Mm %Ss", time.gmtime(timeit.default_timer() - t0))))
+
+        if self.graph is not None and len(vn):
             if self.r2c:
                 t = "R2C"
             elif self.dct:
