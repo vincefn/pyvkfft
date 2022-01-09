@@ -15,8 +15,9 @@ import sys
 import unittest
 import time
 import timeit
+import socket
 import numpy as np
-from pyvkfft.test import TestFFT, TestFFTSystematic
+from pyvkfft.test import TestFFT, TestFFTSystematic, has_pycuda, has_cupy, has_pyopencl
 
 
 def suite_default():
@@ -74,6 +75,13 @@ def main():
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--colour', action='store_true',
                         help="Use colour depending on how good the measured accuracy is")
+    parser.add_argument('--html', action='store', nargs='*',
+                        help="Summarises the results in html row(s). If no parameters"
+                             "are given, this is saved to 'pyvkfft-test.html'. If one parameter"
+                             "is given, it is used as filename. Extra parameters allowed"
+                             "are 'pre' and 'post' which will trigger the writing of the"
+                             "beginning (body, macros, table...) and end of the html file."
+                             "The output includes the graph if --graph is used.")
     parser.add_argument('--gpu', action='store',
                         help="Name (or sub-string) of the GPU to use")
     parser.add_argument('--mailto', action='store',
@@ -161,6 +169,10 @@ def main():
                         help="Range of array sizes [min, max] along each transform dimension, "
                              "'--range 2 128'",
                         default=[2, 128])
+    sysgrp.add_argument('--timeout', action='store', nargs=1, type=int,
+                        help="Change the timeout (in seconds) to raise a TimeOut error for "
+                             "individual tests. After 4 have failed, give up.",
+                        default=[120])
 
     # parser.print_help()
     args = parser.parse_args()
@@ -177,6 +189,11 @@ def main():
         t.dtype = np.float64 if args.double else np.float32
         t.gpu = args.gpu
         t.graph = args.graph
+        if args.html:
+            if t.graph is not None:
+                if not len(t.graph):
+                    raise RuntimeError("You must supply a filename for the graph when "
+                                       "using both --html and --graph")
         t.inplace = args.inplace
         t.lut = args.lut
         t.ndim = args.ndim[0]
@@ -186,6 +203,7 @@ def main():
         t.r2c = args.r2c
         t.radix = args.radix
         t.range = args.range
+        t.timeout = args.timeout[0]
         t.vbackend = args.backend
         t.verbose = not args.silent
         t.vn = args.range
@@ -216,23 +234,153 @@ def main():
     info += "Elapsed time for tests: %s\n\n" % time.strftime("%Hh %Mm %Ss", time.gmtime(timeit.default_timer() - t0))
 
     nb_err_fail = len(res.errors) + len(res.failures)
+
+    if args.html is not None:
+        html = ''
+        if 'pre' in args.html:
+            # Need the html header, styles and the results' table beginning
+            html += '<!DOCTYPE html>\n <html>\n <head> <style>\n' \
+                    'th, td { border: 1px solid grey;}\n' \
+                    '.center {margin-left: auto;  margin-right: auto; text-align:center}\n' \
+                    '.results {width:100%%; max-width:1920px}\n' \
+                    '.cell_transform {background-color: #ccf;}\n' \
+                    '.active, .cell_transform:hover {background-color: #aaf;}\n' \
+                    '.toggle_graph {' \
+                    '  background-color: transparent;' \
+                    '  border: none;' \
+                    '  cursor: pointer;' \
+                    '  padding:0;' \
+                    '  outline: none;' \
+                    '  height: 100%%' \
+                    '  width: 100%%' \
+                    '}\n' \
+                    '.cell_error {background-color: #fcc;}\n' \
+                    '.active, .cell_error:hover {background-color: #faa;}\n' \
+                    '.toggle_error {' \
+                    '  background-color: transparent;' \
+                    '  border: none;' \
+                    '  cursor: pointer;' \
+                    '  padding:0;' \
+                    '  outline: none;' \
+                    '  height: 100%%' \
+                    '  width: 100%%' \
+                    '}\n' \
+                    '.toggle_fail {' \
+                    '  background-color: transparent;' \
+                    '  border: none;' \
+                    '  cursor: pointer;' \
+                    '  padding:0;' \
+                    '  outline: none;' \
+                    '  height: 100%%' \
+                    '  width: 100%%' \
+                    '}\n' \
+                    '.label_ok {' \
+                    'background-color: #00ff00;' \
+                    'font-weight: bold;' \
+                    'color: #000;' \
+                    '}\n' \
+                    '</style>\n' \
+                    '</head>\n' \
+                    '<body>\n' \
+                    '<div class="center">' \
+                    '<h2>pyVkFFT test results</h2>\n' \
+                    '<h3>host : %s</h3>\n' \
+                    '<table class="results">\n' \
+                    '   <thead>\n' \
+                    '       <tr>\n' \
+                    '           <th>GPU</th>' \
+                    '           <th>backend</th>' \
+                    '           <th>transform</th>' \
+                    '           <th>ndim</th>' \
+                    '           <th>range</th>' \
+                    '           <th>radix</th>' \
+                    '           <th>dtype</th>' \
+                    '           <th>LUT</th>' \
+                    '           <th>norm</th>' \
+                    '           <th>duration</th>' \
+                    '           <th>FAIL</th>' \
+                    '           <th>ERROR</th>' \
+                    '       </tr>\n' \
+                    '   </thead>\n' \
+                    '<tbody class="center">\n' % socket.gethostname()
+        # One row for the summary
+        html += '<tr class="row_results">'
+        html += '<td>%s</td><td>' % (args.gpu if args.gpu is not None else '-')
+        for a in args.backend:
+            html += a + ' '
+        html += '</td>'
+        if args.systematic:
+            tmp = '<td class="cell_transform"><input class="toggle_graph" type="button"' \
+                  'value="%s" style="width:100%%; height:100%%"></td>'
+            if args.r2c:
+                html += tmp % 'R2C'
+            elif args.dct:
+                html += tmp % ('DCT%d' % args.dct)
+            else:
+                html += tmp % 'C2C'
+            html += "<td>%d</td>" % args.ndim[0]
+            html += "<td>%d-%d</td>" % (args.range[0], args.range[1])
+            if args.radix is None:
+                html += "<td>-</td>"
+            elif args.bluestein:
+                html += "<td>Bluestein</td>"
+            else:
+                html += "<td>"
+                for i in (args.radix if len(args.radix) else [2, 3, 5, 7, 11, 13]):
+                    html += "%d," % i
+                html = html[:-1]
+                html += '</td>'
+            html += "<td>%s</td>" % ('float64' if args.double else 'float32')
+            html += "<td>%s</td>" % ('True' if args.lut else 'Auto')
+            html += "<td>%d</td>" % args.norm[0]
+        else:
+            html += ''
+            html += '<td colspan="7">Regular multi-dimensional test</td'
+
+        html += '<td>%s</td>' % time.strftime("%Hh %Mm %Ss", time.gmtime(timeit.default_timer() - t0))
+
+        if len(res.failures):
+            html += '<td class="cell_error"> <input class="toggle_fail" type="button" ' \
+                    'value="%d" style="width:100%%; height:100%%"></td>' % len(res.errors)
+        else:
+            html += '<td class="label_ok"> 0 </td>'
+
+        if len(res.errors):
+            html += '<td class="cell_error"> <input class="toggle_error" type="button" ' \
+                    'value="%d" style="width:100%%; height:100%%"></td>' % len(res.errors)
+        else:
+            html += '<td class="label_ok"> 0 </td>'
+        html += '</tr>\n'
+
+        if args.systematic and args.graph is not None:
+            print("html+systematic+graph")
+            html += '<tr class="graph" style="display: none"><td colspan=12><img src="%s"></td></tr>' % args.graph
+
     if len(res.errors):
-        info += "\n\nERRORS:\n\n"
+        tmp = "\n\nERRORS:\n\n"
         for t, s in res.errors:
             tid = t.id()
             tid1 = tid.split('(')[0].split('.')[-1]
             tid0, tid2 = tid.split('.' + tid1)
-            info += "=" * 70 + "\n" + '%s %s [%s]:\n' % (tid1, tid2, tid0)
-            info += "-" * 70 + "\n" + s + "\n"
+            tmp += "=" * 70 + "\n" + '%s %s [%s]:\n' % (tid1, tid2, tid0)
+            tmp += "-" * 70 + "\n" + s + "\n"
+        info += tmp
+        if args.html:
+            html += '<tr class="errors" style="display: none; text-align: left; font-family: monospace">' \
+                    '<td colspan=12><pre>%s</pre></td></tr>' % tmp
 
     if len(res.failures):
-        info += "\n\nFAILURES:\n\n"
+        tmp = "\n\nFAILURES:\n\n"
         for t, s in res.failures:
             tid = t.id()
             tid1 = tid.split('(')[0].split('.')[-1]
             tid0, tid2 = tid.split('.' + tid1)
-            info += "=" * 70 + "\n" + '%s %s [%s]:\n' % (tid1, tid2, tid0)
-            info += "-" * 70 + "\n" + s + "\n"
+            tmp += "=" * 70 + "\n" + '%s %s [%s]:\n' % (tid1, tid2, tid0)
+            tmp += "-" * 70 + "\n" + s + "\n"
+        info += tmp
+        if args.html:
+            html += '<tr class="failures" style="display: none; text-align: left; font-family: monospace">' \
+                    '<td colspan=12><pre>%s</pre></td></tr>' % tmp
 
     if args.mailto_fail is not None and (nb_err_fail > 0) or args.mailto is not None:
         import smtplib
@@ -252,6 +400,33 @@ def main():
             s.quit()
         except (ConnectionRefusedError, smtplib.SMTPConnectError):
             print("Could not connect to SMTP server (%s) to send email." % args.mailto_smtp)
+
+    if args.html is not None:
+        if 'post' in args.html:
+            html += '</tbody>\n' \
+                    '</tbody\n' \
+                    '</table>\n' \
+                    '</div>\n' \
+                    '  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>' \
+                    '     <script id="rendered-js" >\n' \
+                    '        $(document).ready(function ()' \
+                    '        {\n' \
+                    '           $(".toggle_graph").click(function () ' \
+                    '              {$(this).parents().nextUntil(".row_results", ".graph").toggle();  });\n' \
+                    '           $(".toggle_fail").click(function () ' \
+                    '              {$(this).parents().nextUntil(".row_results", ".failures").toggle();  });\n' \
+                    '           $(".toggle_error").click(function () ' \
+                    '              {$(this).parents().nextUntil(".row_results", ".errors").toggle();  });\n' \
+                    '        });\n' \
+                    '</script>' \
+                    '' \
+                    '</body>\n' \
+                    '</html>'
+        html_out = 'pyvkfft-test.html'
+        if len(args.html):
+            html_out = args.html[0]
+        with open(html_out, 'w') as f:
+            f.write(html)
 
     sys.exit(int(nb_err_fail > 0))
 

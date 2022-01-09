@@ -197,7 +197,7 @@ class TestFFT(unittest.TestCase):
                                             for inplace in vinplace:
                                                 for norm in vnorm:
                                                     with self.subTest(backend=backend, n=n, dims=dims, ndim=ndim,
-                                                                      axes=axes, dtype=dtype, norm=norm,
+                                                                      axes=axes, dtype=np.dtype(dtype), norm=norm,
                                                                       use_lut=use_lut, inplace=inplace,
                                                                       r2c=r2c, dct=dct):
                                                         ct += 1
@@ -248,7 +248,7 @@ class TestFFT(unittest.TestCase):
         with multiprocessing.get_context('spawn').Pool(self.nproc) as pool:
             for res in pool.imap(test_accuracy_kwargs, vkwargs):
                 with self.subTest(backend=res['backend'], n=max(res['shape']), ndim=res['ndim'],
-                                  dtype=res['dtype'], norm=res['norm'], use_lut=res['use_lut'],
+                                  dtype=np.dtype(res['dtype']), norm=res['norm'], use_lut=res['use_lut'],
                                   inplace=res['inplace'], r2c=res['r2c'], dct=res['dct']):
                     n = max(res['shape'])
                     npr = primes(n)
@@ -372,7 +372,7 @@ class TestFFT(unittest.TestCase):
         Test multiple FFT in // with different cuda streams.
         """
         for dtype in (np.complex64, np.complex128):
-            with self.subTest(dtype=dtype):
+            with self.subTest(dtype=np.dtype(dtype)):
                 init_ctx("pycuda", gpu_name=self.gpu, verbose=False)
                 if dtype == np.complex64:
                     rtol = 1e-6
@@ -497,8 +497,10 @@ class TestFFTSystematic(unittest.TestCase):
                 results = pool.imap(test_accuracy_kwargs, vkwargs[i_start:], chunksize=1)
                 for i in range(i_start, len(vkwargs)):
                     v = vkwargs[i]
+                    # We use np.dtype(dtype) instead of dtype because it is written out simply
+                    # as e.g. "float32" instead of "<class 'numpy.float32'>"
                     with self.subTest(backend=backend, n=max(v['shape']), ndim=self.ndim,
-                                      dtype=self.dtype, norm=self.norm, use_lut=self.lut,
+                                      dtype=np.dtype(self.dtype), norm=self.norm, use_lut=self.lut,
                                       inplace=self.inplace, r2c=self.r2c, dct=self.dct):
                         try:
                             res = results.next(timeout=self.timeout)
