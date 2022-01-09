@@ -408,6 +408,7 @@ class TestFFTSystematic(unittest.TestCase):
     r2c = False
     radix = None
     range = 2, 128
+    timeout = 30
     vbackend = None
     verbose = True
 
@@ -467,9 +468,12 @@ class TestFFTSystematic(unittest.TestCase):
             vkwargs.append(kwargs)
         # Need to use spawn to handle the GPU context
         with multiprocessing.get_context('spawn').Pool(nproc) as pool:
-            for res in pool.imap(test_accuracy_kwargs, vkwargs):
-                with self.subTest(backend=backend, n=max(res['shape']), ndim=ndim, dtype=dtype, norm=norm,
+            results = pool.imap(test_accuracy_kwargs, vkwargs, chunksize=1)
+            for i in range(len(vkwargs)):
+                v = vkwargs[i]
+                with self.subTest(backend=v['backend'], n=max(v['shape']), ndim=ndim, dtype=dtype, norm=norm,
                                   use_lut=use_lut, inplace=inplace, r2c=r2c, dct=dct):
+                    res = results.next(timeout=self.timeout)
                     if verbose:
                         print(res['str'])
                     n = max(res['shape'])
@@ -522,10 +526,13 @@ class TestFFTSystematic(unittest.TestCase):
             t0 = timeit.default_timer()
             if self.verbose:
                 print("Starting %d tests..." % (len(vkwargs)))
-            for res in pool.imap(test_accuracy_kwargs, vkwargs):
-                with self.subTest(backend=backend, n=max(res['shape']), ndim=self.ndim,
+            results = pool.imap(test_accuracy_kwargs, vkwargs, chunksize=1)
+            for i in range(len(vkwargs)):
+                v = vkwargs[i]
+                with self.subTest(backend=backend, n=max(v['shape']), ndim=self.ndim,
                                   dtype=self.dtype, norm=self.norm, use_lut=self.lut,
                                   inplace=self.inplace, r2c=self.r2c, dct=self.dct):
+                    res = results.next(timeout=self.timeout)
                     n = max(res['shape'])
                     npr = primes(n)
                     ni, n2 = res["ni"], res["n2"]
