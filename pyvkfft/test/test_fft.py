@@ -563,10 +563,8 @@ class TestFFTSystematic(unittest.TestCase):
                         pool.terminate()
                         nb_timeout += 1
                         break
-            if not timeout or i_start >= len(vkwargs):
+            if not timeout or i_start >= len(vkwargs) or nb_timeout >= 4:
                 break
-            if nb_timeout >= 4:
-                raise RuntimeError("4 multiprocessing timeouts while testing... giving up")
         if self.verbose:
             print("Finished %d tests in %s" %
                   (len(vkwargs), time.strftime("%Hh %Mm %Ss", time.gmtime(timeit.default_timer() - t0))))
@@ -631,6 +629,9 @@ class TestFFTSystematic(unittest.TestCase):
             plt.savefig(graph)
             if self.verbose:
                 print("Saved accuracy graph to: %s" % graph)
+
+        if nb_timeout >= 4:
+            raise RuntimeError("4 multiprocessing timeouts while testing... giving up")
 
 
 def suite():

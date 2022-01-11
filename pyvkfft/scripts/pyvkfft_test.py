@@ -369,8 +369,8 @@ def main():
                 tmp = '<td>%s</td>'
             if args.r2c:
                 html += tmp % 'R2C'
-            elif args.dct:
-                html += tmp % ('DCT%d' % args.dct)
+            elif t.dct:
+                html += tmp % ('DCT%d' % t.dct)
             else:
                 html += tmp % 'C2C'
             html += "<td>%d</td>" % args.ndim[0]
