@@ -83,6 +83,7 @@ def make_html_pre_post(overwrite=False):
               '<div class="center">' \
               '<h2>pyVkFFT test results</h2>\n' \
               '<h3>host : %s</h3>\n' \
+              '[Click on the highlighted cells for details]<br>\n' \
               '<table class="results">\n' \
               '   <thead>\n' \
               '       <tr>\n' \
