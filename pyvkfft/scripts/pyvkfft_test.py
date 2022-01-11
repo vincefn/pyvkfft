@@ -93,9 +93,10 @@ def make_html_pre_post(overwrite=False):
               '           <th>range</th>' \
               '           <th>radix</th>' \
               '           <th>dtype</th>' \
+              '           <th>inplace</th>' \
               '           <th>LUT</th>' \
               '           <th>norm</th>' \
-              '           <th>duration</th>' \
+              '           <th>time-duration</th>' \
               '           <th>FAIL</th>' \
               '           <th>ERROR</th>' \
               '       </tr>\n' \
@@ -111,8 +112,16 @@ def make_html_pre_post(overwrite=False):
               '     <script id="rendered-js" >\n' \
               '        $(document).ready(function ()' \
               '        {\n' \
-              '           $(".toggle_graph").click(function () ' \
-              '              {$(this).parents().nextUntil(".row_results", ".graph").toggle();  });\n' \
+              '           $(".toggle_graph").click(function () \n' \
+              '              {\n' \
+              '                 var trgraph = $(this).parents().nextUntil(".row_results", ".graph"); \n' \
+              '                 trgraph.toggle(); \n' \
+              '                 if(trgraph.is( ":visible" ))\n' \
+              '                 { trgraph.children("td:first").html($(this).data("command")+"<br>' \
+              '                      <img src=\\"" + $(this).data("img") + "\\">");}\n' \
+              '                 else { trgraph.children("td:first").html("img hidden");};\n' \
+              '                 \n' \
+              '               });\n' \
               '           $(".toggle_fail").click(function () ' \
               '              {$(this).parents().nextUntil(".row_results", ".failures").toggle();  });\n' \
               '           $(".toggle_error").click(function () ' \
@@ -140,6 +149,7 @@ def name_next_file(pattern="pyvkfft-test%04d.html"):
 
 def main():
     t0 = timeit.default_timer()
+    localt0 = time.localtime()
     epilog = "Examples:\n" \
              "   pyvkfft-test\n" \
              "      the regular test which tries the fft interface, using parallel\n" \
@@ -348,13 +358,13 @@ def main():
         html += '</td>'
         if args.systematic:
             has_graph = False
-            print(args.graph, args.graph is not None, os.path.exists(args.graph), os.system("ls -la %s" % args.graph))
             if args.graph is not None:
                 if os.path.exists(args.graph):
                     has_graph = True
             if has_graph:
                 tmp = '<td class="cell_transform"><input class="toggle_graph" type="button"' \
-                      'value="%s" style="width:100%%; height:100%%"></td>'
+                      'data-img="%s" data-command="%s"' % (args.graph, sub)
+                tmp += 'value="%s" style="width:100%%; height:100%%"></td>'
             else:
                 tmp = '<td>%s</td>'
             if args.r2c:
@@ -365,10 +375,10 @@ def main():
                 html += tmp % 'C2C'
             html += "<td>%d</td>" % args.ndim[0]
             html += "<td>%d-%d</td>" % (args.range[0], args.range[1])
-            if args.radix is None:
-                html += "<td>-</td>"
-            elif args.bluestein:
+            if args.bluestein:
                 html += "<td>Bluestein</td>"
+            elif args.radix is None:
+                html += "<td>-</td>"
             else:
                 html += "<td>"
                 for i in (args.radix if len(args.radix) else [2, 3, 5, 7, 11, 13]):
@@ -376,13 +386,15 @@ def main():
                 html = html[:-1]
                 html += '</td>'
             html += "<td>%s</td>" % ('float64' if args.double else 'float32')
+            html += "<td>%s</td>" % ('inplace' if args.inplace else 'out-of-place')
             html += "<td>%s</td>" % ('True' if args.lut else 'Auto')
             html += "<td>%d</td>" % args.norm[0]
         else:
             html += ''
-            html += '<td colspan="7">Regular multi-dimensional test</td'
+            html += '<td colspan="8">Regular multi-dimensional test</td'
 
-        html += '<td>%s</td>' % time.strftime("%Hh %Mm %Ss", time.gmtime(timeit.default_timer() - t0))
+        html += '<td>%s +%s</td>' % (time.strftime("%Y-%m-%d %Hh%M:%S", localt0),
+                                     time.strftime("%Hh %Mm %Ss", time.gmtime(timeit.default_timer() - t0)))
 
         if len(res.failures):
             html += '<td class="cell_error"> <input class="toggle_fail" type="button" ' \
@@ -400,10 +412,10 @@ def main():
         if args.systematic and args.graph is not None:
             if os.path.exists(args.graph):
                 # Else some failure prevented actually producing the graph
-                html += '<tr class="graph" style="display: none"><td colspan=12><img src="%s"></td></tr>' % args.graph
+                html += '<tr class="graph" style="display: none"><td colspan=13><img src="%s"></td></tr>' % args.graph
 
     if len(res.errors):
-        tmp = "\n\nERRORS:\n\n"
+        tmp = "%s\n\nERRORS:\n\n" % sub
         for t, s in res.errors:
             tid = t.id()
             tid1 = tid.split('(')[0].split('.')[-1]
@@ -413,10 +425,10 @@ def main():
         info += tmp
         if args.html is not None:
             html += '<tr class="errors" style="display: none; text-align: left; font-family: monospace">' \
-                    '<td colspan=12><pre>%s</pre></td></tr>' % tmp
+                    '<td colspan=13><pre>%s</pre></td></tr>' % tmp
 
     if len(res.failures):
-        tmp = "\n\nFAILURES:\n\n"
+        tmp = "%s\n\nFAILURES:\n\n" % sub
         for t, s in res.failures:
             tid = t.id()
             tid1 = tid.split('(')[0].split('.')[-1]
@@ -426,7 +438,7 @@ def main():
         info += tmp
         if args.html is not None:
             html += '<tr class="failures" style="display: none; text-align: left; font-family: monospace">' \
-                    '<td colspan=12><pre>%s</pre></td></tr>' % tmp
+                    '<td colspan=13><pre>%s</pre></td></tr>' % tmp
 
     if args.mailto_fail is not None and (nb_err_fail > 0) or args.mailto is not None:
         import smtplib
