@@ -354,8 +354,11 @@ def main():
         # One row for the summary
         html += '<tr class="row_results">'
         html += '<td>%s</td><td>' % (args.gpu if args.gpu is not None else '-')
-        for a in args.backend:
-            html += a + ' '
+        if args.backend is not None:
+            for a in args.backend:
+                html += a + ' '
+        else:
+            html += 'all'
         html += '</td>'
         if args.systematic:
             has_graph = False
