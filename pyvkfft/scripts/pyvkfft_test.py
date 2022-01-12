@@ -392,7 +392,7 @@ def main():
             html += "<td>%d</td>" % args.norm[0]
         else:
             html += ''
-            html += '<td colspan="8">Regular multi-dimensional test</td'
+            html += '<td colspan="8">Regular multi-dimensional C2C/R2C/DCT test</td>'
 
         html += '<td>%s +%s</td>' % (time.strftime("%Y-%m-%d %Hh%M:%S", localt0),
                                      time.strftime("%Hh %Mm %Ss", time.gmtime(timeit.default_timer() - t0)))
@@ -412,8 +412,10 @@ def main():
 
         if args.systematic and args.graph is not None:
             if os.path.exists(args.graph):
-                # Else some failure prevented actually producing the graph
-                html += '<tr class="graph" style="display: none"><td colspan=13><img src="%s"></td></tr>' % args.graph
+                # Do not put the img tag of the file, else it gets pre-loaded and
+                # this can crash the browser when aggregating many tests.
+                # It will only be added when clicking on the transform cell.
+                html += '<tr class="graph" style="display: none"><td colspan=13></td></tr>'
 
     if len(res.errors):
         tmp = "%s\n\nERRORS:\n\n" % sub
