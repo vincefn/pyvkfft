@@ -449,9 +449,18 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
 
 
 def test_accuracy_kwargs(kwargs):
-    # This function must be defined here so it can be used with a multiprocessing pool
+    # This function must be defined here, so it can be used with a multiprocessing pool
     # in test_fft, otherwise this will fail, see:
     # https://stackoverflow.com/questions/41385708/multiprocessing-example-giving-attributeerror
+    if kwargs['backend'] == 'pyopencl' and has_opencl:
+        try:
+            t = test_accuracy(**kwargs)
+        except cl.RuntimeError as ex:
+            # The cl.RuntimeError can't be pickled, so is not correctly reported
+            # when using multiprocessing. So we raise another and the traceback
+            # from the previous one is still printed.
+            raise RuntimeError("An OpenCL RuntimeError was encountered")
+        return t
     return test_accuracy(**kwargs)
 
 

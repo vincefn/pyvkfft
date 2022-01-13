@@ -17,7 +17,8 @@ import time
 import timeit
 import socket
 import numpy as np
-from pyvkfft.test import TestFFT, TestFFTSystematic, has_pycuda, has_cupy, has_pyopencl
+from pyvkfft.test import TestFFT, TestFFTSystematic
+from pyvkfft.version import __version__, vkfft_version
 
 
 def suite_default():
@@ -39,8 +40,8 @@ def make_html_pre_post(overwrite=False):
         # Need the html header, styles and the results' table beginning
         tmp = '<!DOCTYPE html>\n <html>\n <head> <style>\n' \
               'th, td { border: 1px solid grey;}\n' \
-              '.center {margin-left: auto;  margin-right: auto; text-align:center}\n' \
-              '.results {width:100%%; max-width:1920px; margin-left: auto;  margin-right: auto}\n' \
+              '.center {margin-left: auto;  margin-right: auto; text-align:center;' \
+              ' width:100%%; max-width:1920px; margin-left: auto;  margin-right: auto}\n' \
               '.cell_transform {background-color: #ccf;}\n' \
               '.active, .cell_transform:hover {background-color: #aaf;}\n' \
               '.toggle_graph {' \
@@ -82,9 +83,26 @@ def make_html_pre_post(overwrite=False):
               '<body>\n' \
               '<div class="center">' \
               '<h2>pyVkFFT test results</h2>\n' \
-              '<h3>host : %s</h3>\n' \
-              '[Click on the highlighted cells for details]<br>\n' \
-              '<table class="results">\n' \
+              '<h3>pyvkfft version: %s  VkFFFT version:%s host : %s</h3>\n' \
+              '<div style="text-align:left;">' \
+              '<p>Methodology: the included graphs measure the accuracy of the forward ' \
+              'and backward transforms: an array is generated with random uniform values ' \
+              'between -0.5 and 0.5, and the results of its transform are compared ' \
+              'with either pyfftw (in long double precision) if available, or scipy if ' \
+              'available, or numpy fft. The L2 curve measures the average square norm ' \
+              'difference, and the L<sub>&infin;</sub> the maximum difference.' \
+              '<p>Note: for the R2C inverse transform, the result of the forward ' \
+              'transform is used instead of re-using the random array (in order to have ' \
+              'a proper half-Hermitian array), contrary to what is done for other ' \
+              'transforms. This explains with the IFFT R2C maximum (L<sub>&infin;</sub>) ' \
+              'errors are larger.' \
+              '<p>Note 2: some "errors" for DCT are due to unsupported sizes in VkFFT, ' \
+              'which vary depending on the card and language used (amount of ' \
+              'shared/local memory). So they just indicate a current limit for the ' \
+              'transform sizes rather than a real error.' \
+              '<p> [Click on the highlighted cells for details and accuracy graphs ' \
+              'vs the transform size]<br>\n' \
+              '</div><table class="center">\n' \
               '   <thead>\n' \
               '       <tr>\n' \
               '           <th>GPU</th>' \
@@ -102,7 +120,7 @@ def make_html_pre_post(overwrite=False):
               '           <th>ERROR</th>' \
               '       </tr>\n' \
               '   </thead>\n' \
-              '<tbody class="center">\n' % socket.gethostname()
+              '<tbody class="center">\n' % (__version__, vkfft_version(), socket.gethostname())
         open("pyvkfft-test1000.html", "w").write(tmp)
     if ('pyvkfft-test1999.html' not in os.listdir()) or overwrite:
         tmp = '</tbody>\n' \
