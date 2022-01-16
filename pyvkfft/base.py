@@ -136,7 +136,7 @@ def primes(n):
     return v
 
 
-def radix_gen(nmax, radix, even=False, exclude_one=True, inverted=False, nmin=None):
+def radix_gen(nmax, radix, even=False, exclude_one=True, inverted=False, nmin=None, max_pow=None):
     """
     Generate an array of integers which are only multiple of powers
     of base integers, e.g. 2**N1 * 3**N2 * 5**N3 etc...
@@ -148,11 +148,19 @@ def radix_gen(nmax, radix, even=False, exclude_one=True, inverted=False, nmin=No
     :param inverted: if True, the returned array will only include
         integers which are NOT in the form 2**N1 * 3**N2 * 5**N3...
     :param nmin: if not None, the integer values returned will be >=nmin
+    :param max_pow: if not None, the N1, N2, N3... powers (for sizes
+        in the form 2**N1 * 3**N2 * 5**N3) will be at max equal to this
+        value, which allows to reduce the number of generated sizes
+        while testing all base radixes
     :return: the numpy array of integers, sorted
     """
     a = np.ones(1, dtype=np.int64)
     for i in range(len(radix)):
-        a = a * radix[i] ** np.arange(int(np.floor(np.log(nmax) / np.log(radix[i]))) + 1)[:, np.newaxis]
+        if max_pow is None:
+            tmp = np.arange(int(np.floor(np.log(nmax) / np.log(radix[i]))) + 1)
+        else:
+            tmp = np.arange(min(max_pow, int(np.floor(np.log(nmax) / np.log(radix[i])))) + 1)
+        a = a * radix[i] ** tmp[:, np.newaxis]
         a = a.flatten()
         a = a[a <= nmax]
     if inverted:
@@ -164,9 +172,108 @@ def radix_gen(nmax, radix, even=False, exclude_one=True, inverted=False, nmin=No
     if nmin is not None:
         a = a[a >= nmin]
     a.sort()
-    if exclude_one and a[0] == 1:
-        return a[1:]
+    if len(a):
+        if exclude_one and a[0] == 1:
+            return a[1:]
     return a
+
+
+def radix_gen_n(nmax, max_size, radix, ndim=None, even=False, exclude_one=True, inverted=False,
+                nmin=None, max_pow=None, range_nd_narrow=None, min_size=0):
+    """
+    Generate a list of array shape with integers which are only multiple
+    of powers of base integers, e.g. 2**N1 * 3**N2 * 5**N3 etc...,
+    for each of the dimensions, and with a maximum size.
+    Note that this can generate a large number of sizes.
+    :param nmax: the maximum value for the length of each dimension (included)
+    :param max_size: the maximum size (number of elements) for the array
+    :param radix: the list/tuple of base integers - which don't need
+        to be primes. If None, all sizes are allowed
+    :param ndim: the number of dimensions allowed. If None, 1D, 2D and 3D
+        shapes are mixed.
+    :param even: if True, only return even numbers
+    :param exclude_one: if True (the default), exclude 1
+    :param inverted: if True, the returned array will only include
+        integers which are NOT in the form 2**N1 * 3**N2 * 5**N3...
+    :param nmin: if not None, the integer values returned will be >=nmin
+    :param max_pow: if not None, the N1, N2, N3... powers (for sizes
+        in the form 2**N1 * 3**N2 * 5**N3) will be at max equal to this
+        value, which allows to reduce the number of generated sizes
+        while testing all base radixes
+    :param range_nd_narrow: if a tuple of values (drel, dabs) is given,
+        with drel within [0;1], for dimensions>1,
+        in an array of shape (s0, s1, s2), the difference of lengths
+        with respect to the first dimension cannot be larger than
+        min(drel * s0, dabs). This allows to reduce the number
+        of shapes tested. With drel=dabs=0, all dimensions must
+        have identical lengths.
+    :param min_size: the minimum size (number of elements). This can be
+        used to separate large array tests and use a larger number of
+        parallel process for smaller ones.
+    :return: the list of array shapes.
+    """
+    v = []
+    if radix is None:
+        if even:
+            if nmin is None:
+                n0 = np.arange(2, min(nmax, max_size), 2)
+            else:
+                n0 = np.arange(nmin + nmin % 2, min(nmax, max_size), 2)
+        else:
+            if nmin is None:
+                n0 = np.arange(2, min(nmax, max_size))
+            else:
+                n0 = np.arange(nmin, min(nmax, max_size))
+    else:
+        n0 = radix_gen(nmax, radix, even=even, exclude_one=exclude_one, inverted=inverted, nmin=nmin, max_pow=max_pow)
+
+    if ndim is None or ndim in [1, 12, 123]:
+        idx = np.nonzero((n0 <= max_size) * (n0 >= min_size))[0]
+        if len(idx):
+            v += list(zip(n0.take(idx)))
+    if ndim is None or ndim in [2, 12, 123]:
+        vidx = list(range(0, len(n0), 1000))
+        if vidx[-1] != len(n0):
+            vidx.append(len(n0))
+        for i1 in range(len(vidx) - 1):
+            l01 = n0[vidx[i1]:vidx[i1 + 1]]
+            for i2 in range(len(vidx) - 1):
+                l2 = n0[vidx[i2]:vidx[i2 + 1]][:, np.newaxis]
+                s = (l01 * l2).flatten()
+                l1, l2 = (l01 + np.zeros_like(l2)).flatten(), (l2 + np.zeros_like(l01)).flatten()
+                tmp = (s <= max_size) * (s >= min_size)
+                if range_nd_narrow is not None:
+                    drel, dabs = range_nd_narrow
+                    m = np.maximum(dabs, l1 * drel)
+                    tmp = np.logical_and(tmp, abs(l1 - l2) <= m)
+                idx = np.nonzero(tmp)[0]
+                if len(idx):
+                    v += list(zip(l1.take(idx), l2.take(idx)))
+    if ndim is None or ndim in [3, 123]:
+        vidx = list(range(0, len(n0), 100))
+        if vidx[-1] != len(n0):
+            vidx.append(len(n0))
+        for i1 in range(len(vidx) - 1):
+            l01 = n0[vidx[i1]:vidx[i1 + 1]]
+            for i2 in range(len(vidx) - 1):
+                l02 = n0[vidx[i1]:vidx[i1 + 1], np.newaxis]
+                for i3 in range(len(vidx) - 1):
+                    l3 = n0[vidx[i1]:vidx[i1 + 1], np.newaxis, np.newaxis]
+                    # print(i1, i2, i3, l1.shape, l2.shape, l3.shape)
+                    s = (l01 * l02 * l3).flatten()
+                    l1, l2, l3 = (l01 + np.zeros_like(l02) + np.zeros_like(l3)).flatten(), \
+                                 (l02 + np.zeros_like(l01) + np.zeros_like(l3)).flatten(), \
+                                 (l3 + np.zeros_like(l01) + np.zeros_like(l02)).flatten()
+                    tmp = (s <= max_size) * (s >= min_size)
+                    if range_nd_narrow is not None:
+                        drel, dabs = range_nd_narrow
+                        m = np.maximum(dabs, l1 * drel)
+                        tmp = np.logical_and(tmp, (abs(l1 - l2) <= m)
+                                             * (abs(l1 - l3) <= m))
+                    idx = np.nonzero(tmp)[0]
+                    if len(idx):
+                        v += list(zip(l1.take(idx), l2.take(idx), l3.take(idx)))
+    return v
 
 
 def calc_transform_axes(shape, axes=None, ndim=None):

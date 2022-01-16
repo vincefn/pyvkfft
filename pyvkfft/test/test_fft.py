@@ -7,8 +7,7 @@
 #
 #
 # pyvkfft unit tests.
-
-
+import sys
 import unittest
 import multiprocessing
 import sqlite3
@@ -24,7 +23,7 @@ except ImportError:
         return np.random.randint(0, 255, (512, 512))
 
 from pyvkfft.version import __version__, vkfft_version
-from pyvkfft.base import primes, radix_gen
+from pyvkfft.base import primes, radix_gen, radix_gen_n
 from pyvkfft.fft import fftn as vkfftn, ifftn as vkifftn, rfftn as vkrfftn, \
     irfftn as vkirfftn, dctn as vkdctn, idctn as vkidctn
 from pyvkfft.accuracy import test_accuracy, test_accuracy_kwargs, fftn, init_ctx, gpu_ctx_dic, has_dct_ref
@@ -407,11 +406,15 @@ class TestFFTSystematic(unittest.TestCase):
     colour = False
     dct = False
     db = None
+    dry_run = False
     dtype = np.float32
     graph = None
     gpu = None
     inplace = False
     lut = False
+    max_pow = None
+    max_nb_tests = 1000
+    nb_shapes_gen = None
     ndim = 1
     # t.ndims = args.ndims
     norm = 1
@@ -419,9 +422,12 @@ class TestFFTSystematic(unittest.TestCase):
     r2c = False
     radix = None
     range = 2, 128
+    range_nd_narrow = 0, 0
+    range_size = 0, 128 * 1024 ** 2 // 8
     timeout = 30
     vbackend = None
     verbose = True
+    vshape = []
 
     def setUp(self) -> None:
         if self.vbackend is None:
@@ -436,24 +442,43 @@ class TestFFTSystematic(unittest.TestCase):
                 self.cq, self.has_cl_fp64 = gpu_ctx_dic["pyopencl"][2:]
         self.assertTrue(not self.bluestein or self.radix is None, "Cannot select both Bluestein and radix")
         if not self.bluestein and self.radix is None:
-            self.vn = range(self.range[0], self.range[1] + 1)
+            self.vshape = radix_gen_n(nmax=self.range[1], max_size=self.range_size[1], radix=None,
+                                      ndim=self.ndim, even=self.r2c, nmin=self.range[0], max_pow=self.max_pow,
+                                      range_nd_narrow=self.range_nd_narrow, min_size=self.range_size[0])
         elif self.bluestein:
-            self.vn = radix_gen(self.range[1], (2, 3, 5, 7, 11, 13), even=self.r2c,
-                                inverted=True, nmin=self.range[0])
+            self.vshape = radix_gen_n(nmax=self.range[1], max_size=self.range_size[1],
+                                      radix=(2, 3, 5, 7, 11, 13), ndim=self.ndim, even=self.r2c,
+                                      inverted=True, nmin=self.range[0], max_pow=self.max_pow,
+                                      range_nd_narrow=self.range_nd_narrow, min_size=self.range_size[0])
         else:
             if len(self.radix) == 0:
                 self.radix = [2, 3, 5, 7, 11, 13]
             if self.r2c and 2 not in self.radix:  # and inplace ?
                 raise RuntimeError("For r2c, the x/fastest axis must be even (requires radix-2)")
-            self.vn = radix_gen(self.range[1], self.radix, even=self.r2c, nmin=self.range[0])
-        self.assertTrue(len(self.vn), "The list of sizes to test is empty !")
+            self.vshape = radix_gen_n(nmax=self.range[1], max_size=self.range_size[1],
+                                      radix=self.radix, ndim=self.ndim, even=self.r2c,
+                                      nmin=self.range[0], max_pow=self.max_pow,
+                                      range_nd_narrow=self.range_nd_narrow, min_size=self.range_size[0])
+        if not self.dry_run:
+            self.assertTrue(len(self.vshape), "The list of sizes to test is empty !")
+            if self.max_nb_tests:
+                self.assertTrue(len(self.vshape) <= self.max_nb_tests, "Too many array shapes have been generated: "
+                                                                       "%d > %d [parameter hint: max-nb-tests]" %
+                                (len(self.vshape), self.max_nb_tests))
 
     def test_systematic(self):
+        if self.dry_run:
+            # The array shapes to test have been generated
+            if self.verbose:
+                print("Dry run: %d array shapes generated" % len(self.vshape))
+            # OK, this lacks elegance, but works to get back the value in the scripts
+            self.__class__.nb_shapes_gen = len(self.vshape)
+            return
         # Generate the list of configurations as kwargs for test_accuracy()
         vkwargs = []
         for backend in self.vbackend:
-            for n in self.vn:
-                kwargs = {"backend": backend, "shape": [n] * self.ndim, "ndim": self.ndim, "axes": self.axes,
+            for s in self.vshape:
+                kwargs = {"backend": backend, "shape": s, "ndim": len(s), "axes": self.axes,
                           "dtype": self.dtype, "inplace": self.inplace, "norm": self.norm, "use_lut": self.lut,
                           "r2c": self.r2c, "dct": self.dct, "gpu_name": self.gpu, "stream": None, "verbose": False,
                           "colour_output": self.colour}
@@ -479,7 +504,7 @@ class TestFFTSystematic(unittest.TestCase):
                 transform = "C2C"
 
         # For graph output
-        vn, vni, vn2, vnii, vn2i, vblue = [], [], [], [], [], []
+        vn, vni, vn2, vnii, vn2i, vblue, vshape = [], [], [], [], [], [], []
         gpu_name = "GPU"
 
         if self.verbose:
@@ -497,9 +522,11 @@ class TestFFTSystematic(unittest.TestCase):
                 results = pool.imap(test_accuracy_kwargs, vkwargs[i_start:], chunksize=1)
                 for i in range(i_start, len(vkwargs)):
                     v = vkwargs[i]
+                    sh = v['shape']
+                    ndim = len(sh)
                     # We use np.dtype(dtype) instead of dtype because it is written out simply
                     # as e.g. "float32" instead of "<class 'numpy.float32'>"
-                    with self.subTest(backend=backend, n=max(v['shape']), ndim=self.ndim,
+                    with self.subTest(backend=backend, shape=sh, ndim=ndim,
                                       dtype=np.dtype(self.dtype), norm=self.norm, use_lut=self.lut,
                                       inplace=self.inplace, r2c=self.r2c, dct=self.dct):
                         try:
@@ -524,6 +551,7 @@ class TestFFTSystematic(unittest.TestCase):
                         vn2.append(n2)
                         vn2i.append(n2i)
                         vnii.append(nii)
+                        vshape.append(sh)
                         if len(vn) == 1:
                             gpu_name = res["gpu_name"]
 
@@ -537,7 +565,7 @@ class TestFFTSystematic(unittest.TestCase):
                                         '?,?,?,?,?,?,?,?,?,?,?,?,?)',
                                         (time.time(), hostname, backend, lang, transform,
                                          str(res['axes']).encode('ascii'), str(res['shape']).encode('ascii'),
-                                         len(res['shape']), self.ndim, np.dtype(self.dtype).itemsize,
+                                         len(res['shape']), ndim, np.dtype(self.dtype).itemsize,
                                          self.inplace, self.norm, self.lut, int(max(res['shape'])), float(n2),
                                          float(n2i),
                                          float(ni), float(nii), float(tol), res["dt_app"], res["dt_fft"],
@@ -551,7 +579,7 @@ class TestFFTSystematic(unittest.TestCase):
                         if not self.inplace:
                             self.assertTrue(src1, "The source array was modified during the FFT")
                             nmaxr2c1d = 3072 * (1 + int(self.dtype in (np.float32, np.complex64)))
-                            if not self.r2c or (self.ndim == 1 and max(npr) <= 13) and n < nmaxr2c1d:
+                            if not self.r2c or (ndim == 1 and max(npr) <= 13) and n < nmaxr2c1d:
                                 # Only 1D radix C2R do not alter the source array, if n<=?
                                 self.assertTrue(src2,
                                                 "The source array was modified during the iFFT %d %d" % (n, nmaxr2c1d))
@@ -592,25 +620,31 @@ class TestFFTSystematic(unittest.TestCase):
                 r = "_bluestein"
 
             tit = "%s %s pyvkfft %s VkFFT %s" % (gpu_name, self.vbackend[0], __version__, vkfft_version())
-            suptit = " %s %dD%s N=%d-%d norm=%d %s%s" % \
-                     (t, self.ndim, r, self.range[0], self.range[1], self.norm, str(np.dtype(np.float32)), tmp)
+            if self.ndim == 12:
+                sndim = "1D2D"
+            elif self.ndim == 123:
+                sndim = "1D2D3D"
+            else:
+                sndim = "%dD" % self.ndim
+            suptit = " %s %s%s N=%d-%d norm=%d %s%s" % \
+                     (t, sndim, r, self.range[0], self.range[1], self.norm, str(np.dtype(np.float32)), tmp)
 
             import matplotlib.pyplot as plt
             from scipy import stats
             plt.figure(figsize=(8, 5))
 
-            x = np.array(vn, dtype=np.float32)
-            xl = self.ndim * np.log10(x)  # Use the size of the array
+            x = np.array([np.prod(s) for s in vshape], dtype=np.float32)
+            xl = np.log10(x)
             ms = 4
-            plt.semilogx(vn, vni, 'ob', label=r"$[FFT]L_{\infty}$", alpha=0.2, ms=ms)
-            plt.semilogx(vn, vnii, 'og', label=r"$[IFFT]L_{\infty}$", alpha=0.2, ms=ms)
+            plt.semilogx(x, vni, 'ob', label=r"$[FFT]L_{\infty}$", alpha=0.2, ms=ms)
+            plt.semilogx(x, vnii, 'og', label=r"$[IFFT]L_{\infty}$", alpha=0.2, ms=ms)
 
             r2 = stats.linregress(xl, np.array(vn2, dtype=np.float32))
-            plt.semilogx(vn, vn2, "^b", ms=ms,
+            plt.semilogx(x, vn2, "^b", ms=ms,
                          label=r"$[FFT]L2\approx %s+%s\log(size)$" % (latex_float(r2[1]), latex_float(r2[0])))
 
             r2i = stats.linregress(xl, np.array(vn2i, dtype=np.float32))
-            plt.semilogx(vn, vn2, "vg", ms=ms,
+            plt.semilogx(x, vn2, "vg", ms=ms,
                          label=r"$[IFFT]L2\approx %s+%s\log(size)$" % (latex_float(r2i[1]), latex_float(r2i[0])))
 
             plt.semilogx(x, r2[1] + r2[0] * xl, "b-")
@@ -619,12 +653,12 @@ class TestFFTSystematic(unittest.TestCase):
             plt.suptitle(suptit, fontsize=12)
             plt.grid(True)
             plt.legend(loc='upper left')
-            plt.xlabel("N", loc='right')
+            plt.xlabel("size", loc='right')
             plt.tight_layout()
             graph = self.graph
             if not len(graph):
-                graph = "%s_%s_%s_%dD%s_%d-%d_norm%d_%s%s.svg" % \
-                        (gpu_name.replace(' ', ''), self.vbackend[0], t, self.ndim, r, self.range[0],
+                graph = "%s_%s_%s_%s%s_%d-%d_norm%d_%s%s.svg" % \
+                        (gpu_name.replace(' ', ''), self.vbackend[0], t, sndim, r, self.range[0],
                          self.range[1], self.norm, str(np.dtype(np.float32)), tmp)
             plt.savefig(graph)
             if self.verbose:

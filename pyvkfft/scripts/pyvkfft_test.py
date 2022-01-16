@@ -1,4 +1,3 @@
-#!/Users/vincent/dev/py38-env/bin/python
 # -*- coding: utf-8 -*-
 
 # PyVkFFT
@@ -264,8 +263,8 @@ def main():
                         choices=[1, 2, 3, 4])
     sysgrp.add_argument('--double', action='store_true',
                         help="Use double precision (float64/complex128) instead of single")
-    # sysgrp.add_argument('--dry-run', action='store_true',
-    #                     help="Perform a dry-run, returning the number of tests to perform")
+    sysgrp.add_argument('--dry-run', action='store_true',
+                        help="Perform a dry-run, printing the number of array shapes to test")
     sysgrp.add_argument('--inplace', action='store_true',
                         help="Use inplace transforms (NB: for R2C with ndim>=2, the x-axis "
                              "must be even-sized)")
@@ -279,9 +278,15 @@ def main():
                              "By default VkFFT will activate the LUT on some GPU with less "
                              "accurate accelerated trigonometric functions. "
                              "This is automatically true for double precision")
+    sysgrp.add_argument('--max-nb-tests', action='store', nargs=1,
+                        help="Maximum number of tests. If the number of generated test "
+                             "cases is larger, the program will abort.",
+                        default=[1000], type=int)
     sysgrp.add_argument('--ndim', action='store', nargs=1,
-                        help="Number of dimensions for the transform",
-                        default=[1], type=int, choices=[1, 2, 3])
+                        help="Number of dimensions for the transform. Using 12 or 123 "
+                             "will result in testing bother 1 and 2 or 1,2 and 3. It is"
+                             "recommended to use --range_mb and ",
+                        default=[1], type=int, choices=[1, 2, 3, 12, 123])
     # sysgrp.add_argument('--ndims', action='store', nargs=1,
     #                     help="Number of dimensions for the array (must be >=ndim). "
     #                          "By default, the array will have the same dimensionality "
@@ -298,10 +303,34 @@ def main():
                              "'--radix 2' (only 2**n array sizes), '--radix 2 3 5' "
                              "(only 2**N1 * 3**N2 * 5**N3)",
                         choices=[2, 3, 5, 7, 11, 13])
+    sysgrp.add_argument('--radix-max-pow', action='store', nargs=1, type=int,
+                        help="For radix runs, specify the maximum exponent of each base "
+                             "integer, i.e. for '--radix 2 3 --radix-max-pow 2' will limit "
+                             "lengths to 2**N1 * 3**N2 with N1,N2<=2")
     sysgrp.add_argument('--range', action='store', nargs=2, type=int,
-                        help="Range of array sizes [min, max] along each transform dimension, "
+                        help="Range of array lengths [min, max] along each transform dimension, "
                              "'--range 2 128'",
                         default=[2, 128])
+    sysgrp.add_argument('--range-mb', action='store', nargs=2, type=int,
+                        help="Allowed range of array sizes [min, max] in Mbytes, e.g. "
+                             "'--range 2 128'. This can be used to limit the arrays size "
+                             "while allowing large lengths along individual dimensions. "
+                             "It can also be used to separate runs with a given size range "
+                             "and different nproc values. This takes into account the "
+                             "type (single or double), and also whether the transform "
+                             "is made inplace, so this represents the total GPU memory"
+                             "used.",
+                        default=[0, 128])
+    sysgrp.add_argument('--range-nd-narrow', action='store', nargs=2, default=['0', '0'],
+                        help="Two values (drel dabs), e.g. '--range_nd_narrow 0.10 11' "
+                             "with 0<=drel<=1 and dabs (integer>=0) must be given "
+                             "to allow 2D and 3D tests to be done on arrays with different "
+                             "lengths along every dimension, but while limiting the "
+                             "difference between lengths. For example in 2D for an "
+                             "(N1,N2) array shape, generated lengths will verify "
+                             "abs(n2-n1)<max(dabs+drel*N1). The default value of (0,0) "
+                             "only allows the same lengths. This allows to test more "
+                             "diverse configurations while limiting the number of tests.")
     sysgrp.add_argument('--timeout', action='store', nargs=1, type=int,
                         help="Change the timeout (in seconds) to raise a TimeOut error for "
                              "individual tests. After 4 have failed, give up.",
@@ -321,19 +350,30 @@ def main():
         t.colour = args.colour
         t.dct = False if args.dct is None else args.dct[0] if len(args.dct) else 2
         t.db = args.db[0] if args.db is not None else None
-        # t.dry_run = args.dry_run
+        t.dry_run = args.dry_run
         t.dtype = np.float64 if args.double else np.float32
         t.gpu = args.gpu
         t.graph = args.graph
         t.inplace = args.inplace
         t.lut = args.lut
+        t.max_nb_tests = args.max_nb_tests[0]
         t.ndim = args.ndim[0]
         # t.ndims = args.ndims
         t.norm = args.norm[0]
         t.nproc = args.nproc[0]
         t.r2c = args.r2c
         t.radix = args.radix
+        t.max_pow = None if args.radix_max_pow is None else args.radix_max_pow[0]
         t.range = args.range
+        size_min_max = np.array(args.range_mb) * 1024 ** 2 // 8
+        if args.r2c or args.dct:
+            size_min_max *= 2
+        if args.double:
+            size_min_max /= 2
+        if args.inplace:
+            size_min_max /= 2
+        t.range_size = size_min_max.tolist()
+        t.range_nd_narrow = float(args.range_nd_narrow[0]), int(args.range_nd_narrow[1])
         t.timeout = args.timeout[0]
         t.vbackend = args.backend
         t.verbose = not args.silent
@@ -354,6 +394,10 @@ def main():
             res = unittest.TextTestRunner(verbosity=2).run(suite)
         else:
             res = unittest.TextTestRunner(verbosity=1).run(suite)
+
+    if t.dry_run:
+        print(t.nb_shapes_gen)
+        sys.exit()
 
     sub = os.path.split(sys.argv[0])[-1]
     for i in range(1, len(sys.argv)):
@@ -395,7 +439,12 @@ def main():
                 html += tmp % ('DCT%d' % t.dct)
             else:
                 html += tmp % 'C2C'
-            html += "<td>%d</td>" % args.ndim[0]
+            if t.ndim == 12:
+                html += "<td>1,2</td>"
+            elif t.ndim == 123:
+                html += "<td>1,2,3</td>"
+            else:
+                html += "<td>%d</td>" % t.ndim
             html += "<td>%d-%d</td>" % (args.range[0], args.range[1])
             if args.bluestein:
                 html += "<td>Bluestein</td>"
@@ -406,6 +455,8 @@ def main():
                 for i in (args.radix if len(args.radix) else [2, 3, 5, 7, 11, 13]):
                     html += "%d," % i
                 html = html[:-1]
+                if t.max_pow is not None:
+                    html += '[^N,N<=%d]' % t.max_pow
                 html += '</td>'
             html += "<td>%s</td>" % ('float64' if args.double else 'float32')
             html += "<td>%s</td>" % ('inplace' if args.inplace else 'out-of-place')

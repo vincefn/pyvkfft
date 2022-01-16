@@ -305,6 +305,11 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
     else:
         d0n = d0
 
+    if dct:
+        d1_gpu = app.fft(d_gpu, d1_gpu)
+    else:
+        d1_gpu = app.fft(d_gpu, d1_gpu) * app.get_fft_scale()
+
     if r2c:
         if inplace:
             d = rfftn(d0n[..., :-2], axes=axes_numpy) / s
@@ -314,11 +319,6 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         d = dctn(d0n, axes=axes_numpy, type=dct)
     else:
         d = fftn(d0n, axes=axes_numpy) / s
-
-    if dct:
-        d1_gpu = app.fft(d_gpu, d1_gpu)
-    else:
-        d1_gpu = app.fft(d_gpu, d1_gpu) * app.get_fft_scale()
 
     if inplace and r2c:
         assert d1_gpu.dtype == dtype, "The array type is incorrect after an inplace FFT"
@@ -385,17 +385,17 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         else:
             d1_gpu = d_gpu.copy()
 
+    if dct:
+        d1_gpu = app.ifft(d_gpu, d1_gpu)
+    else:
+        d1_gpu = app.ifft(d_gpu, d1_gpu) * app.get_ifft_scale()
+
     if r2c:
         d = irfftn(d0n, axes=axes_numpy) * s
     elif dct:
         d = idctn(d0n, axes=axes_numpy, type=dct)
     else:
         d = ifftn(d0n, axes=axes_numpy) * s
-
-    if dct:
-        d1_gpu = app.ifft(d_gpu, d1_gpu)
-    else:
-        d1_gpu = app.ifft(d_gpu, d1_gpu) * app.get_ifft_scale()
 
     if inplace:
         if dct or r2c:
