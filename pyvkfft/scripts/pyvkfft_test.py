@@ -367,11 +367,11 @@ def main():
         t.range = args.range
         size_min_max = np.array(args.range_mb) * 1024 ** 2 // 8
         if args.r2c or args.dct:
-            size_min_max *= 2
+            size_min_max = size_min_max * 2
         if args.double:
-            size_min_max /= 2
+            size_min_max = size_min_max / 2
         if args.inplace:
-            size_min_max /= 2
+            size_min_max = size_min_max / 2
         t.range_size = size_min_max.tolist()
         t.range_nd_narrow = float(args.range_nd_narrow[0]), int(args.range_nd_narrow[1])
         t.timeout = args.timeout[0]
@@ -445,7 +445,11 @@ def main():
                 html += "<td>1,2,3</td>"
             else:
                 html += "<td>%d</td>" % t.ndim
-            html += "<td>%d-%d</td>" % (args.range[0], args.range[1])
+            html += "<td>%d-%d" % (args.range[0], args.range[1])
+            if (t.range_nd_narrow[0] > 0 or t.range_nd_narrow[1] > 0) and t.ndim > 1:
+                html += " <small>[|N<sub>i</sub>-N<sub>1</sub>|<{%d; %.3fN<sub>1</sub>}</small>" % \
+                        (t.range_nd_narrow[1], t.range_nd_narrow[0])
+            html += "</td>"
             if args.bluestein:
                 html += "<td>Bluestein</td>"
             elif args.radix is None:
@@ -456,7 +460,7 @@ def main():
                     html += "%d," % i
                 html = html[:-1]
                 if t.max_pow is not None:
-                    html += '[^N,N<=%d]' % t.max_pow
+                    html += '<small>[^N,N<=%d]</small>' % t.max_pow
                 html += '</td>'
             html += "<td>%s</td>" % ('float64' if args.double else 'float32')
             html += "<td>%s</td>" % ('inplace' if args.inplace else 'out-of-place')
