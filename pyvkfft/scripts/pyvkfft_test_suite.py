@@ -50,14 +50,17 @@ def main():
                                     if 'dct 1' in transform:
                                         n2 = 767 if 'double' in prec else 1535
                                     elif 'dct' in transform:
-                                        n2 = 3071 if 'double' in prec or 'bluestein' in radix else 4096
+                                        if 'double' in prec:
+                                            n2 = 1536 if 'bluestein' in radix else 3071
+                                        else:
+                                            n2 = 3071 if 'bluestein' in radix else 4096
                                     else:
                                         n2 = 100000 if 'radix' in radix else 10000
                                 elif ndim == 2:
                                     if 'dct 1' in transform:
                                         n2 = 512 if 'double' in prec else 1024
                                     elif 'dct' in transform:
-                                        n2 = 2047
+                                        n2 = 1024 if 'bluestein' in radix and 'double' in prec else 2047
                                     else:
                                         n2 = 4500
                                 else:  # ndim==3

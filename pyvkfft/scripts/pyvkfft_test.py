@@ -383,6 +383,9 @@ def main():
             res = unittest.TextTestRunner(verbosity=2).run(suite)
         else:
             res = unittest.TextTestRunner(verbosity=1).run(suite)
+        if t.dry_run:
+            print(t.nb_shapes_gen)
+            sys.exit()
     else:
         t = TestFFT
         t.verbose = not args.silent
@@ -394,10 +397,6 @@ def main():
             res = unittest.TextTestRunner(verbosity=2).run(suite)
         else:
             res = unittest.TextTestRunner(verbosity=1).run(suite)
-
-    if t.dry_run:
-        print(t.nb_shapes_gen)
-        sys.exit()
 
     sub = os.path.split(sys.argv[0])[-1]
     for i in range(1, len(sys.argv)):
