@@ -22,17 +22,21 @@ try:
     from scipy.fft import dctn, idctn, fftn, ifftn, rfftn, irfftn
 
     has_dct_ref = True
+    has_scipy = True
 except ImportError:
     has_dct_ref = False
-    print("Install scipy if you want to test dct transforms")
+    has_scipy = False
 
-try:
-    from pyfftw.interfaces.scipy_fft import dctn, idctn, fftn, ifftn, rfftn, irfftn
-
-    has_pyfftw = True
-    has_dct_ref = True
-except ImportError:
-    has_pyfftw = False
+# pyfftw speed is not good compared to scipy, when using every transform once
+# try:
+#     from pyfftw.interfaces import scipy_fft as pyfftw_fft
+#     if not has_scipy:
+#         from pyfftw.interfaces.scipy_fft import dctn, idctn, fftn, ifftn, rfftn, irfftn
+#
+#     has_pyfftw = True
+#     has_dct_ref = True
+# except ImportError:
+#     has_pyfftw = False
 
 try:
     import pyopencl as cl
@@ -150,7 +154,7 @@ def li(a, b):
 
 def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c=False, dct=False,
                   gpu_name=None, stream=None, queue=None, return_array=False, init_array=None, verbose=False,
-                  colour_output=False):
+                  colour_output=False, ref_long_double=True):
     """
     Measure the
     :param backend: either 'pyopencl', 'pycuda' or 'cupy'
@@ -168,7 +172,7 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
     :param r2c: if True, test an r2c transform. If inplace, the last dimension
         (x, fastest axis) must be even
     :param dct: either 1, 2, 3 or 4 to test different dct. Only norm=1 is can be
-        tested (native scipy/pyfftw normalisation).
+        tested (native scipy normalisation).
     :param gpu_name: the name of the gpu to use. If None, the first available
         for the backend will be used.
     :param stream: the cuda stream to use, or None
@@ -181,10 +185,12 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         If None, a random array is generated.
     :param verbose: if True, print a 1-line info for both fft and ifft results
     :param colour_output: if True, use some colour to tag the quality of the accuracy
+    :param ref_long_double: if True and scipy is available, long double precision
+        will be used for the reference transform. Otherwise, this is ignored.
     :return: a dictionary with (l2_fft, li_fft, l2_ifft, li_ifft, tol, dt_array,
         dt_app, dt_fft, dt_ifft, src_unchanged_fft, src_unchanged_ifft, tol_test, str),
         with the L2 and Linf normalised norms comparing pyvkfft's result with either
-        numpy, scipy or pyfftw (in long double precision for the latter), the reference
+        numpy, scipy, the reference
         tolerance, and the times spent in preparing the initial random array, creating
         the VkFFT app, and performing the forward and backward transforms (including
         the GPU and reference transforms, plus the L2 and Linf computations - don't use
@@ -297,7 +303,8 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         else:
             d1_gpu = d_gpu.copy()
 
-    if has_pyfftw:
+    if has_scipy and ref_long_double:
+        # Use long double precision
         if r2c or dct:
             d0n = d0.astype(np.longdouble)
         else:
@@ -362,7 +369,7 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
     if r2c:
         # Exception: we need a proper half-Hermitian array
         d0 = d.astype(dtype)
-        if has_pyfftw:
+        if has_scipy and ref_long_double:
             d0n = d0.astype(np.clongdouble)
         else:
             d0n = d0
@@ -481,7 +488,7 @@ def exhaustive_test(backend, vn, ndim, dtype, inplace, norm, use_lut, r2c=False,
     :param r2c: if True, test an r2c transform. If inplace, the last dimension
         (x, fastest axis) must be even
     :param dct: either 1, 2, 3 or 4 to test different dct. Only norm=1 is can be
-        tested (native scipy/pyfftw normalisation).
+        tested (native scipy normalisation).
     :param nproc: the maximum number of parallel process to use. If None, the
         number of detected cores will be used (this may use too much memory !)
     :param verbose: if True, prints 1 line per test

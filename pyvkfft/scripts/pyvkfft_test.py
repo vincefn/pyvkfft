@@ -295,6 +295,10 @@ def main():
     sysgrp.add_argument('--norm', action='store', nargs=1, type=int,
                         help="Normalisation to test (must be 1 for dct)",
                         default=[1], choices=[0, 1])
+    sysgrp.add_argument('--ref-long-double', action='store_true',
+                        help="Use long double precision for the reference calculation, "
+                             "(requires scipy). This gives more objective accuracy plots but "
+                             "can be slower (or much slower on some architectures).")
     sysgrp.add_argument('--r2c', action='store_true', help="Test real-to-complex transform "
                                                            "(default is c2c)")
     sysgrp.add_argument('--radix', action='store', nargs='*', type=int,
@@ -331,6 +335,10 @@ def main():
                              "abs(n2-n1)<max(dabs+drel*N1). The default value of (0,0) "
                              "only allows the same lengths. This allows to test more "
                              "diverse configurations while limiting the number of tests.")
+    sysgrp.add_argument('--serial', action='store_true',
+                        help="Serialise the tests instead of spawning them in separate "
+                             "process, allowing to diagnose more errors. Incompatible "
+                             "with nproc>1.")
     sysgrp.add_argument('--timeout', action='store', nargs=1, type=int,
                         help="Change the timeout (in seconds) to raise a TimeOut error for "
                              "individual tests. After 4 have failed, give up.",
@@ -338,6 +346,8 @@ def main():
 
     # parser.print_help()
     args = parser.parse_args()
+    if args.serial and args.nproc[0] > 1:
+        raise RuntimeError("Cannot use --serial with --nproc")
     if args.graph is not None:
         if not len(args.graph):
             args.graph = name_next_file("pyvkfft-test%03d.svg")
@@ -363,6 +373,7 @@ def main():
         t.nproc = args.nproc[0]
         t.r2c = args.r2c
         t.radix = args.radix
+        t.ref_long_double = args.ref_long_double
         t.max_pow = None if args.radix_max_pow is None else args.radix_max_pow[0]
         t.range = args.range
         size_min_max = np.array(args.range_mb) * 1024 ** 2 // 8
@@ -374,6 +385,7 @@ def main():
             size_min_max = size_min_max / 2
         t.range_size = size_min_max.tolist()
         t.range_nd_narrow = float(args.range_nd_narrow[0]), int(args.range_nd_narrow[1])
+        t.serial = args.serial
         t.timeout = args.timeout[0]
         t.vbackend = args.backend
         t.verbose = not args.silent

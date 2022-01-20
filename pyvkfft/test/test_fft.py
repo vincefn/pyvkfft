@@ -26,7 +26,7 @@ from pyvkfft.version import __version__, vkfft_version
 from pyvkfft.base import primes, radix_gen, radix_gen_n
 from pyvkfft.fft import fftn as vkfftn, ifftn as vkifftn, rfftn as vkrfftn, \
     irfftn as vkirfftn, dctn as vkdctn, idctn as vkidctn
-from pyvkfft.accuracy import test_accuracy, test_accuracy_kwargs, fftn, init_ctx, gpu_ctx_dic, has_dct_ref
+from pyvkfft.accuracy import test_accuracy, test_accuracy_kwargs, fftn, init_ctx, gpu_ctx_dic, has_dct_ref, has_scipy
 
 try:
     import pycuda.gpuarray as cua
@@ -424,6 +424,8 @@ class TestFFTSystematic(unittest.TestCase):
     range = 2, 128
     range_nd_narrow = 0, 0
     range_size = 0, 128 * 1024 ** 2 // 8
+    ref_long_double = False
+    serial = False
     timeout = 30
     vbackend = None
     verbose = True
@@ -481,7 +483,7 @@ class TestFFTSystematic(unittest.TestCase):
                 kwargs = {"backend": backend, "shape": s, "ndim": len(s), "axes": self.axes,
                           "dtype": self.dtype, "inplace": self.inplace, "norm": self.norm, "use_lut": self.lut,
                           "r2c": self.r2c, "dct": self.dct, "gpu_name": self.gpu, "stream": None, "verbose": False,
-                          "colour_output": self.colour}
+                          "colour_output": self.colour, "ref_long_double": self.ref_long_double}
                 vkwargs.append(kwargs)
         if self.db is not None:
             # TODO secure the db with a context 'with'
@@ -519,7 +521,8 @@ class TestFFTSystematic(unittest.TestCase):
             timeout = False
             # Need to use spawn to handle the GPU context
             with multiprocessing.get_context('spawn').Pool(self.nproc) as pool:
-                results = pool.imap(test_accuracy_kwargs, vkwargs[i_start:], chunksize=1)
+                if not self.serial:
+                    results = pool.imap(test_accuracy_kwargs, vkwargs[i_start:], chunksize=1)
                 for i in range(i_start, len(vkwargs)):
                     v = vkwargs[i]
                     sh = v['shape']
@@ -529,13 +532,16 @@ class TestFFTSystematic(unittest.TestCase):
                     with self.subTest(backend=backend, shape=sh, ndim=ndim,
                                       dtype=np.dtype(self.dtype), norm=self.norm, use_lut=self.lut,
                                       inplace=self.inplace, r2c=self.r2c, dct=self.dct):
-                        try:
-                            res = results.next(timeout=self.timeout)
-                        except multiprocessing.TimeoutError as ex:
-                            # NB: the timeout won't change the next() result, so will need
-                            # to terminate & restart the pool
-                            timeout = True
-                            raise ex
+                        if self.serial:
+                            res = test_accuracy_kwargs(v)
+                        else:
+                            try:
+                                res = results.next(timeout=self.timeout)
+                            except multiprocessing.TimeoutError as ex:
+                                # NB: the timeout won't change the next() result, so will need
+                                # to terminate & restart the pool
+                                timeout = True
+                                raise ex
                         n = max(res['shape'])
                         npr = primes(n)
                         ni, n2 = res["ni"], res["n2"]
@@ -628,6 +634,8 @@ class TestFFTSystematic(unittest.TestCase):
                 sndim = "%dD" % self.ndim
             suptit = " %s %s%s N=%d-%d norm=%d %s%s" % \
                      (t, sndim, r, self.range[0], self.range[1], self.norm, str(np.dtype(np.float32)), tmp)
+            if self.ref_long_double and has_scipy:
+                suptit += " [long double ref]"
 
             import matplotlib.pyplot as plt
             from scipy import stats
