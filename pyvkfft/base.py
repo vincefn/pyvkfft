@@ -462,6 +462,8 @@ class VkFFTApp:
             axes if ndim is None. Not allowed for R2C transforms
         :raises RuntimeError:  if the transform dimensions are not allowed by VkFFT.
         """
+        self.app = None
+        self.config = None
         if dct and r2c:
             raise RuntimeError("R2C and DCT cannot both be selected !")
         if (r2c or dct) and dtype not in [np.float16, np.float32, np.float64]:

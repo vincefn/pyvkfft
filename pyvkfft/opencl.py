@@ -120,8 +120,10 @@ class VkFFTApp(VkFFTAppBase):
         """ Takes care of deleting allocated memory in the underlying
         VkFFTApplication and VkFFTConfiguration.
         """
-        _vkfft_opencl.free_app(self.app)
-        _vkfft_opencl.free_config(self.config)
+        if self.app is not None:
+            _vkfft_opencl.free_app(self.app)
+        if self.config is not None:
+            _vkfft_opencl.free_config(self.config)
 
     def _make_config(self):
         """ Create a vkfft configuration for a FFT transform"""
