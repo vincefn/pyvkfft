@@ -256,9 +256,9 @@ def radix_gen_n(nmax, max_size, radix, ndim=None, even=False, exclude_one=True, 
         for i1 in range(len(vidx) - 1):
             l01 = n0[vidx[i1]:vidx[i1 + 1]]
             for i2 in range(len(vidx) - 1):
-                l02 = n0[vidx[i1]:vidx[i1 + 1], np.newaxis]
+                l02 = n0[vidx[i2]:vidx[i2 + 1], np.newaxis]
                 for i3 in range(len(vidx) - 1):
-                    l3 = n0[vidx[i1]:vidx[i1 + 1], np.newaxis, np.newaxis]
+                    l3 = n0[vidx[i3]:vidx[i3 + 1], np.newaxis, np.newaxis]
                     # print(i1, i2, i3, l1.shape, l2.shape, l3.shape)
                     s = (l01 * l02 * l3).flatten()
                     l1, l2, l3 = (l01 + np.zeros_like(l02) + np.zeros_like(l3)).flatten(), \
