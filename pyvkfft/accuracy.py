@@ -204,6 +204,12 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         All input parameters are also returned as key/values, except stream, queue,
         return_array, ini_array and verbose.
     """
+    if backend == "cupy" and has_cupy:
+        mempool = cp.get_default_memory_pool()
+        if mempool is not None:  # Is that test necessary ?
+            # Clean memory pool, we are changing array sizes constantly, and using
+            # N parallel process so memory management  must be done manually
+            mempool.free_all_blocks()
     t0 = timeit.default_timer()
     init_ctx(backend, gpu_name=gpu_name, verbose=False)
     if backend == "pyopencl" and queue is None:
