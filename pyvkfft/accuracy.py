@@ -318,10 +318,9 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
     else:
         d0n = d0
 
-    if dct:
-        d1_gpu = app.fft(d_gpu, d1_gpu)
-    else:
-        d1_gpu = app.fft(d_gpu, d1_gpu) * app.get_fft_scale()
+    d1_gpu = app.fft(d_gpu, d1_gpu)
+    if not dct:
+        d1_gpu *= app.get_fft_scale()
 
     if r2c:
         if inplace:
@@ -371,6 +370,15 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
 
     t3 = timeit.default_timer()
 
+    # Clean memory
+    del d_gpu, d1_gpu
+    if backend == "cupy" and has_cupy:
+        mempool = cp.get_default_memory_pool()
+        if mempool is not None:  # Is that test necessary ?
+            # Clean memory pool, we are changing array sizes constantly, and using
+            # N parallel process so memory management  must be done manually
+            mempool.free_all_blocks()
+
     # IFFT - from original array to avoid error propagation
     if r2c:
         # Exception: we need a proper half-Hermitian array
@@ -398,10 +406,9 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         else:
             d1_gpu = d_gpu.copy()
 
-    if dct:
-        d1_gpu = app.ifft(d_gpu, d1_gpu)
-    else:
-        d1_gpu = app.ifft(d_gpu, d1_gpu) * app.get_ifft_scale()
+    d1_gpu = app.ifft(d_gpu, d1_gpu)
+    if not dct:
+        d1_gpu *= app.get_ifft_scale()
 
     if r2c:
         d = irfftn(d0n, axes=axes_numpy) * s
