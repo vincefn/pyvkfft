@@ -95,7 +95,7 @@ def make_html_pre_post(overwrite=False):
               'a proper half-Hermitian array), contrary to what is done for other ' \
               'transforms. This explains with the IFFT R2C maximum (L<sub>&infin;</sub>) ' \
               'errors are larger.' \
-              '<p>Note 2: some "errors" for DCT are due to unsupported sizes in VkFFT, ' \
+              '<p>Note 2: some "errors" for DCT may be due to unsupported sizes in VkFFT, ' \
               'which vary depending on the card and language used (amount of ' \
               'shared/local memory). So they just indicate a current limit for the ' \
               'transform sizes rather than a real error.' \
@@ -413,7 +413,7 @@ def main():
     sub = os.path.split(sys.argv[0])[-1]
     for i in range(1, len(sys.argv)):
         arg = sys.argv[i]
-        if 'mail' not in arg and 'mail' not in sys.argv[i - 1]:
+        if 'mail' not in arg and 'mail' not in sys.argv[i - 1] and 'html' not in arg and 'graph' not in arg:
             sub += " " + arg
     info = "Ran:\n   %s\n\n Result:%s\n\n" % (sub, "OK" if res.wasSuccessful() else "FAILURE")
 
@@ -458,8 +458,10 @@ def main():
                 html += "<td>%d</td>" % t.ndim
             html += "<td>%d-%d" % (args.range[0], args.range[1])
             if (t.range_nd_narrow[0] > 0 or t.range_nd_narrow[1] > 0) and t.ndim > 1:
-                html += " <small>[|N<sub>i</sub>-N<sub>1</sub>|<{%d; %.3fN<sub>1</sub>}</small>" % \
-                        (t.range_nd_narrow[1], t.range_nd_narrow[0])
+                html += " <small>[|N<sub>i</sub>-N<sub>1</sub>|<={%d; %d%%N<sub>1</sub>}]</small>" % \
+                        (t.range_nd_narrow[1], int(t.range_nd_narrow[0] * 100))
+            elif t.ndim > 1:
+                html += ' (' + 'N,' * (t.ndim - 1) + 'N)'
             html += "</td>"
             if args.bluestein:
                 html += "<td>Bluestein</td>"
@@ -477,12 +479,14 @@ def main():
             html += "<td>%s</td>" % ('inplace' if args.inplace else 'out-of-place')
             html += "<td>%s</td>" % ('True' if args.lut else 'Auto')
             html += "<td>%d</td>" % args.norm[0]
+            nbts = '[%5d tests]' % t.nb_test
         else:
             html += ''
             html += '<td colspan="8">Regular multi-dimensional C2C/R2C/DCT test</td>'
+            nbts = ''
 
-        html += '<td>%s +%s</td>' % (time.strftime("%Y-%m-%d %Hh%M:%S", localt0),
-                                     time.strftime("%Hh %Mm %Ss", time.gmtime(timeit.default_timer() - t0)))
+        html += '<td>%s +%s %s</td>' % (time.strftime("%Y-%m-%d %Hh%M:%S", localt0),
+                                        time.strftime("%Hh %Mm %Ss", time.gmtime(timeit.default_timer() - t0)), nbts)
 
         if len(res.failures):
             html += '<td class="cell_error"> <input class="toggle_fail" type="button" ' \

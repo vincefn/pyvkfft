@@ -414,6 +414,7 @@ class TestFFTSystematic(unittest.TestCase):
     lut = False
     max_pow = None
     max_nb_tests = 1000
+    nb_test = 0  # Number of tests actually run
     nb_shapes_gen = None
     ndim = 1
     # t.ndims = args.ndims
@@ -599,6 +600,7 @@ class TestFFTSystematic(unittest.TestCase):
                         break
             if not timeout or i_start >= len(vkwargs) or nb_timeout >= 4:
                 break
+        self.__class__.nb_test = len(self.vbackend) * len(vkwargs)
         if self.verbose:
             print("Finished %d tests in %s" %
                   (len(vkwargs), time.strftime("%Hh %Mm %Ss", time.gmtime(timeit.default_timer() - t0))))
@@ -636,6 +638,7 @@ class TestFFTSystematic(unittest.TestCase):
                      (t, sndim, r, self.range[0], self.range[1], self.norm, str(np.dtype(np.float32)), tmp)
             if self.ref_long_double and has_scipy:
                 suptit += " [long double ref]"
+            suptit += " [%d tests]" % self.nb_test
 
             import matplotlib.pyplot as plt
             from scipy import stats
