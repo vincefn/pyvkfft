@@ -150,6 +150,7 @@ Example results for 1D transforms (radix 2,3,5 and 7) using a Titan V:
 .. image:: https://raw.githubusercontent.com/vincefn/pyvkfft/master/doc/accuracy-1DFFT-TITAN_V.png
 
 Analysis:
+
 * in single precision on the nVidia Titan V card, the VkFFT computed accuracy is
   about 3 times larger (worse) than pyfftw (also computed in single precision),
   e.g. 6e-7 vs 2e-7, which can be pretty negligible for most applications.
@@ -164,7 +165,7 @@ You can easily test a transform using the ``pyvkfft-test`` command line script, 
 
 Use ``pyvkfft-test --help`` to list available options.
 
-You can test the ``pyvkfft/pyvkfft_test_suite.py`` script to run the comprehensive
+You can use the ``pyvkfft/pyvkfft_test_suite.py`` script to run the comprehensive
 test suite which is used to evaluate pyvkfft before a new release.
 
 TODO
