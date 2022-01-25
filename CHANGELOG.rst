@@ -12,6 +12,9 @@ Version 2022.1.0 (2022-01-XX)
 * [BUG] Correct inverse FFT calculation using pyvkfft.fft.ifftn()
 * Installation from source using 'python setup.py install' is now
   disabled - 'pip install' should always be used.
+* Added config.USE_LUT and config.FFT_CACHE_NB variables, which
+  can be used to modify the default behaviour, and can also be set
+  e.g. with the PYVKFFT_USE_LUT environment variable.
 
 Version 2021.2.1 (2021-09-04)
 -----------------------------

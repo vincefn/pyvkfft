@@ -86,6 +86,7 @@ Features
 - Note that out-of-place C2R transform currently destroys the complex array for FFT dimensions >=2
 - tested on macOS (10.13.6), Linux (Debian/Ubuntu, x86-64 and power9), and Windows 10
   (Anaconda python 3.8 with Visual Studio 2019 and the CUDA toolkit 11.2)
+- GPUs tested: mostly nVidia cards, but also some AMD cards and macOS with M1 GPUs.
 - inplace transforms do not require an extra buffer or work area (as in cuFFT), unless the x
   size is larger than 8192, or if the y and z FFT size are larger than 2048. In that case
   a buffer of a size equal to the array is necessary. This makes larger FFT transforms possible
@@ -96,6 +97,13 @@ Features
   or by using the ``pyvkfft.fft`` interface with the ``fftn``, ``ifftn``, ``rfftn`` and ``irfftn``
   functions which automatically detect the type of GPU array and cache the
   corresponding VkFFTApp (see the example notebook pyvkfft-fft.ipynb).
+- the ``pyvkfft-test`` command-line script allows to test specifc transforms against
+  expected accuracy values, for all types of transforms.
+- pyvkfft results are now evaluated before any release with a comprehensive test
+  suite, comparing transform results for all types of transforms: single and double
+  precision, 1D, 2D and 3D, inplace and out-of-place, different norms, radix and
+  Bluestein, etc... See ``pyvkfft/pyvkfft_test_suite.py`` to run the full suite, which
+  takes 28 hours on a V100 GPU using up to 20 parallel process.
 
 Performance
 -----------
@@ -130,6 +138,34 @@ The general results are:
 * clFFT (via gpyfft) generally performs much worse than the other transforms, though this was
   tested using nVidia cards. (Note that the clFFT/gpyfft benchmark tries all FFT axis permutations
   to find the fastest combination)
+
+Accuracy
+--------
+See the accuracy notebook, which allows to compare the accuracy for different
+FFT libraries (pyvkfft with different options and backend, scikit-cuda (cuFFT),
+pyfftw), using pyfftw long-double precision as a reference.
+
+Example results for 1D transforms (radix 2,3,5 and 7) using a Titan V:
+
+.. image:: https://raw.githubusercontent.com/vincefn/pyvkfft/master/doc/accuracy-1DFFT-TITAN_V.png
+
+Analysis:
+* in single precision on the nVidia Titan V card, the VkFFT computed accuracy is
+  about 3 times larger (worse) than pyfftw (also computed in single precision),
+  e.g. 6e-7 vs 2e-7, which can be pretty negligible for most applications.
+  However when using a lookup-table for trigonometric values instead of hardware
+  functions (useLUT=1 in VkFFTApp), the accuracy is identical to pyfftw, and
+  better than cuFFT.
+* accuracy is the same for cuda and opencl, though this can depend on the card
+  and drivers used (e.g. it's different on a GTX 1080)
+
+You can easily test a transform using the ``pyvkfft-test`` command line script, e.g.:
+ ``pyvkfft-test --systematic --backend pycuda --nproc 8 --range 2 4500 --radix  --ndim 2``
+
+Use ``pyvkfft-test --help`` to list available options.
+
+You can test the ``pyvkfft/pyvkfft_test_suite.py`` script to run the comprehensive
+test suite which is used to evaluate pyvkfft before a new release.
 
 TODO
 ----

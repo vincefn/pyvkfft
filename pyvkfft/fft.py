@@ -12,6 +12,7 @@ from enum import Enum
 from functools import lru_cache
 import numpy as np
 from .base import complex32
+from .config import FFT_CACHE_NB
 
 try:
     from .cuda import VkFFTApp as VkFFTApp_cuda, has_pycuda, has_cupy, vkfft_version
@@ -121,7 +122,7 @@ def _prepare_transform(src, dest, cl_queue, r2c=False):
         return backend, inplace, dest, cl_queue
 
 
-@lru_cache(maxsize=100)
+@lru_cache(maxsize=FFT_CACHE_NB)
 def _get_fft_app(backend, shape, dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue):
     if backend in [Backend.PYCUDA, Backend.CUPY]:
         return VkFFTApp_cuda(shape, dtype, ndim=ndim, inplace=inplace,
@@ -131,7 +132,7 @@ def _get_fft_app(backend, shape, dtype, inplace, ndim, axes, norm, cuda_stream, 
                            norm=norm, axes=axes)
 
 
-@lru_cache(maxsize=100)
+@lru_cache(maxsize=FFT_CACHE_NB)
 def _get_rfft_app(backend, shape, dtype, inplace, ndim, norm, cuda_stream, cl_queue):
     if backend in [Backend.PYCUDA, Backend.CUPY]:
         return VkFFTApp_cuda(shape, dtype, ndim=ndim, inplace=inplace,
@@ -141,7 +142,7 @@ def _get_rfft_app(backend, shape, dtype, inplace, ndim, norm, cuda_stream, cl_qu
                            norm=norm, r2c=True)
 
 
-@lru_cache(maxsize=100)
+@lru_cache(maxsize=FFT_CACHE_NB)
 def _get_dct_app(backend, shape, dtype, inplace, ndim, norm, dct_type,
                  cuda_stream, cl_queue):
     if backend in [Backend.PYCUDA, Backend.CUPY]:

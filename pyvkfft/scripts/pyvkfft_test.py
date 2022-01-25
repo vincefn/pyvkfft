@@ -209,7 +209,7 @@ def main():
                         help="Use colour depending on how good the measured accuracy is")
     parser.add_argument('--html', action='store', nargs='*',
                         help="Summarises the results in html row(s). This is saved to "
-                             "'pyvkfft-test%04d.html', starting at i=1001 and incrementing. "
+                             "'pyvkfft-test%%04d.html', starting at i=1001 and incrementing. "
                              "Files with i=1000 and i=1999 are the beginning and the end of the"
                              "html file, which can be concatenated to form a valid html page."
                              "If --graph is also used, this includes a graph of the accuracy "
