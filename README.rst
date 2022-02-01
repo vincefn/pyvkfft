@@ -12,9 +12,15 @@ Installation
 
 Install using ``pip install pyvkfft`` (works on macOS, Linux and Windows).
 
-Note that the PyPI archive includes ``vkfft.h`` and will automatically install ``pyopencl``
-if opencl is available. However you should manually install either ``cupy`` or ``pycuda``
-to use the cuda backend.
+Notes:
+
+- the PyPI package includes ``vkfft.h`` and will automatically install ``pyopencl``
+  if opencl is available. However you should manually install either ``cupy`` or ``pycuda``
+  to use the cuda backend.
+- if you want to specify the backend to be installed (which can be necessary e.g.
+  if you have ``nvcc`` installed but cuda is not actually available), you can do
+  that using e.g. ``VKFFT_BACKEND=opencl pip install pyvkfft``. By default the opencl
+  backend is always installed, and the cuda one if nvcc is found.
 
 Requirements:
 
