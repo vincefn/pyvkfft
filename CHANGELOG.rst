@@ -1,4 +1,4 @@
-Version 2022.1.0 (2022-01-XX)
+Version 2022.1 (2022-02-03)
 -----------------------------
 * Added accuracy unit tests, which can be used systematically
   using the 'pyvkfft-test' installed script
@@ -6,9 +6,10 @@ Version 2022.1.0 (2022-01-XX)
   evaluating all type of transforms (c2c, r2c, dct, 1, 2 and 3D,
   in and out-of-place, norm 0 and 1), different GPUs, both OpenCL
   and CUDA, etc... Comparison is made against pyfftw, scipy or numpy.
-* Update to VkFFT 1.2.20, with support for DCT types 1, 2, 3 and 4,
+* Update to VkFFT 1.2.21, with support for DCT types 1, 2, 3 and 4,
   also fixing a number of issues (see closed issues at
-  https://github.com/DTolm/VkFFT/issues)
+  https://github.com/DTolm/VkFFT/issues), and passing all tests
+  on different GPUs (OpenCL and CUDA, AMD and nVidia)
 * Raise a RuntimeError if the VkFFTApp initialisation or the
   GPU kernel launch fails, with the corresponding VkFFT error.
 * [BUG] Correct inverse FFT calculation using pyvkfft.fft.ifftn()
