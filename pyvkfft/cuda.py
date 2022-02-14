@@ -188,12 +188,14 @@ class VkFFTApp(VkFFTAppBase):
         if use_cupy:
             src_ptr = src.__cuda_array_interface__['data'][0]
         else:
-            src_ptr = src.gpudata
+            # Must cast the gpudata to int as it can either be a DeviceAllocation object
+            # or an int (e.g. when using a view of another array)
+            src_ptr = int(src.gpudata)
         if dest is not None:
             if use_cupy:
                 dest_ptr = dest.__cuda_array_interface__['data'][0]
             else:
-                dest_ptr = dest.gpudata
+                dest_ptr = int(dest.gpudata)
         else:
             dest_ptr = src_ptr
         if self.inplace:
@@ -240,12 +242,14 @@ class VkFFTApp(VkFFTAppBase):
         if use_cupy:
             src_ptr = src.__cuda_array_interface__['data'][0]
         else:
-            src_ptr = src.gpudata
+            # Must cast the gpudata to int as it can either be a DeviceAllocation object
+            # or an int (e.g. when using a view of another array)
+            src_ptr = int(src.gpudata)
         if dest is not None:
             if use_cupy:
                 dest_ptr = dest.__cuda_array_interface__['data'][0]
             else:
-                dest_ptr = dest.gpudata
+                dest_ptr = int(dest.gpudata)
         else:
             dest_ptr = src_ptr
         if self.inplace:

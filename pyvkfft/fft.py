@@ -42,7 +42,7 @@ class Backend(Enum):
 
 def _prepare_transform(src, dest, cl_queue, r2c=False):
     """
-    Dtermine the backend from the input data.
+    Determine the backend from the input data.
     Create the destination array if necessary.
 
     :param src: the source GPU array
@@ -54,7 +54,7 @@ def _prepare_transform(src, dest, cl_queue, r2c=False):
     destination dtype for an r2c transform.
     """
     backend = Backend.UNKNOWN
-    if dest is None and r2c:
+    if r2c:
         if src.dtype in [np.float16, np.float32, np.float64]:
             sh = list(src.shape)
             sh[-1] = sh[-1] // 2 + 1
@@ -77,13 +77,15 @@ def _prepare_transform(src, dest, cl_queue, r2c=False):
     if has_pycuda:
         if isinstance(src, cua.GPUArray):
             backend = Backend.PYCUDA
-            src_ptr = src.gpudata
+            # Must cast the gpudata to int as it can either be a DeviceAllocation object
+            # or an int (e.g. when using a view of another array)
+            src_ptr = int(src.gpudata)
             if dest is None:
                 if r2c:
                     dest = cua.empty(tuple(sh), dtype=dtype, allocator=src.allocator)
                 else:
                     dest = cua.empty_like(src)
-            dest_ptr = dest.gpudata
+            dest_ptr = int(dest.gpudata)
 
     if backend == Backend.UNKNOWN and has_opencl:
         if isinstance(src, cla.Array):
@@ -117,6 +119,8 @@ def _prepare_transform(src, dest, cl_queue, r2c=False):
 
     inplace = dest_ptr == src_ptr
     if r2c:
+        if inplace:
+            dest = src.view(dtype=dtype)
         return backend, inplace, dest, cl_queue, dtype
     else:
         return backend, inplace, dest, cl_queue
@@ -294,7 +298,7 @@ def irfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
     For an out-of-place transform, the length of the destination last axis will
     be (src.shape[-1]-1)*2.
     For an in-place transform, if the src array has a shape (..., nx), the
-    the destinationn array will have a shape of (..., nx*2) but the last
+    destination array will have a shape of (..., nx*2) but the last
     two vales along the last axis are used as buffer.
 
     :param src: the source pycuda.gpuarray.GPUArray or cupy.ndarray

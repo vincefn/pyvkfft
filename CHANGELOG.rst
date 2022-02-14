@@ -1,3 +1,10 @@
+Version 2022.1.1 (2022-02-14)
+-----------------------------
+* Correct the dtype of the returned array for fft.rfftn() and fft.irfftn()
+  in the case of an inplace transform
+* Pycuda: cast the gpudata pointer to int for comparisons
+* Fix TestFFT colour attribute default value
+
 Version 2022.1 (2022-02-03)
 -----------------------------
 * Added accuracy unit tests, which can be used systematically

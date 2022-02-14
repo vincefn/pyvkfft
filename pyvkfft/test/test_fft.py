@@ -67,6 +67,7 @@ class TestFFT(unittest.TestCase):
     gpu = None
     nproc = 1
     verbose = False
+    colour = False
 
     def test_backend(self):
         self.assertTrue(has_pycuda or has_pyopencl or has_cupy,
@@ -109,15 +110,28 @@ class TestFFT(unittest.TestCase):
 
                 # R2C, new destination array
                 d = vkrfftn(dr)
+                self.assertTrue(d.dtype == np.complex64)
                 d = vkirfftn(d)
+                self.assertTrue(d.dtype == np.float32)
+
+                # R2C, inplace
+                d = vkrfftn(dr, dr)
+                self.assertTrue(d.dtype == np.complex64)
+                d = vkirfftn(d, d)
+                self.assertTrue(d.dtype == np.float32)
 
                 # DCT, new destination array
                 d = vkdctn(dr)
                 d = vkidctn(d)
+
                 # DCT, out-of-place
                 d2 = dr.copy()
                 d2 = vkdctn(dr, d2)
                 dr = vkidctn(d2, dr)
+
+                # DCT, inplace
+                d = vkdctn(dr, dr)
+                d = vkidctn(d, d)
 
     def run_fft(self, vbackend, vn, dims_max=4, ndim_max=3, shuffle_axes=True,
                 vtype=(np.complex64, np.complex128),
