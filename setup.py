@@ -267,11 +267,11 @@ setup(name="pyvkfft",
       },
       classifiers=[
           "Programming Language :: Python :: 3",
-          "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
+          "OSI Approved :: MIT License",
           "Operating System :: OS Independent",
           "Environment :: GPU",
       ],
-
+      license='MIT License',
       cmdclass={'build_ext': build_ext_custom, 'sdist_vkfft': sdist_vkfft,
                 'bdist_egg': bdist_egg if 'bdist_egg' in sys.argv else bdist_egg_disabled
                 },
