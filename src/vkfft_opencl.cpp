@@ -28,9 +28,9 @@ LIBRARY_API VkFFTConfiguration* make_config(const size_t, const size_t, const si
 
 LIBRARY_API VkFFTApplication* init_app(const VkFFTConfiguration*, void*, int*);
 
-LIBRARY_API int fft(VkFFTApplication* app, void*, void*, void*);
+LIBRARY_API int fft(VkFFTApplication* app, void*, void*, void*, uint64_t, uint64_t);
 
-LIBRARY_API int ifft(VkFFTApplication* app, void*, void*, void*);
+LIBRARY_API int ifft(VkFFTApplication* app, void*, void*, void*, uint64_t, uint64_t);
 
 LIBRARY_API void free_app(VkFFTApplication* app);
 
@@ -176,7 +176,8 @@ VkFFTApplication* init_app(const VkFFTConfiguration* config, void *queue, int *r
   return app;
 }
 
-int fft(VkFFTApplication* app, void *in, void *out, void* queue)
+int fft(VkFFTApplication* app, void *in, void *out, void* queue,
+	uint64_t in_offset, uint64_t out_offset)
 {
   cl_command_queue q = (cl_command_queue) queue;
 
@@ -185,6 +186,9 @@ int fft(VkFFTApplication* app, void *in, void *out, void* queue)
   *(app->configuration.buffer) = (cl_mem)out;
   *(app->configuration.inputBuffer) = (cl_mem)in;
   *(app->configuration.outputBuffer) = (cl_mem)out;
+  app->configuration.inputBufferOffset = in_offset;
+  app->configuration.outputBufferOffset = out_offset;
+  app->configuration.specifyOffsetsAtLaunch = 1;
   app->configuration.commandQueue = &q;
 
   VkFFTLaunchParams par = {};
@@ -192,11 +196,14 @@ int fft(VkFFTApplication* app, void *in, void *out, void* queue)
   par.buffer =  app->configuration.buffer;
   par.inputBuffer = app->configuration.inputBuffer;
   par.outputBuffer = app->configuration.outputBuffer;
+  par.inputBufferOffset = app->configuration.inputBufferOffset;
+  par.outputBufferOffset = app->configuration.outputBufferOffset;
 
   return VkFFTAppend(app, -1, &par);
 }
 
-int ifft(VkFFTApplication* app, void *in, void *out, void* queue)
+int ifft(VkFFTApplication* app, void *in, void *out, void* queue,
+	uint64_t in_offset, uint64_t out_offset)
 {
   cl_command_queue q = (cl_command_queue) queue;
 
@@ -205,6 +212,9 @@ int ifft(VkFFTApplication* app, void *in, void *out, void* queue)
   *(app->configuration.buffer) = (cl_mem)out;
   *(app->configuration.inputBuffer) = (cl_mem)in;
   *(app->configuration.outputBuffer) = (cl_mem)out;
+  app->configuration.inputBufferOffset = in_offset;
+  app->configuration.outputBufferOffset = out_offset;
+  app->configuration.specifyOffsetsAtLaunch = 1;
   app->configuration.commandQueue = &q;
 
   VkFFTLaunchParams par = {};
@@ -212,6 +222,8 @@ int ifft(VkFFTApplication* app, void *in, void *out, void* queue)
   par.buffer =  app->configuration.buffer;
   par.inputBuffer = app->configuration.inputBuffer;
   par.outputBuffer = app->configuration.outputBuffer;
+  par.inputBufferOffset = app->configuration.inputBufferOffset;
+  par.outputBufferOffset = app->configuration.outputBufferOffset;
 
   return VkFFTAppend(app, 1, &par);
 }

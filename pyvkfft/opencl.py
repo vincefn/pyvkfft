@@ -168,7 +168,8 @@ class VkFFTApp(VkFFTAppBase):
             if dest is not None:
                 if src.data.int_ptr != dest.data.int_ptr:
                     raise RuntimeError("VkFFTApp.fft: dest is not None but this is an inplace transform")
-            res = _vkfft_opencl.fft(self.app, int(src.data.int_ptr), int(src.data.int_ptr), int(self.queue.int_ptr))
+            res = _vkfft_opencl.fft(self.app, int(src.base_data.int_ptr), int(src.base_data.int_ptr), int(self.queue.int_ptr),
+                    int(src.offset), int(src.offset))
             check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
                                self.dct, backend="opencl")
             if self.norm == "ortho":
@@ -182,11 +183,12 @@ class VkFFTApp(VkFFTAppBase):
         else:
             if dest is None:
                 raise RuntimeError("VkFFTApp.fft: dest is None but this is an out-of-place transform")
-            elif src.data.int_ptr == dest.data.int_ptr:
+            elif src.base_data.int_ptr == dest.base_data.int_ptr and src.offset == dest.offset:
                 raise RuntimeError("VkFFTApp.fft: dest and src are identical but this is an out-of-place transform")
             if self.r2c:
                 assert (dest.size == src.size // src.shape[-1] * (src.shape[-1] // 2 + 1))
-            res = _vkfft_opencl.fft(self.app, int(src.data.int_ptr), int(dest.data.int_ptr), int(self.queue.int_ptr))
+            res = _vkfft_opencl.fft(self.app, int(src.base_data.int_ptr), int(dest.base_data.int_ptr),
+                    int(self.queue.int_ptr), int(src.offset), int(dest.offset))
             check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
                                self.dct, backend="opencl")
             if self.norm == "ortho":
@@ -204,9 +206,10 @@ class VkFFTApp(VkFFTAppBase):
         """
         if self.inplace:
             if dest is not None:
-                if src.data.int_ptr != dest.data.int_ptr:
+                if src.base_data.int_ptr != dest.base_data.int_ptr or src.offset != dest.offset:
                     raise RuntimeError("VkFFTApp.fft: dest!=src but this is an inplace transform")
-            res = _vkfft_opencl.ifft(self.app, int(src.data.int_ptr), int(src.data.int_ptr), int(self.queue.int_ptr))
+            res = _vkfft_opencl.ifft(self.app, int(src.base_data.int_ptr), int(src.base_data.int_ptr),
+                    int(self.queue.int_ptr), int(src.offset), int(src.offset))
             check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
                                self.dct, backend="opencl")
             if self.norm == "ortho":
@@ -220,17 +223,17 @@ class VkFFTApp(VkFFTAppBase):
         if not self.inplace:
             if dest is None:
                 raise RuntimeError("VkFFTApp.ifft: dest is None but this is an out-of-place transform")
-            elif src.data.int_ptr == dest.data.int_ptr:
+            elif src.base_data.int_ptr == dest.base_data.int_ptr and src.offset == dest.offset:
                 raise RuntimeError("VkFFTApp.ifft: dest and src are identical but this is an out-of-place transform")
             if self.r2c:
                 assert (src.size == dest.size // dest.shape[-1] * (dest.shape[-1] // 2 + 1))
                 # Special case, src and dest buffer sizes are different,
                 # VkFFT is configured to go back to the source buffer
-                res = _vkfft_opencl.ifft(self.app, int(dest.data.int_ptr), int(src.data.int_ptr),
-                                         int(self.queue.int_ptr))
+                res = _vkfft_opencl.ifft(self.app, int(dest.base_data.int_ptr), int(src.base_data.int_ptr),
+                                         int(self.queue.int_ptr), int(dest.offset), int(src.offset))
             else:
-                res = _vkfft_opencl.ifft(self.app, int(src.data.int_ptr), int(dest.data.int_ptr),
-                                         int(self.queue.int_ptr))
+                res = _vkfft_opencl.ifft(self.app, int(src.base_data.int_ptr), int(dest.base_data.int_ptr),
+                                         int(self.queue.int_ptr), int(src.offset), int(dest.offset))
             check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
                                self.dct, backend="opencl")
             if self.norm == "ortho":

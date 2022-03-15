@@ -90,7 +90,7 @@ def _prepare_transform(src, dest, cl_queue, r2c=False):
     if backend == Backend.UNKNOWN and has_opencl:
         if isinstance(src, cla.Array):
             backend = Backend.PYOPENCL
-            src_ptr = src.data.int_ptr
+            src_ptr = src.base_data.int_ptr
             if dest is None:
                 if r2c:
                     dest = cla.empty(src.queue, tuple(sh), dtype=dtype, allocator=src.allocator)
