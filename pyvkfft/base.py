@@ -113,7 +113,7 @@ def load_library(basename):
         # We patched build_ext so the module is a .so and not a dll
         ext = '.so'
     else:
-        ext = sysconfig.get_config_var('SO')
+        ext = sysconfig.get_config_var('EXT_SUFFIX')
     return ctypes.cdll.LoadLibrary(os.path.join(os.path.dirname(__file__) or os.path.curdir, basename + ext))
 
 
