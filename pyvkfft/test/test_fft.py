@@ -133,6 +133,31 @@ class TestFFT(unittest.TestCase):
                 d = vkdctn(dr, dr)
                 d = vkidctn(d, d)
 
+    @unittest.skipIf(not has_pyopencl, "No OpenCL backend is available")
+    def test_pyopencl_offset(self):
+        """Test the simple fft API"""
+
+        backend = "pyopencl"
+        with self.subTest(backend=backend):
+            init_ctx(backend, gpu_name=self.gpu, verbose=False)
+            cq = gpu_ctx_dic["pyopencl"][2]
+            hc = ascent().astype(np.complex64)
+            n = hc.shape[0]
+
+            dc = cla.to_device(cq, hc)
+            dc1 = cla.to_device(cq, hc[:n//2, :])
+            dc2 = cla.to_device(cq, hc[n//2:, :])
+
+            rtol = 1e-6
+
+            h2 = vkfftn(dc[n//2:, :]).get()
+            h2_ref = vkfftn(dc2).get()
+            self.assertTrue(np.allclose(h2_ref, h2, rtol=rtol, atol=abs(h2_ref).max() * rtol))
+            
+            h1 = vkfftn(dc[:n//2, :]).get()
+            h1_ref = vkfftn(dc1).get()
+            self.assertTrue(np.allclose(h1_ref, h1, rtol=rtol, atol=abs(h1_ref).max() * rtol))
+
     def run_fft(self, vbackend, vn, dims_max=4, ndim_max=3, shuffle_axes=True,
                 vtype=(np.complex64, np.complex128),
                 vlut="auto", vinplace=(True, False), vnorm=(0, 1),
