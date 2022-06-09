@@ -48,6 +48,7 @@ except ImportError:
 try:
     import pyopencl as cl
     import pyopencl.array as cla
+    from pyvkfft.opencl import VkFFTApp as clVkFFTApp
 
     has_pyopencl = True
 except ImportError:
@@ -409,6 +410,44 @@ class TestFFT(unittest.TestCase):
                 for i in range(n_streams):
                     vapp[i].ifft(vd[i])
                 for i in range(n_streams):
+                    dn = np.roll(d, i * 7, axis=1)
+                    self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
+
+    @unittest.skipIf(not has_pyopencl, "pyopencl is not available")
+    def test_pyopencl_queues(self):
+        """
+        Test multiple FFT with queues different from the queue used
+        in creating the VkFFTApp
+        """
+        for dtype in (np.complex64, np.complex128):
+            with self.subTest(dtype=np.dtype(dtype)):
+                init_ctx("pyopencl", gpu_name=self.gpu, verbose=False)
+                ctx = gpu_ctx_dic["pyopencl"][2].context
+                if dtype == np.complex64:
+                    rtol = 1e-6
+                else:
+                    rtol = 1e-12
+                sh = (256, 256)
+                d = (np.random.uniform(-0.5, 0.5, sh) + 1j * np.random.uniform(-0.5, 0.5, sh)).astype(dtype)
+                n_queues = 5
+                vd = []
+                vapp = []
+
+                with cl.CommandQueue(ctx) as cq:
+                    for i in range(n_queues):
+                        vd.append(cla.to_device(cq, np.roll(d, i * 7, axis=1)))
+                        vapp.append(clVkFFTApp(d.shape, d.dtype, ndim=2, norm=1, queue=cq))
+
+                queues = [cl.CommandQueue(ctx) for _ in range(n_queues)]
+                for i in range(n_queues):
+                    vapp[i].fft(vd[i], queue=queues[i])
+                for i in range(n_queues):
+                    dn = fftn(np.roll(d, i * 7, axis=1))
+                    self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
+
+                for i in range(n_queues):
+                    vapp[i].ifft(vd[i], queue=queues[i])
+                for i in range(n_queues):
                     dn = np.roll(d, i * 7, axis=1)
                     self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
 
