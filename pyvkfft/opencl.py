@@ -167,7 +167,43 @@ class VkFFTApp(VkFFTAppBase):
             array is returned.
         """
         if not queue:
-            queue = self.queue
+            if dest is None:
+                if src.queue is None:
+                    warnings.warn("queue is not given and the source array does not have a queue
+                        attached to it. Falling back to the queue given to the constructor
+                        of VkFFTApp. This is deprecated and will stop working in the future.
+                        Use src_array.with_queue(queue) to attach a queue to the array or
+                        pass a queue to this method", DeprecationWarning)
+                    queue = self.queue
+                else:
+                    queue = src.queue
+            elif dest.queue is None and src.queue is None:
+                warnings.warn("queue is not given and the source/dest arrays do not have a queue
+                        attached to it. Falling back to the queue given to the constructor
+                        of VkFFTApp. This is deprecated and will stop working in the future.
+                        Use src_array.with_queue(queue) to attach a queue to the array or
+                        pass a queue to this method", DeprecationWarning)
+                queue = self.queue
+            elif dest.queue != src.queue:
+                if dest.queue is None:
+                    queue = src.queue
+                elif src.queue is None:
+                    queue = dest.queue
+                else:
+                    warnings.warn("queue is not given and the source/dest arrays are not equal.
+                        Falling back to the queue given to the constructor. This is deprecated
+                        and will stop working in the future.
+                        Use src_array.with_queue(queue) to attach a queue to the array or
+                        pass a queue to this method", DeprecationWarning)
+                    queue = self.queue
+            else:
+                queue = src.queue
+
+            if queue != self.queue:
+                # TODO: warn here if self.queue has not been finished yet.
+                # There is no way to check that a queue is finished in pyopencl.
+                pass
+
         if self.inplace:
             if dest is not None:
                 if src.data.int_ptr != dest.data.int_ptr:
@@ -209,7 +245,43 @@ class VkFFTApp(VkFFTAppBase):
             array is returned.
         """
         if not queue:
-            queue = self.queue
+            if dest is None:
+                if src.queue is None:
+                    warnings.warn("queue is not given and the source array does not have a queue
+                        attached to it. Falling back to the queue given to the constructor
+                        of VkFFTApp. This is deprecated and will stop working in the future.
+                        Use src_array.with_queue(queue) to attach a queue to the array or
+                        pass a queue to this method", DeprecationWarning)
+                    queue = self.queue
+                else:
+                    queue = src.queue
+            elif dest.queue is None and src.queue is None:
+                warnings.warn("queue is not given and the source/dest arrays do not have a queue
+                        attached to it. Falling back to the queue given to the constructor
+                        of VkFFTApp. This is deprecated and will stop working in the future.
+                        Use src_array.with_queue(queue) to attach a queue to the array or
+                        pass a queue to this method", DeprecationWarning)
+                queue = self.queue
+            elif dest.queue != src.queue:
+                if dest.queue is None:
+                    queue = src.queue
+                elif src.queue is None:
+                    queue = dest.queue
+                else:
+                    warnings.warn("queue is not given and the source/dest arrays are not equal.
+                        Falling back to the queue given to the constructor. This is deprecated
+                        and will stop working in the future.
+                        Use src_array.with_queue(queue) to attach a queue to the array or
+                        pass a queue to this method", DeprecationWarning)
+                    queue = self.queue
+            else:
+                queue = src.queue
+
+            if queue != self.queue:
+                # TODO: warn here if self.queue has not been finished yet.
+                # There is no way to check that a queue is finished in pyopencl.
+                pass
+
         if self.inplace:
             if dest is not None:
                 if src.data.int_ptr != dest.data.int_ptr:
