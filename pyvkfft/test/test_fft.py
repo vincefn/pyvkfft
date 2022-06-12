@@ -435,10 +435,12 @@ class TestFFT(unittest.TestCase):
 
                 with cl.CommandQueue(ctx) as cq:
                     for i in range(n_queues):
-                        vd.append(cla.to_device(cq, np.roll(d, i * 7, axis=1)))
                         vapp.append(clVkFFTApp(d.shape, d.dtype, ndim=2, norm=1, queue=cq))
 
                 queues = [cl.CommandQueue(ctx) for _ in range(n_queues)]
+                for i in range(n_queues):
+                    vd.append(cla.to_device(queues[i], np.roll(d, i * 7, axis=1)))
+
                 for i in range(n_queues):
                     vapp[i].fft(vd[i], queue=queues[i])
                 for i in range(n_queues):
