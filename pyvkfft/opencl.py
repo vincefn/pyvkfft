@@ -169,20 +169,20 @@ class VkFFTApp(VkFFTAppBase):
         if not queue:
             if dest is None:
                 if src.queue is None:
-                    warnings.warn("queue is not given and the source array does not have a queue
-                        attached to it. Falling back to the queue given to the constructor
-                        of VkFFTApp. This is deprecated and will stop working in the future.
-                        Use src_array.with_queue(queue) to attach a queue to the array or
-                        pass a queue to this method", DeprecationWarning)
+                    warnings.warn("queue is not given and the source array does not have a queue "
+                        "attached to it. Falling back to the queue given to the constructor "
+                        "of VkFFTApp. This is deprecated and will stop working in the future. "
+                        "Use src_array.with_queue(queue) to attach a queue to the array or "
+                        "pass a queue to this method", DeprecationWarning)
                     queue = self.queue
                 else:
                     queue = src.queue
             elif dest.queue is None and src.queue is None:
-                warnings.warn("queue is not given and the source/dest arrays do not have a queue
-                        attached to it. Falling back to the queue given to the constructor
-                        of VkFFTApp. This is deprecated and will stop working in the future.
-                        Use src_array.with_queue(queue) to attach a queue to the array or
-                        pass a queue to this method", DeprecationWarning)
+                warnings.warn("queue is not given and the source/dest arrays do not have a queue "
+                        "attached to it. Falling back to the queue given to the constructor "
+                        "of VkFFTApp. This is deprecated and will stop working in the future. "
+                        "Use src_array.with_queue(queue) to attach a queue to the array or "
+                        "pass a queue to this method", DeprecationWarning)
                 queue = self.queue
             elif dest.queue != src.queue:
                 if dest.queue is None:
@@ -190,11 +190,11 @@ class VkFFTApp(VkFFTAppBase):
                 elif src.queue is None:
                     queue = dest.queue
                 else:
-                    warnings.warn("queue is not given and the source/dest arrays are not equal.
-                        Falling back to the queue given to the constructor. This is deprecated
-                        and will stop working in the future.
-                        Use src_array.with_queue(queue) to attach a queue to the array or
-                        pass a queue to this method", DeprecationWarning)
+                    warnings.warn("queue is not given and the source/dest arrays are not equal. "
+                        "Falling back to the queue given to the constructor. This is deprecated "
+                        "and will stop working in the future. "
+                        "Use src_array.with_queue(queue) to attach a queue to the array or "
+                        "pass a queue to this method", DeprecationWarning)
                     queue = self.queue
             else:
                 queue = src.queue
@@ -247,20 +247,20 @@ class VkFFTApp(VkFFTAppBase):
         if not queue:
             if dest is None:
                 if src.queue is None:
-                    warnings.warn("queue is not given and the source array does not have a queue
-                        attached to it. Falling back to the queue given to the constructor
-                        of VkFFTApp. This is deprecated and will stop working in the future.
-                        Use src_array.with_queue(queue) to attach a queue to the array or
-                        pass a queue to this method", DeprecationWarning)
+                    warnings.warn("queue is not given and the source array does not have a queue "
+                        "attached to it. Falling back to the queue given to the constructor "
+                        "of VkFFTApp. This is deprecated and will stop working in the future. "
+                        "Use src_array.with_queue(queue) to attach a queue to the array or "
+                        "pass a queue to this method", DeprecationWarning)
                     queue = self.queue
                 else:
                     queue = src.queue
             elif dest.queue is None and src.queue is None:
-                warnings.warn("queue is not given and the source/dest arrays do not have a queue
-                        attached to it. Falling back to the queue given to the constructor
-                        of VkFFTApp. This is deprecated and will stop working in the future.
-                        Use src_array.with_queue(queue) to attach a queue to the array or
-                        pass a queue to this method", DeprecationWarning)
+                warnings.warn("queue is not given and the source/dest arrays do not have a queue "
+                        "attached to it. Falling back to the queue given to the constructor "
+                        "of VkFFTApp. This is deprecated and will stop working in the future. "
+                        "Use src_array.with_queue(queue) to attach a queue to the array or "
+                        "pass a queue to this method", DeprecationWarning)
                 queue = self.queue
             elif dest.queue != src.queue:
                 if dest.queue is None:
@@ -268,11 +268,11 @@ class VkFFTApp(VkFFTAppBase):
                 elif src.queue is None:
                     queue = dest.queue
                 else:
-                    warnings.warn("queue is not given and the source/dest arrays are not equal.
-                        Falling back to the queue given to the constructor. This is deprecated
-                        and will stop working in the future.
-                        Use src_array.with_queue(queue) to attach a queue to the array or
-                        pass a queue to this method", DeprecationWarning)
+                    warnings.warn("queue is not given and the source/dest arrays are not equal. "
+                        "Falling back to the queue given to the constructor. This is deprecated "
+                        "and will stop working in the future. "
+                        "Use src_array.with_queue(queue) to attach a queue to the array or "
+                        "pass a queue to this method", DeprecationWarning)
                     queue = self.queue
             else:
                 queue = src.queue

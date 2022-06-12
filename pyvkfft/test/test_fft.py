@@ -419,7 +419,7 @@ class TestFFT(unittest.TestCase):
         Test multiple FFT with queues different from the queue used
         in creating the VkFFTApp
         """
-        for dtype in (np.complex64, np.complex128):
+        for dtype in (np.complex64, np.complex128, np.float32, np.float64):
             with self.subTest(dtype=np.dtype(dtype)):
                 init_ctx("pyopencl", gpu_name=self.gpu, verbose=False)
                 ctx = gpu_ctx_dic["pyopencl"][2].context
