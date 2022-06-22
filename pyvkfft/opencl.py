@@ -199,10 +199,8 @@ class VkFFTApp(VkFFTAppBase):
             else:
                 queue = src.queue
 
-            if queue != self.queue:
-                # TODO: warn here if self.queue has not been finished yet.
-                # There is no way to check that a queue is finished in pyopencl.
-                pass
+        if queue != self.queue:
+            self.queue.finish()
 
         if self.inplace:
             if dest is not None:
@@ -277,10 +275,8 @@ class VkFFTApp(VkFFTAppBase):
             else:
                 queue = src.queue
 
-            if queue != self.queue:
-                # TODO: warn here if self.queue has not been finished yet.
-                # There is no way to check that a queue is finished in pyopencl.
-                pass
+        if queue != self.queue:
+            self.queue.finish()
 
         if self.inplace:
             if dest is not None:
