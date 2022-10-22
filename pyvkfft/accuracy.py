@@ -387,7 +387,9 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
             d0n = d0.astype(np.clongdouble)
         else:
             d0n = d0
-
+        if np.argmin(d0.strides) != d0.ndim - 1:
+            # np.fft.rfftn can change the fast axis
+            d0 = d0.copy(order='C')
     if 'opencl' in backend:
         d_gpu = cla.to_device(queue, d0)
     else:
