@@ -1,3 +1,7 @@
+Version 2022.2 (2022-XX-XX)
+-----------------------------
+* Fix R2C tests when using numpy (scipy unavailable) [#19]
+
 Version 2022.1.1 (2022-02-14)
 -----------------------------
 * Correct the dtype of the returned array for fft.rfftn() and fft.irfftn()
