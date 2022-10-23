@@ -154,12 +154,12 @@ def li(a, b):
 
 def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c=False, dct=False,
                   gpu_name=None, stream=None, queue=None, return_array=False, init_array=None, verbose=False,
-                  colour_output=False, ref_long_double=True):
+                  colour_output=False, ref_long_double=True, order='C'):
     """
     Measure the
     :param backend: either 'pyopencl', 'pycuda' or 'cupy'
     :param shape: the shape of the array to test. If this is an inplace r2c, the
-        x-axis length must be even, and two extra values will be appended along x,
+        fast-axis length must be even, and two extra values will be appended along x,
         so the actual transform shape is the one supplied
     :param ndim: the number of FFT dimensions. Can be None if axes is given
     :param axes: the transform axes. Supersedes ndim
@@ -187,6 +187,10 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
     :param colour_output: if True, use some colour to tag the quality of the accuracy
     :param ref_long_double: if True and scipy is available, long double precision
         will be used for the reference transform. Otherwise, this is ignored.
+    :param order: either 'C' (default C-contiguous) or 'F' to test a different
+        stride. Note that for the latter, a 3D transform on a 4D array will not
+        be supported as the last transform axis would be on the 4th dimension
+        (once ordered by stride).
     :return: a dictionary with (l2_fft, li_fft, l2_ifft, li_ifft, tol, dt_array,
         dt_app, dt_fft, dt_ifft, src_unchanged_fft, src_unchanged_ifft, tol_test, str),
         with the L2 and Linf normalised norms comparing pyvkfft's result with either
@@ -204,6 +208,7 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         All input parameters are also returned as key/values, except stream, queue,
         return_array, ini_array and verbose.
     """
+    ndims = len(shape)
     if backend == "cupy" and has_cupy:
         mempool = cp.get_default_memory_pool()
         if mempool is not None:  # Is that test necessary ?
@@ -231,10 +236,16 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
             # Add two extra columns in the source array
             # so the transform has the desired shape
             shape = list(shape)
-            shape[-1] += 2
+            if order == 'C':
+                shape[-1] += 2
+            else:
+                shape[0] += 2
         else:
             shapec = list(shape)
-            shapec[-1] = shapec[-1] // 2 + 1
+            if order == 'C':
+                shapec[-1] = shapec[-1] // 2 + 1
+            else:
+                shapec[0] = shapec[-1] // 2 + 1
             shapec = tuple(shapec)
     else:
         shapec = tuple(shape)
@@ -244,7 +255,10 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         if r2c:
             if inplace:
                 d0 = np.empty(shape, dtype=dtypef)
-                d0[..., :-2] = init_array
+                if order == 'C':
+                    d0[..., :-2] = init_array
+                else:
+                    d0[:-2] = init_array
             else:
                 d0 = init_array.astype(dtypef)
         elif dct:
@@ -257,11 +271,14 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         else:
             d0 = (np.random.uniform(-0.5, 0.5, shape) + 1j * np.random.uniform(-0.5, 0.5, shape)).astype(dtype)
 
+    if order != 'C':
+        d0 = np.asarray(d0, order=order)
+
     t1 = timeit.default_timer()
 
     if 'opencl' in backend:
         app = clVkFFTApp(d0.shape, d0.dtype, queue, ndim=ndim, norm=norm,
-                         axes=axes, useLUT=use_lut, inplace=inplace, r2c=r2c, dct=dct)
+                         axes=axes, useLUT=use_lut, inplace=inplace, r2c=r2c, dct=dct, strides=d0.strides)
         t2 = timeit.default_timer()
         d_gpu = cla.to_device(queue, d0)
     else:
@@ -276,13 +293,30 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         d_gpu = to_gpu(d0)
 
     if axes is None:
-        axes_numpy = list(range(len(shape)))[-ndim:]
+        axes_numpy = list(range(ndims))[-ndim:]
     else:
-        axes_numpy = axes
+        # Make sure axes indices are >0
+        axes_numpy = [ax if ax >= 0 else ndims + ax for ax in axes]
+
+    # Need the fast axis for R2C (last for 'C' order, first for 'F')
+    fast_axis = np.argmin(d0.strides)
+
+    if r2c:
+        if fast_axis not in axes_numpy:
+            raise RuntimeError("The fast axis must be transformed for R2C")
+
+        # For R2C, we need the same fast axis as on the GPU, or the
+        # half-hermitian result won't look the same
+        if fast_axis != axes_numpy[-1]:
+            axes_numpy.remove(fast_axis)
+            axes_numpy.append(fast_axis)
+        # if order != 'C':
+        #     print("R2C", ndims, ndim, shape, axes, axes_numpy, fast_axis, inplace)
+
     # base FFT scale for numpy (not used for DCT)
     s = np.sqrt(np.prod([d0.shape[i] for i in axes_numpy]))
     if r2c and inplace:
-        s = np.sqrt(s ** 2 / d0.shape[-1] * (d0.shape[-1] - 2))
+        s = np.sqrt(s ** 2 / d0.shape[fast_axis] * (d0.shape[fast_axis] - 2))
 
     # Tolerance estimated from accuracy notebook
     if dtype in (np.complex64, np.float32):
@@ -301,11 +335,11 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
     else:
         if r2c:
             if backend == "pyopencl":
-                d1_gpu = cla.empty(queue, shapec, dtype=dtype)
+                d1_gpu = cla.empty(queue, shapec, dtype=dtype, order=order)
             elif backend == "pycuda":
-                d1_gpu = cua.empty(shapec, dtype=dtype)
+                d1_gpu = cua.empty(shapec, dtype=dtype, order=order)
             elif backend == "cupy":
-                d1_gpu = cp.empty(shapec, dtype=dtype)
+                d1_gpu = cp.empty(shapec, dtype=dtype, order=order)
         else:
             d1_gpu = d_gpu.copy()
 
@@ -324,7 +358,8 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
 
     if r2c:
         if inplace:
-            d = rfftn(d0n[..., :-2], axes=axes_numpy) / s
+            # Need to cut the fastest axis by 2
+            d = rfftn(np.take(d0n, range(d0n.shape[fast_axis] - 2), axis=fast_axis), axes=axes_numpy) / s
         else:
             d = rfftn(d0n, axes=axes_numpy) / s
     elif dct:
@@ -348,12 +383,17 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         t = "C2C"
     if r2c and inplace:
         tmp = list(d0.shape)
-        tmp[-1] -= 2
-        shstr = str(tuple(tmp)).replace(" ", "")
-        if ",)" in shstr:
-            shstr = shstr.replace(",)", "+2)")
+        if order == 'C':
+            tmp[-1] -= 2
+            shstr = str(tuple(tmp)).replace(" ", "")
+            if ",)" in shstr:
+                shstr = shstr.replace(",)", "+2)")
+            else:
+                shstr = shstr.replace(")", "+2)")
         else:
-            shstr = shstr.replace(")", "+2)")
+            tmp[0] -= 2
+            shstr = "(%d+2," % tmp[0]
+            shstr += str(tuple(tmp)).replace(" ", "")[1:]
     else:
         shstr = str(d0.shape).replace(" ", "")
     shax = str(axes).replace(" ", "")
@@ -364,9 +404,9 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         stol = "%6.2e < %6.2e (%5.3f)" % (ni, tol, ni / tol)
 
     verb_out = "%8s %4s %14s axes=%10s ndim=%4s %10s lut=%4s inplace=%d " \
-               " norm=%4s %5s: n2=%6.2e ninf=%s %d" % \
+               " norm=%4s %s %5s: n2=%6.2e ninf=%s %d" % \
                (backend, t, shstr, shax, str(ndim), str(d0.dtype),
-                str(use_lut), int(inplace), str(norm), "FFT", n2, stol, src_unchanged_fft)
+                str(use_lut), int(inplace), str(norm), order, "FFT", n2, stol, src_unchanged_fft)
 
     t3 = timeit.default_timer()
 
@@ -387,9 +427,11 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
             d0n = d0.astype(np.clongdouble)
         else:
             d0n = d0
-        if np.argmin(d0.strides) != d0.ndim - 1:
+        if (np.argmin(d0.strides) != d0.ndim - 1) and order == 'C':
             # np.fft.rfftn can change the fast axis
             d0 = np.asarray(d0, order='C')
+    if order != 'C':
+        d0 = np.asarray(d0, order=order)
     if 'opencl' in backend:
         d_gpu = cla.to_device(queue, d0)
     else:
@@ -400,11 +442,11 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
     else:
         if r2c:
             if backend == "pyopencl":
-                d1_gpu = cla.empty(queue, shape, dtype=dtypef)
+                d1_gpu = cla.empty(queue, shape, dtype=dtypef, order=order)
             elif backend == "pycuda":
-                d1_gpu = cua.empty(shape, dtype=dtypef)
+                d1_gpu = cua.empty(shape, dtype=dtypef, order=order)
             elif backend == "cupy":
-                d1_gpu = cp.empty(shape, dtype=dtypef)
+                d1_gpu = cp.empty(shape, dtype=dtypef, order=order)
         else:
             d1_gpu = d_gpu.copy()
 
@@ -426,7 +468,8 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
             assert d1_gpu.dtype == dtype, "The array type is incorrect after an inplace iFFT"
 
     if r2c and inplace:
-        n2i, nii = l2(d, d1_gpu.get()[..., :-2]), li(d, d1_gpu.get()[..., :-2])
+        tmp = np.take(d1_gpu.get(), range(d1_gpu.shape[fast_axis] - 2), axis=fast_axis)
+        n2i, nii = l2(d, tmp), li(d, tmp)
     else:
         n2i, nii = l2(d, d1_gpu.get()), li(d, d1_gpu.get())
 
@@ -463,7 +506,7 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
            "dt_fft": t3 - t2, "dt_ifft": t4 - t3, "src_unchanged_fft": src_unchanged_fft,
            "src_unchanged_ifft": src_unchanged_ifft, "tol_test": max(ni, nii) < tol, "str": verb_out,
            "backend": backend, "shape": shape0, "ndim": ndim, "axes": axes, "dtype": dtype0, "inplace": inplace,
-           "norm": norm, "use_lut": use_lut, "r2c": r2c, "dct": dct, "gpu_name": gpu_name}
+           "norm": norm, "use_lut": use_lut, "r2c": r2c, "dct": dct, "gpu_name": gpu_name, "order": order}
 
     if return_array:
         res["d0"] = d0

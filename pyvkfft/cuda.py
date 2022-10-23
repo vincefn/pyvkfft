@@ -64,7 +64,7 @@ class VkFFTApp(VkFFTAppBase):
     """
 
     def __init__(self, shape, dtype: type, ndim=None, inplace=True, stream=None, norm=1,
-                 r2c=False, dct=False, axes=None, **kwargs):
+                 r2c=False, dct=False, axes=None, strides=None, **kwargs):
         """
 
         :param shape: the shape of the array to be transformed. The number
@@ -106,10 +106,13 @@ class VkFFTApp(VkFFTAppBase):
         :param axes: a list or tuple of axes along which the transform should be made.
             if None, the transform is done along the ndim fastest axes, or all
             axes if ndim is None. Not allowed for R2C transforms
+        :param strides: the array strides - needed if not C-ordered.
         :raises RuntimeError: if the initialisation fails, e.g. if the CUDA
-            driver has not been properly initialised.
+            driver has not been properly initialised, or if the transform dimensions
+            are not allowed by VkFFT.
         """
-        super().__init__(shape, dtype, ndim=ndim, inplace=inplace, norm=norm, r2c=r2c, dct=dct, axes=axes, **kwargs)
+        super().__init__(shape, dtype, ndim=ndim, inplace=inplace, norm=norm, r2c=r2c,
+                         dct=dct, axes=axes, strides=strides, **kwargs)
 
         self.stream = stream
 

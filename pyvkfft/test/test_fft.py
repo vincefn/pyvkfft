@@ -200,7 +200,7 @@ class TestFFT(unittest.TestCase):
                                                       + 1j * np.random.uniform(-0.5, 0.5, sh)).astype(dtype)
                                         if vlut == "auto":
                                             if dtype in (np.float64, np.complex128):
-                                                # By default LUT is enabled for complex128, no need to test twice
+                                                # By default, LUT is enabled for complex128, no need to test twice
                                                 tmp = [None]
                                             else:
                                                 tmp = [None, True]
@@ -209,50 +209,67 @@ class TestFFT(unittest.TestCase):
                                         for use_lut in tmp:
                                             for inplace in vinplace:
                                                 for norm in vnorm:
-                                                    with self.subTest(backend=backend, n=n, dims=dims, ndim=ndim,
-                                                                      axes=axes, dtype=np.dtype(dtype), norm=norm,
-                                                                      use_lut=use_lut, inplace=inplace,
-                                                                      r2c=r2c, dct=dct):
-                                                        ct += 1
-                                                        if not dry_run:
-                                                            res = test_accuracy(backend, sh, ndim, axes, dtype, inplace,
-                                                                                norm, use_lut, r2c=r2c, dct=dct,
-                                                                                gpu_name=self.gpu,
-                                                                                stream=None, queue=cq,
-                                                                                return_array=False, init_array=d0,
-                                                                                verbose=verbose)
-                                                            npr = primes(n)
-                                                            ni, n2 = res["ni"], res["n2"]
-                                                            nii, n2i = res["nii"], res["n2i"]
-                                                            tol = res["tol"]
-                                                            src1 = res["src_unchanged_fft"]
-                                                            src2 = res["src_unchanged_ifft"]
-                                                            self.assertTrue(ni < tol, "Accuracy mismatch after FFT, "
-                                                                                      "n2=%8e ni=%8e>%8e" %
-                                                                            (n2, ni, tol))
-                                                            self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, "
-                                                                                       "n2=%8e ni=%8e>%8e" %
-                                                                            (n2, nii, tol))
-                                                            if not inplace:
-                                                                self.assertTrue(src1, "The source array was modified "
-                                                                                      "during the FFT")
-                                                                nmaxr2c1d = 3072 * (1 + int(
-                                                                    dtype in (np.float32, np.complex64)))
-                                                                if not r2c or (ndim == 1 and max(npr) <= 13) \
-                                                                        and n < nmaxr2c1d:
-                                                                    self.assertTrue(src2,
+                                                    vorder = ['C', 'F']
+                                                    if dims == 1 or dims > 3 or dct:
+                                                        vorder = ['C']
+                                                    if r2c:
+                                                        if ndim is not None:
+                                                            if dims != ndim:
+                                                                vorder = ['C']
+                                                        if axes is not None:
+                                                            # TODO : also test F-order when ndim<dims but fast axis
+                                                            #  is transformed
+                                                            if len(axes) != dims:
+                                                                vorder = ['C']
+                                                    for order in vorder:
+                                                        with self.subTest(backend=backend, n=n, dims=dims, ndim=ndim,
+                                                                          axes=axes, dtype=np.dtype(dtype), norm=norm,
+                                                                          use_lut=use_lut, inplace=inplace,
+                                                                          r2c=r2c, dct=dct, order=order):
+                                                            ct += 1
+                                                            if not dry_run:
+                                                                res = test_accuracy(backend, sh, ndim, axes, dtype,
+                                                                                    inplace,
+                                                                                    norm, use_lut, r2c=r2c, dct=dct,
+                                                                                    gpu_name=self.gpu,
+                                                                                    stream=None, queue=cq,
+                                                                                    return_array=False, init_array=d0,
+                                                                                    verbose=verbose, order=order)
+                                                                npr = primes(n)
+                                                                ni, n2 = res["ni"], res["n2"]
+                                                                nii, n2i = res["nii"], res["n2i"]
+                                                                tol = res["tol"]
+                                                                src1 = res["src_unchanged_fft"]
+                                                                src2 = res["src_unchanged_ifft"]
+                                                                self.assertTrue(ni < tol,
+                                                                                "Accuracy mismatch after FFT, "
+                                                                                "n2=%8e ni=%8e>%8e" %
+                                                                                (n2, ni, tol))
+                                                                self.assertTrue(nii < tol,
+                                                                                "Accuracy mismatch after iFFT, "
+                                                                                "n2=%8e ni=%8e>%8e" %
+                                                                                (n2, nii, tol))
+                                                                if not inplace:
+                                                                    self.assertTrue(src1,
                                                                                     "The source array was modified "
-                                                                                    "during the iFFT")
-                                                        else:
-                                                            kwargs = {"backend": backend, "shape": sh,
-                                                                      "ndim": ndim, "axes": axes,
-                                                                      "dtype": dtype, "inplace": inplace,
-                                                                      "norm": norm, "use_lut": use_lut,
-                                                                      "r2c": r2c, "dct": dct,
-                                                                      "gpu_name": self.gpu, "stream": None,
-                                                                      "verbose": False,
-                                                                      "colour_output": self.colour}
-                                                            vkwargs.append(kwargs)
+                                                                                    "during the FFT")
+                                                                    nmaxr2c1d = 3072 * (1 + int(
+                                                                        dtype in (np.float32, np.complex64)))
+                                                                    if not r2c or (ndim == 1 and max(npr) <= 13) \
+                                                                            and n < nmaxr2c1d:
+                                                                        self.assertTrue(src2,
+                                                                                        "The source array was modified "
+                                                                                        "during the iFFT")
+                                                            else:
+                                                                kwargs = {"backend": backend, "shape": sh,
+                                                                          "ndim": ndim, "axes": axes,
+                                                                          "dtype": dtype, "inplace": inplace,
+                                                                          "norm": norm, "use_lut": use_lut,
+                                                                          "r2c": r2c, "dct": dct,
+                                                                          "gpu_name": self.gpu, "stream": None,
+                                                                          "verbose": False, "order": order,
+                                                                          "colour_output": self.colour}
+                                                                vkwargs.append(kwargs)
 
         return ct, vkwargs
 
@@ -262,7 +279,7 @@ class TestFFT(unittest.TestCase):
             for res in pool.imap(test_accuracy_kwargs, vkwargs):
                 with self.subTest(backend=res['backend'], n=max(res['shape']), ndim=res['ndim'],
                                   dtype=np.dtype(res['dtype']), norm=res['norm'], use_lut=res['use_lut'],
-                                  inplace=res['inplace'], r2c=res['r2c'], dct=res['dct']):
+                                  inplace=res['inplace'], r2c=res['r2c'], dct=res['dct'], order=res['order']):
                     n = max(res['shape'])
                     npr = primes(n)
                     ni, n2 = res["ni"], res["n2"]
