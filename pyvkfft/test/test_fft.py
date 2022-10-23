@@ -443,6 +443,7 @@ class TestFFTSystematic(unittest.TestCase):
     gpu = None
     inplace = False
     lut = False
+    fstride = False
     max_pow = None
     max_nb_tests = 1000
     nb_test = 0  # Number of tests actually run
@@ -515,7 +516,8 @@ class TestFFTSystematic(unittest.TestCase):
                 kwargs = {"backend": backend, "shape": s, "ndim": len(s), "axes": self.axes,
                           "dtype": self.dtype, "inplace": self.inplace, "norm": self.norm, "use_lut": self.lut,
                           "r2c": self.r2c, "dct": self.dct, "gpu_name": self.gpu, "stream": None, "verbose": False,
-                          "colour_output": self.colour, "ref_long_double": self.ref_long_double}
+                          "colour_output": self.colour, "ref_long_double": self.ref_long_double,
+                          "order": 'F' if self.fstride else 'C'}
                 vkwargs.append(kwargs)
         if self.db is not None:
             # TODO secure the db with a context 'with'
@@ -523,7 +525,7 @@ class TestFFTSystematic(unittest.TestCase):
             dbc = db.cursor()
             dbc.execute('CREATE TABLE IF NOT EXISTS pyvkfft_test (epoch int, hostname int,'
                         'backend text, language text, transform text, axes text, array_shape text,'
-                        'ndims int, ndim int, precision int, inplace int, norm int, lut int,'
+                        'ndims int, ndim int, precision int, inplace int, norm int, lut int, fstride int,'
                         'n int, n2_fft float, n2_ifft float, ni_fft float, ni_ifft float, tolerance float,'
                         'dt_app float, dt_fft float, dt_ifft float, src_unchanged_fft int, src_unchanged_ifft int,'
                         'gpu_name text, success int, error int, vkfft_error_code int)')
@@ -563,7 +565,7 @@ class TestFFTSystematic(unittest.TestCase):
                     # as e.g. "float32" instead of "<class 'numpy.float32'>"
                     with self.subTest(backend=backend, shape=sh, ndim=ndim,
                                       dtype=np.dtype(self.dtype), norm=self.norm, use_lut=self.lut,
-                                      inplace=self.inplace, r2c=self.r2c, dct=self.dct):
+                                      inplace=self.inplace, r2c=self.r2c, dct=self.dct, fstride=self.fstride):
                         if self.serial:
                             res = test_accuracy_kwargs(v)
                         else:
@@ -600,12 +602,12 @@ class TestFFTSystematic(unittest.TestCase):
                                 succ = False
                         if self.db is not None:
                             dbc.execute('INSERT INTO pyvkfft_test VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'
-                                        '?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                                        '?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                                         (time.time(), hostname, backend, lang, transform,
                                          str(res['axes']).encode('ascii'), str(res['shape']).encode('ascii'),
                                          len(res['shape']), ndim, np.dtype(self.dtype).itemsize,
-                                         self.inplace, self.norm, self.lut, int(max(res['shape'])), float(n2),
-                                         float(n2i),
+                                         self.inplace, self.norm, self.lut, self.fstride,
+                                         int(max(res['shape'])), float(n2), float(n2i),
                                          float(ni), float(nii), float(tol), res["dt_app"], res["dt_fft"],
                                          res["dt_ifft"],
                                          int(src1), int(src2), res["gpu_name"].encode('ascii'), int(succ), 0, 0))

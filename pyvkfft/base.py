@@ -465,7 +465,11 @@ class VkFFTApp:
             reinterpret the type) will have a shape (..., nx//2 + 1).
             For an out-of-place transform, if the input (real) shape is (..., nx),
             the output (complex) shape should be (..., nx//2+1).
-            Note that for C2R transforms with ndim>=2, the source (complex) array
+            Note 1: the above shape changes are true for C-contiguous arrays;
+            generally the axis which is halved by the R2C transform always is
+            the fast axis -with a stride of 1 element. For F-contiguous arrays
+            this will be the first dimension instead of the last.
+            Note 2:for C2R transforms with ndim>=2, the source (complex) array
             is modified.
         :param dct: used to perform a Direct Cosine Transform (DCT) aka a R2R transform.
             An integer can be given to specify the type of DCT (1, 2, 3 or 4).
@@ -484,8 +488,11 @@ class VkFFTApp:
             raise RuntimeError("R2C or DCT selected but input type is not real !")
         if r2c and axes is not None:
             raise RuntimeError("axes=... is not allowed for R2C transforms")
-        if strides is not None and dct:
-            raise RuntimeError("strides=... is not allowed for DCT transforms (needs a C-ordered array)")
+        if strides is not None and dct and len(shape) > 1:
+            # TODO: update support status for non-C-contiguous DCT transforms
+            s = np.array(strides)
+            if not np.alltrue((s[:-1] - s[1:]) > 0):
+                raise RuntimeError("A C-contiguous array is required for DCT transforms")
         # Get the final shape passed to VkFFT, collapsing non-transform axes
         # as necessary. The calculated shape has 4 dimensions (nx, ny, nz, n_batch).
         self.shape, self.skip_axis, self.ndim = calc_transform_axes(shape, axes, ndim, strides)

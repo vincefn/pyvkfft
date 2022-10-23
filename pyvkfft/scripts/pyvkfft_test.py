@@ -301,6 +301,8 @@ def main():
                              "can be slower (or much slower on some architectures).")
     sysgrp.add_argument('--r2c', action='store_true', help="Test real-to-complex transform "
                                                            "(default is c2c)")
+    sysgrp.add_argument('--fstride', action='store_true',
+                        help="Test F-ordered arrays (default is C-ordered). Not supported for DCT")
     sysgrp.add_argument('--radix', action='store', nargs='*', type=int,
                         help="Perform only radix transforms. If no value is given, all available "
                              "radix transforms are allowed. Alternatively a list can be given: "
@@ -372,6 +374,7 @@ def main():
         t.norm = args.norm[0]
         t.nproc = args.nproc[0]
         t.r2c = args.r2c
+        t.fstride = args.fstride
         t.radix = args.radix
         t.ref_long_double = args.ref_long_double
         t.max_pow = None if args.radix_max_pow is None else args.radix_max_pow[0]

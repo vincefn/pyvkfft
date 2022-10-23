@@ -152,7 +152,7 @@ def li(a, b):
     return abs(a - b).max() / abs(a).max()
 
 
-def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c=False, dct=False,
+def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c=False, dct=False, fstride=False,
                   gpu_name=None, stream=None, queue=None, return_array=False, init_array=None, verbose=False,
                   colour_output=False, ref_long_double=True, order='C'):
     """
@@ -392,8 +392,11 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
                 shstr = shstr.replace(")", "+2)")
         else:
             tmp[0] -= 2
-            shstr = "(%d+2," % tmp[0]
-            shstr += str(tuple(tmp)).replace(" ", "")[1:]
+            if len(tmp) == 1:
+                shstr = "(%d+2)," % tmp[0]
+            else:
+                shstr = "(%d+2," % tmp[0]
+                shstr += str(tuple(tmp[1:])).replace(" ", "").replace(",)", ")")[1:]
     else:
         shstr = str(d0.shape).replace(" ", "")
     shax = str(axes).replace(" ", "")
