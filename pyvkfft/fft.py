@@ -21,14 +21,14 @@ try:
         import pycuda.gpuarray as cua
     if has_cupy:
         import cupy as cp
-except ImportError:
+except (ImportError, OSError):
     has_cupy, has_pycuda = False, False
 
 try:
     from .opencl import VkFFTApp as VkFFTApp_cl, cla, vkfft_version
 
     has_opencl = True
-except ImportError:
+except (ImportError, OSError):
     has_opencl = False
 
 
