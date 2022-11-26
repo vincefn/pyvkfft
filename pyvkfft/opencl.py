@@ -114,7 +114,8 @@ class VkFFTApp(VkFFTAppBase):
             raise RuntimeError("Error creating VkFFTConfiguration. Was the OpenCL context properly initialised ?")
         res = ctypes.c_int(0)
         self.app = _vkfft_opencl.init_app(self.config, queue.int_ptr, ctypes.byref(res))
-        check_vkfft_result(res, shape, dtype, ndim, inplace, norm, r2c, dct, axes, "opencl")
+        check_vkfft_result(res, shape, dtype, ndim, inplace, norm, r2c, dct, axes, "opencl:%s:%s" %
+                           (queue.device.platform.name, queue.device.name))
         if self.app is None:
             raise RuntimeError("Error creating VkFFTApplication. Was the OpenCL context properly initialised ?")
 
