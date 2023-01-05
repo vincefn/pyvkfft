@@ -1,6 +1,10 @@
-Version 2022.2 (2022-XX-XX)
+Version 2023.1 (2021-XX-XX)
 -----------------------------
 * Fix R2C tests when using numpy (scipy unavailable) [#19]
+* Add support for F-ordered arrays (C2C and R2C)
+* Allow selection of backend for non-systemetic pvkfft-test
+* Add parameter for the OpenCL platform in pyvkfft-test
+* Fix simple fft interface import when only pycuda is used
 
 Version 2022.1.1 (2022-02-14)
 -----------------------------

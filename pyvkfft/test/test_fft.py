@@ -503,7 +503,8 @@ class TestFFTSystematic(unittest.TestCase):
             for s in self.vshape:
                 kwargs = {"backend": backend, "shape": s, "ndim": len(s), "axes": self.axes,
                           "dtype": self.dtype, "inplace": self.inplace, "norm": self.norm, "use_lut": self.lut,
-                          "r2c": self.r2c, "dct": self.dct, "gpu_name": self.gpu, "stream": None, "verbose": False,
+                          "r2c": self.r2c, "dct": self.dct, "gpu_name": self.gpu,
+                          "opencl_platform": self.opencl_platform, "stream": None, "verbose": False,
                           "colour_output": self.colour, "ref_long_double": self.ref_long_double,
                           "order": 'F' if self.fstride else 'C'}
                 vkwargs.append(kwargs)

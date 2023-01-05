@@ -51,13 +51,18 @@ def _prepare_transform(src, dest, cl_queue, r2c=False):
     :param r2c: if True, this is for an R2C transform, so adapt the destination
         array accordingly.
     :return: a tuple (backend, inplace, dest, cl_queue), also appending the
-    destination dtype for an r2c transform.
+    destination dtype for a r2c transform.
     """
     backend = Backend.UNKNOWN
+    fastidx = np.argmin(src.strides)  # fast axis is the last only for C-ordered arrays
+    if fastidx == src.ndim - 1:
+        order = 'C'
+    else:
+        order = 'F'
     if r2c:
         if src.dtype in [np.float16, np.float32, np.float64]:
             sh = list(src.shape)
-            sh[-1] = sh[-1] // 2 + 1
+            sh[fastidx] = sh[fastidx] // 2 + 1
             dtype = np.complex64
             if src.dtype == np.float16:
                 dtype = complex32
@@ -65,7 +70,7 @@ def _prepare_transform(src, dest, cl_queue, r2c=False):
                 dtype = np.complex128
         else:
             sh = list(src.shape)
-            sh[-1] = (sh[-1] - 1) * 2
+            sh[fastidx] = (sh[fastidx] - 1) * 2
             dtype = np.float32
             if src.dtype == complex32:
                 dtype = np.float16
@@ -82,7 +87,7 @@ def _prepare_transform(src, dest, cl_queue, r2c=False):
             src_ptr = int(src.gpudata)
             if dest is None:
                 if r2c:
-                    dest = cua.empty(tuple(sh), dtype=dtype, allocator=src.allocator)
+                    dest = cua.empty(tuple(sh), dtype=dtype, allocator=src.allocator, order=order)
                 else:
                     dest = cua.empty_like(src)
             dest_ptr = int(dest.gpudata)
@@ -93,7 +98,7 @@ def _prepare_transform(src, dest, cl_queue, r2c=False):
             src_ptr = src.data.int_ptr
             if dest is None:
                 if r2c:
-                    dest = cla.empty(src.queue, tuple(sh), dtype=dtype, allocator=src.allocator)
+                    dest = cla.empty(src.queue, tuple(sh), dtype=dtype, allocator=src.allocator, order=order)
                 else:
                     dest = cla.empty_like(src)
             dest_ptr = dest.data.int_ptr
@@ -106,7 +111,7 @@ def _prepare_transform(src, dest, cl_queue, r2c=False):
             src_ptr = src.__cuda_array_interface__['data'][0]
             if dest is None:
                 if r2c:
-                    dest = cp.empty(tuple(sh), dtype=dtype)
+                    dest = cp.empty(tuple(sh), dtype=dtype, order=order)
                 else:
                     dest = cp.empty_like(src)
             dest_ptr = dest.__cuda_array_interface__['data'][0]
@@ -127,23 +132,23 @@ def _prepare_transform(src, dest, cl_queue, r2c=False):
 
 
 @lru_cache(maxsize=FFT_CACHE_NB)
-def _get_fft_app(backend, shape, dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue):
+def _get_fft_app(backend, shape, dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue, strides=None):
     if backend in [Backend.PYCUDA, Backend.CUPY]:
         return VkFFTApp_cuda(shape, dtype, ndim=ndim, inplace=inplace,
-                             stream=cuda_stream, norm=norm, axes=axes)
+                             stream=cuda_stream, norm=norm, axes=axes, strides=strides)
     elif backend == Backend.PYOPENCL:
         return VkFFTApp_cl(shape, dtype, cl_queue, ndim=ndim, inplace=inplace,
-                           norm=norm, axes=axes)
+                           norm=norm, axes=axes, strides=strides)
 
 
 @lru_cache(maxsize=FFT_CACHE_NB)
-def _get_rfft_app(backend, shape, dtype, inplace, ndim, norm, cuda_stream, cl_queue):
+def _get_rfft_app(backend, shape, dtype, inplace, ndim, norm, cuda_stream, cl_queue, strides=None):
     if backend in [Backend.PYCUDA, Backend.CUPY]:
         return VkFFTApp_cuda(shape, dtype, ndim=ndim, inplace=inplace,
-                             stream=cuda_stream, norm=norm, r2c=True)
+                             stream=cuda_stream, norm=norm, r2c=True, strides=strides)
     elif backend == Backend.PYOPENCL:
         return VkFFTApp_cl(shape, dtype, cl_queue, ndim=ndim, inplace=inplace,
-                           norm=norm, r2c=True)
+                           norm=norm, r2c=True, strides=strides)
 
 
 @lru_cache(maxsize=FFT_CACHE_NB)
@@ -192,7 +197,8 @@ def fftn(src, dest=None, ndim=None, norm=1, axes=None, cuda_stream=None, cl_queu
     :return: the destination array if return_scale is False, or (dest, scale)
     """
     backend, inplace, dest, cl_queue = _prepare_transform(src, dest, cl_queue, False)
-    app = _get_fft_app(backend, src.shape, src.dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue)
+    app = _get_fft_app(backend, src.shape, src.dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue,
+                       strides=src.strides)
     app.fft(src, dest)
     if return_scale:
         s = app.get_fft_scale()
@@ -235,7 +241,8 @@ def ifftn(src, dest=None, ndim=None, norm=1, axes=None, cuda_stream=None, cl_que
     :return: the destination array if return_scale is False, or (dest, scale)
     """
     backend, inplace, dest, cl_queue = _prepare_transform(src, dest, cl_queue, False)
-    app = _get_fft_app(backend, src.shape, src.dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue)
+    app = _get_fft_app(backend, src.shape, src.dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue,
+                       strides=src.strides)
     app.ifft(src, dest)
     if return_scale:
         s = app.get_fft_scale()
@@ -282,7 +289,8 @@ def rfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
         with the appropriate type.
     """
     backend, inplace, dest, cl_queue, dtype = _prepare_transform(src, dest, cl_queue, True)
-    app = _get_rfft_app(backend, src.shape, src.dtype, inplace, ndim, norm, cuda_stream, cl_queue)
+    app = _get_rfft_app(backend, src.shape, src.dtype, inplace, ndim, norm, cuda_stream, cl_queue,
+                        strides=src.strides)
     app.fft(src, dest)
     if return_scale:
         s = app.get_fft_scale()
@@ -329,7 +337,8 @@ def irfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
         with the appropriate type.
     """
     backend, inplace, dest, cl_queue, dtype = _prepare_transform(src, dest, cl_queue, True)
-    app = _get_rfft_app(backend, dest.shape, dest.dtype, inplace, ndim, norm, cuda_stream, cl_queue)
+    app = _get_rfft_app(backend, dest.shape, dest.dtype, inplace, ndim, norm, cuda_stream, cl_queue,
+                        strides=dest.strides)
     app.ifft(src, dest)
     if return_scale:
         s = app.get_fft_scale()
