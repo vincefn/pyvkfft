@@ -216,6 +216,8 @@ def main():
                              "which can be displayed by clicking on the type of transform.")
     parser.add_argument('--gpu', action='store',
                         help="Name (or sub-string) of the GPU to use")
+    parser.add_argument('--opencl_platform', action='store',
+                        help="Name (or sub-string) of the opencl platform to use (case-insensitive)")
     parser.add_argument('--mailto', action='store',
                         help="Email address the results will be sent to")
     parser.add_argument('--mailto_fail', action='store',
@@ -365,6 +367,7 @@ def main():
         t.dry_run = args.dry_run
         t.dtype = np.float64 if args.double else np.float32
         t.gpu = args.gpu
+        t.opencl_platform = args.opencl_platform
         t.graph = args.graph
         t.inplace = args.inplace
         t.lut = args.lut
@@ -373,6 +376,7 @@ def main():
         # t.ndims = args.ndims
         t.norm = args.norm[0]
         t.nproc = args.nproc[0]
+        t.opencl_platform = args.opencl_platform
         t.r2c = args.r2c
         t.fstride = args.fstride
         t.radix = args.radix
@@ -407,6 +411,15 @@ def main():
         t.colour = args.colour
         t.gpu = args.gpu
         t.nproc = args.nproc[0]
+        t.opencl_platform = args.opencl_platform
+        t.vbackend = args.backend
+        # KLUDGE: remove cuda stream test if neither cupy or pycuda are used
+        test_cuda_stream = False
+        for b in args.backend:
+            if 'pycuda' in b.lower():
+                test_cuda_stream = True
+        if not test_cuda_stream:
+            del t.test_pycuda_streams
         suite = unittest.defaultTestLoader.loadTestsFromTestCase(t)
         if t.verbose:
             res = unittest.TextTestRunner(verbosity=2).run(suite)

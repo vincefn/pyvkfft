@@ -66,7 +66,7 @@ except ImportError:
 gpu_ctx_dic = {}
 
 
-def init_ctx(backend, gpu_name=None, verbose=False):
+def init_ctx(backend, gpu_name=None, opencl_platform=None, verbose=False):
     if backend in gpu_ctx_dic:
         return
     if backend == "pycuda":
@@ -96,6 +96,9 @@ def init_ctx(backend, gpu_name=None, verbose=False):
         for p in cl.get_platforms():
             if d is not None:
                 break
+            if opencl_platform is not None:
+                if opencl_platform.lower() not in p.name.lower():
+                    continue
             for d0 in p.get_devices():
                 if d0.type & cl.device_type.GPU:
                     if gpu_name is not None:
@@ -106,10 +109,8 @@ def init_ctx(backend, gpu_name=None, verbose=False):
                 if d is not None:
                     break
         if d is None:
-            if gpu_name is not None:
-                raise RuntimeError("Selected backend is pyopencl, but no device found (name=%s)" % gpu_name)
-            else:
-                raise RuntimeError("Selected backend is pyopencl, but no device found")
+            raise RuntimeError("Selected backend is pyopencl, but no device found (name=%s, platform=%s)" %
+                               (gpu_name, opencl_platform))
         cl_ctx = cl.Context([d])
         cq = cl.CommandQueue(cl_ctx)
         gpu_ctx_dic["pyopencl"] = d, cl_ctx, cq, 'cl_khr_fp64' in cq.device.extensions
@@ -152,9 +153,9 @@ def li(a, b):
     return abs(a - b).max() / abs(a).max()
 
 
-def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c=False, dct=False, fstride=False,
-                  gpu_name=None, stream=None, queue=None, return_array=False, init_array=None, verbose=False,
-                  colour_output=False, ref_long_double=True, order='C'):
+def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c=False, dct=False,
+                  gpu_name=None, opencl_platform=None, stream=None, queue=None, return_array=False,
+                  init_array=None, verbose=False, colour_output=False, ref_long_double=True, order='C'):
     """
     Measure the
     :param backend: either 'pyopencl', 'pycuda' or 'cupy'
@@ -175,6 +176,8 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         tested (native scipy normalisation).
     :param gpu_name: the name of the gpu to use. If None, the first available
         for the backend will be used.
+    :param opencl_platform: the name of the OpenCL platform to use. If None, the first available
+        will be used.
     :param stream: the cuda stream to use, or None
     :param queue: the opencl queue to use (mandatory for the 'pyopencl' backend)
     :param return_array: if True, will return the generated random array so it can be
@@ -216,7 +219,7 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
             # N parallel process so memory management  must be done manually
             mempool.free_all_blocks()
     t0 = timeit.default_timer()
-    init_ctx(backend, gpu_name=gpu_name, verbose=False)
+    init_ctx(backend, gpu_name=gpu_name, opencl_platform=opencl_platform, verbose=False)
     if backend == "pyopencl" and queue is None:
         queue = gpu_ctx_dic["pyopencl"][2]
     shape0 = shape
@@ -281,14 +284,17 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
                          axes=axes, useLUT=use_lut, inplace=inplace, r2c=r2c, dct=dct, strides=d0.strides)
         t2 = timeit.default_timer()
         d_gpu = cla.to_device(queue, d0)
+        empty_like = cla.empty_like
     else:
         if backend == "pycuda":
             to_gpu = cua.to_gpu
+            empty_like = cua.empty_like
         else:
             to_gpu = cp.array
+            empty_like = cp.empty_like
 
         app = cuVkFFTApp(d0.shape, d0.dtype, ndim=ndim, norm=norm, axes=axes,
-                         useLUT=use_lut, inplace=inplace, r2c=r2c, dct=dct, stream=stream)
+                         useLUT=use_lut, inplace=inplace, r2c=r2c, dct=dct, strides=d0.strides, stream=stream)
         t2 = timeit.default_timer()
         d_gpu = to_gpu(d0)
 
@@ -341,7 +347,8 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
             elif backend == "cupy":
                 d1_gpu = cp.empty(shapec, dtype=dtype, order=order)
         else:
-            d1_gpu = d_gpu.copy()
+            # Note that pycuda's gpuarray.copy (as of 2022.2.2) does not copy strides
+            d1_gpu = empty_like(d_gpu)
 
     if has_scipy and ref_long_double:
         # Use long double precision
@@ -451,7 +458,7 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
             elif backend == "cupy":
                 d1_gpu = cp.empty(shape, dtype=dtypef, order=order)
         else:
-            d1_gpu = d_gpu.copy()
+            d1_gpu = empty_like(d_gpu)
 
     d1_gpu = app.ifft(d_gpu, d1_gpu)
     if not dct:

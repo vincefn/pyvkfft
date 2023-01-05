@@ -68,6 +68,18 @@ class TestFFT(unittest.TestCase):
     nproc = 1
     verbose = False
     colour = False
+    opencl_platform = None
+    vbackend = None
+
+    def setUp(self) -> None:
+        if self.vbackend is None:
+            self.vbackend = []
+            if has_pycuda:
+                self.vbackend.append("pycuda")
+            if has_cupy:
+                self.vbackend.append("cupy")
+            if has_pyopencl:
+                self.vbackend.append("pyopencl")
 
     def test_backend(self):
         self.assertTrue(has_pycuda or has_pyopencl or has_cupy,
@@ -76,17 +88,9 @@ class TestFFT(unittest.TestCase):
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
     def test_simple_fft(self):
         """Test the simple fft API"""
-        vbackend = []
-        if has_pycuda:
-            vbackend.append("pycuda")
-        if has_cupy:
-            vbackend.append("cupy")
-        if has_pyopencl:
-            vbackend.append("pyopencl")
-
-        for backend in vbackend:
+        for backend in self.vbackend:
             with self.subTest(backend=backend):
-                init_ctx(backend, gpu_name=self.gpu, verbose=False)
+                init_ctx(backend, gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
                 if backend == "pycuda":
                     dc = cua.to_gpu(ascent().astype(np.complex64))
                     dr = cua.to_gpu(ascent().astype(np.float32))
@@ -162,7 +166,7 @@ class TestFFT(unittest.TestCase):
         ct = 0
         vkwargs = []
         for backend in vbackend:
-            init_ctx(backend, gpu_name=self.gpu, verbose=False)
+            init_ctx(backend, gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
             cq = gpu_ctx_dic["pyopencl"][2] if backend == "pyopencl" else None
             for n in vn:
                 for dims in range(1, dims_max + 1):
@@ -228,13 +232,15 @@ class TestFFT(unittest.TestCase):
                                                                           r2c=r2c, dct=dct, order=order):
                                                             ct += 1
                                                             if not dry_run:
-                                                                res = test_accuracy(backend, sh, ndim, axes, dtype,
-                                                                                    inplace,
-                                                                                    norm, use_lut, r2c=r2c, dct=dct,
-                                                                                    gpu_name=self.gpu,
-                                                                                    stream=None, queue=cq,
-                                                                                    return_array=False, init_array=d0,
-                                                                                    verbose=verbose, order=order)
+                                                                res = \
+                                                                    test_accuracy(backend, sh, ndim, axes, dtype,
+                                                                                  inplace,
+                                                                                  norm, use_lut, r2c=r2c, dct=dct,
+                                                                                  gpu_name=self.gpu,
+                                                                                  opencl_platform=self.opencl_platform,
+                                                                                  stream=None, queue=cq,
+                                                                                  return_array=False, init_array=d0,
+                                                                                  verbose=verbose, order=order)
                                                                 npr = primes(n)
                                                                 ni, n2 = res["ni"], res["n2"]
                                                                 nii, n2i = res["nii"], res["n2i"]
@@ -266,7 +272,9 @@ class TestFFT(unittest.TestCase):
                                                                           "dtype": dtype, "inplace": inplace,
                                                                           "norm": norm, "use_lut": use_lut,
                                                                           "r2c": r2c, "dct": dct,
-                                                                          "gpu_name": self.gpu, "stream": None,
+                                                                          "gpu_name": self.gpu,
+                                                                          "opencl_platform": self.opencl_platform,
+                                                                          "stream": None,
                                                                           "verbose": False, "order": order,
                                                                           "colour_output": self.colour}
                                                                 vkwargs.append(kwargs)
@@ -302,15 +310,8 @@ class TestFFT(unittest.TestCase):
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
     def test_c2c(self):
         """Run C2C tests"""
-        vbackend = []
-        if has_pycuda:
-            vbackend.append("pycuda")
-        if has_cupy:
-            vbackend.append("cupy")
-        if has_pyopencl:
-            vbackend.append("pyopencl")
-        for backend in vbackend:
-            init_ctx(backend, gpu_name=self.gpu, verbose=False)
+        for backend in self.vbackend:
+            init_ctx(backend, gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
             has_cl_fp64 = gpu_ctx_dic["pyopencl"][3] if backend == "pyopencl" else True
             ct = 0
             vkwargs = []
@@ -335,15 +336,8 @@ class TestFFT(unittest.TestCase):
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
     def test_r2c(self):
         """Run R2C tests"""
-        vbackend = []
-        if has_pycuda:
-            vbackend.append("pycuda")
-        if has_cupy:
-            vbackend.append("cupy")
-        if has_pyopencl:
-            vbackend.append("pyopencl")
-        for backend in vbackend:
-            init_ctx(backend, gpu_name=self.gpu, verbose=False)
+        for backend in self.vbackend:
+            init_ctx(backend, gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
             has_cl_fp64 = gpu_ctx_dic["pyopencl"][3] if backend == "pyopencl" else True
             ct = 0
             vkwargs = []
@@ -369,15 +363,8 @@ class TestFFT(unittest.TestCase):
     @unittest.skipIf(not has_dct_ref, "scipy and pyfftw are not available - cannot test DCT")
     def test_dct(self):
         """Run DCT tests"""
-        vbackend = []
-        if has_pycuda:
-            vbackend.append("pycuda")
-        if has_cupy:
-            vbackend.append("cupy")
-        if has_pyopencl:
-            vbackend.append("pyopencl")
-        for backend in vbackend:
-            init_ctx(backend, gpu_name=self.gpu, verbose=False)
+        for backend in self.vbackend:
+            init_ctx(backend, gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
             has_cl_fp64 = gpu_ctx_dic["pyopencl"][3] if backend == "pyopencl" else True
             ct = 0
             vkwargs = []
@@ -403,7 +390,7 @@ class TestFFT(unittest.TestCase):
         """
         for dtype in (np.complex64, np.complex128):
             with self.subTest(dtype=np.dtype(dtype)):
-                init_ctx("pycuda", gpu_name=self.gpu, verbose=False)
+                init_ctx("pycuda", gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
                 if dtype == np.complex64:
                     rtol = 1e-6
                 else:
@@ -452,6 +439,7 @@ class TestFFTSystematic(unittest.TestCase):
     # t.ndims = args.ndims
     norm = 1
     nproc = 1
+    opencl_platform = None
     r2c = False
     radix = None
     range = 2, 128
@@ -473,7 +461,7 @@ class TestFFTSystematic(unittest.TestCase):
                 self.vbackend.append("cupy")
             if has_pyopencl:
                 self.vbackend.append("pyopencl")
-                init_ctx("pyopencl", gpu_name=self.gpu, verbose=False)
+                init_ctx("pyopencl", gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
                 self.cq, self.has_cl_fp64 = gpu_ctx_dic["pyopencl"][2:]
         self.assertTrue(not self.bluestein or self.radix is None, "Cannot select both Bluestein and radix")
         if not self.bluestein and self.radix is None:
