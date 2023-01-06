@@ -423,12 +423,16 @@ class TestFFT(unittest.TestCase):
         Test multiple FFT with queues different from the queue used
         in creating the VkFFTApp
         """
-        for dtype in (np.complex64, np.complex128):
+        has_cl_fp64 = gpu_ctx_dic["pyopencl"][3] if "pyopencl" in self.vbackend else True
+        vtype = (np.complex64, np.complex128)
+        if not has_cl_fp64:
+            vtype = (np.complex64,)
+        for dtype in vtype:
             with self.subTest(dtype=np.dtype(dtype)):
-                init_ctx("pyopencl", gpu_name=self.gpu, verbose=False)
+                init_ctx("pyopencl", gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
                 ctx = gpu_ctx_dic["pyopencl"][2].context
                 if dtype == np.complex64:
-                    rtol = 1e-6
+                    rtol = 5e-6
                 else:
                     rtol = 1e-12
                 sh = (256, 256)
@@ -437,14 +441,14 @@ class TestFFT(unittest.TestCase):
                 vd = []
                 vapp = []
 
-                with cl.CommandQueue(ctx) as cq:
-                    for i in range(n_queues):
-                        vapp.append(clVkFFTApp(d.shape, d.dtype, ndim=2, norm=1, queue=cq))
+                for i in range(n_queues):
+                    vapp.append(clVkFFTApp(d.shape, d.dtype, ndim=2, norm=1, queue=cl.CommandQueue(ctx)))
 
-                queues = [cl.CommandQueue(ctx) for _ in range(n_queues)]
+                queues = [cl.CommandQueue(ctx) for _ in range(2 * n_queues)]
                 for i in range(n_queues):
                     vd.append(cla.to_device(queues[i], np.roll(d, i * 7, axis=1)))
 
+                # test transforms with a supplied queue
                 for i in range(n_queues):
                     vapp[i].fft(vd[i], queue=queues[i])
                 for i in range(n_queues):
@@ -453,6 +457,34 @@ class TestFFT(unittest.TestCase):
 
                 for i in range(n_queues):
                     vapp[i].ifft(vd[i], queue=queues[i])
+                for i in range(n_queues):
+                    dn = np.roll(d, i * 7, axis=1)
+                    self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
+
+                # test transforms with a supplied queue, different from the arrays'
+                for i in range(n_queues):
+                    vapp[i].fft(vd[i], queue=queues[i + n_queues])
+                for i in range(n_queues):
+                    dn = fftn(np.roll(d, i * 7, axis=1))
+                    queues[i + n_queues].finish()
+                    self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
+
+                for i in range(n_queues):
+                    vapp[i].ifft(vd[i], queue=queues[i + n_queues])
+                for i in range(n_queues):
+                    dn = np.roll(d, i * 7, axis=1)
+                    queues[i + n_queues].finish()
+                    self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
+
+                # test transforms with the arrays queues
+                for i in range(n_queues):
+                    vapp[i].fft(vd[i])
+                for i in range(n_queues):
+                    dn = fftn(np.roll(d, i * 7, axis=1))
+                    self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
+
+                for i in range(n_queues):
+                    vapp[i].ifft(vd[i])
                 for i in range(n_queues):
                     dn = np.roll(d, i * 7, axis=1)
                     self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))

@@ -413,13 +413,16 @@ def main():
         t.nproc = args.nproc[0]
         t.opencl_platform = args.opencl_platform
         t.vbackend = args.backend
-        # KLUDGE: remove cuda stream test if neither cupy or pycuda are used
-        test_cuda_stream = False
-        for b in args.backend:
-            if 'pycuda' in b.lower():
-                test_cuda_stream = True
-        if not test_cuda_stream:
-            del t.test_pycuda_streams
+        if args.backend is not None:
+            # Remove tests depending on backend used
+            test_cuda_stream = False
+            for b in args.backend:
+                if 'pycuda' in b.lower():
+                    test_cuda_stream = True
+            if not test_cuda_stream:
+                del t.test_pycuda_streams
+            if 'pyopencl' not in args.backend:
+                del t.test_pyopencl_queues
         suite = unittest.defaultTestLoader.loadTestsFromTestCase(t)
         if t.verbose:
             res = unittest.TextTestRunner(verbosity=2).run(suite)
