@@ -70,7 +70,7 @@ def main():
     vdim = args.ndim
 
     # Basic test
-    com = "pyvkfft-test --nproc %d --html --range-mb 0 4100" % nproc0
+    com = "pyvkfft-test --nproc %d --html --range-mb 0 4100 --backend %s" % (nproc0, backend)
     if opencl_platform is not None:
         com += ' --opencl_platform ' + opencl_platform
     if dry_run:
