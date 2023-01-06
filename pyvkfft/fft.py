@@ -12,7 +12,7 @@ from enum import Enum
 from functools import lru_cache
 import numpy as np
 from .base import complex32
-from .config import FFT_CACHE_NB
+from . import config
 
 try:
     from .cuda import VkFFTApp as VkFFTApp_cuda, has_pycuda, has_cupy, vkfft_version
@@ -131,7 +131,7 @@ def _prepare_transform(src, dest, cl_queue, r2c=False):
         return backend, inplace, dest, cl_queue
 
 
-@lru_cache(maxsize=FFT_CACHE_NB)
+@lru_cache(maxsize=config.FFT_CACHE_NB)
 def _get_fft_app(backend, shape, dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue, strides=None):
     if backend in [Backend.PYCUDA, Backend.CUPY]:
         return VkFFTApp_cuda(shape, dtype, ndim=ndim, inplace=inplace,
@@ -141,7 +141,7 @@ def _get_fft_app(backend, shape, dtype, inplace, ndim, axes, norm, cuda_stream, 
                            norm=norm, axes=axes, strides=strides)
 
 
-@lru_cache(maxsize=FFT_CACHE_NB)
+@lru_cache(maxsize=config.FFT_CACHE_NB)
 def _get_rfft_app(backend, shape, dtype, inplace, ndim, norm, cuda_stream, cl_queue, strides=None):
     if backend in [Backend.PYCUDA, Backend.CUPY]:
         return VkFFTApp_cuda(shape, dtype, ndim=ndim, inplace=inplace,
@@ -151,7 +151,7 @@ def _get_rfft_app(backend, shape, dtype, inplace, ndim, norm, cuda_stream, cl_qu
                            norm=norm, r2c=True, strides=strides)
 
 
-@lru_cache(maxsize=FFT_CACHE_NB)
+@lru_cache(maxsize=config.FFT_CACHE_NB)
 def _get_dct_app(backend, shape, dtype, inplace, ndim, norm, dct_type,
                  cuda_stream, cl_queue):
     if backend in [Backend.PYCUDA, Backend.CUPY]:
@@ -199,7 +199,10 @@ def fftn(src, dest=None, ndim=None, norm=1, axes=None, cuda_stream=None, cl_queu
     backend, inplace, dest, cl_queue = _prepare_transform(src, dest, cl_queue, False)
     app = _get_fft_app(backend, src.shape, src.dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue,
                        strides=src.strides)
-    app.fft(src, dest)
+    if backend == Backend.PYOPENCL:
+        app.fft(src, dest, queue=cl_queue)
+    else:
+        app.fft(src, dest)
     if return_scale:
         s = app.get_fft_scale()
         return dest, s
@@ -243,7 +246,10 @@ def ifftn(src, dest=None, ndim=None, norm=1, axes=None, cuda_stream=None, cl_que
     backend, inplace, dest, cl_queue = _prepare_transform(src, dest, cl_queue, False)
     app = _get_fft_app(backend, src.shape, src.dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue,
                        strides=src.strides)
-    app.ifft(src, dest)
+    if backend == Backend.PYOPENCL:
+        app.ifft(src, dest, queue=cl_queue)
+    else:
+        app.ifft(src, dest)
     if return_scale:
         s = app.get_fft_scale()
         return dest, s
@@ -291,7 +297,10 @@ def rfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
     backend, inplace, dest, cl_queue, dtype = _prepare_transform(src, dest, cl_queue, True)
     app = _get_rfft_app(backend, src.shape, src.dtype, inplace, ndim, norm, cuda_stream, cl_queue,
                         strides=src.strides)
-    app.fft(src, dest)
+    if backend == Backend.PYOPENCL:
+        app.fft(src, dest, queue=cl_queue)
+    else:
+        app.fft(src, dest)
     if return_scale:
         s = app.get_fft_scale()
         return dest.view(dtype=dtype), s
@@ -339,7 +348,10 @@ def irfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
     backend, inplace, dest, cl_queue, dtype = _prepare_transform(src, dest, cl_queue, True)
     app = _get_rfft_app(backend, dest.shape, dest.dtype, inplace, ndim, norm, cuda_stream, cl_queue,
                         strides=dest.strides)
-    app.ifft(src, dest)
+    if backend == Backend.PYOPENCL:
+        app.ifft(src, dest, queue=cl_queue)
+    else:
+        app.ifft(src, dest)
     if return_scale:
         s = app.get_fft_scale()
         return dest.view(dtype=dtype), s
@@ -375,7 +387,10 @@ def dctn(src, dest=None, ndim=None, norm=1, dct_type=2, cuda_stream=None, cl_que
     backend, inplace, dest, cl_queue = _prepare_transform(src, dest, cl_queue, False)
     app = _get_dct_app(backend, src.shape, src.dtype, inplace, ndim, norm,
                        dct_type, cuda_stream, cl_queue)
-    app.fft(src, dest)
+    if backend == Backend.PYOPENCL:
+        app.fft(src, dest, queue=cl_queue)
+    else:
+        app.fft(src, dest)
     return dest
 
 
@@ -408,7 +423,10 @@ def idctn(src, dest=None, ndim=None, norm=1, dct_type=2, cuda_stream=None, cl_qu
     backend, inplace, dest, cl_queue = _prepare_transform(src, dest, cl_queue, False)
     app = _get_dct_app(backend, src.shape, src.dtype, inplace, ndim, norm,
                        dct_type, cuda_stream, cl_queue)
-    app.ifft(src, dest)
+    if backend == Backend.PYOPENCL:
+        app.ifft(src, dest, queue=cl_queue)
+    else:
+        app.ifft(src, dest)
     return dest
 
 

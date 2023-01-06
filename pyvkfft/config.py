@@ -16,6 +16,9 @@ FFT_CACHE_NB = 32
 # Valid values: either None or 1
 USE_LUT = None
 
+# Emit warning it the queue is different in the application and the array
+WARN_OPENCL_QUEUE_MISMATCH = True
+
 
 def process_environ(environ):
     if "PYVKFFT_FFT_CACHE_NB" in environ:
@@ -27,6 +30,9 @@ def process_environ(environ):
         USE_LUT = eval(environ["PYVKFFT_USE_LUT"])
     else:
         USE_LUT = None
+
+    if "PYVKFFT_WARN_OPENCL_QUEUE_MISMATCH" in environ:
+        WARN_OPENCL_QUEUE_MISMATCH = eval(environ["PYVKFFT_WARN_OPENCL_QUEUE_MISMATCH"])
 
     # Inject values into the module globals
     for name, value in locals().copy().items():

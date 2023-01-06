@@ -1,9 +1,15 @@
-Version 2023.1 (2021-XX-XX)
+Version 2023.1 (2023-XX-XX)
 -----------------------------
 * Fix R2C tests when using numpy (scipy unavailable) [#19]
 * Add support for F-ordered arrays (C2C and R2C)
-* Allow selection of backend for non-systemetic pvkfft-test
-* Add parameter for the OpenCL platform in pyvkfft-test
+* Allow selection of backend for non-systematic pvkfft-test
+* Add parameter to select the OpenCL platform in pyvkfft-test
+* For pyopencl, transforms will use the array's queue by default
+  instead of the application's (a warning will be written to
+  notify this change when they differ; it can be disabled using
+  config.WARN_OPENCL_QUEUE_MISMATCH). A queue can also be supplied
+  to the fft() and ifft() methods.
+  (from @isuruf, https://github.com/vincefn/pyvkfft/pull/17)
 * Fix simple fft interface import when only pycuda is used
 
 Version 2022.1.1 (2022-02-14)

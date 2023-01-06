@@ -11,6 +11,7 @@ import numpy as np
 import pyopencl as cl
 import pyopencl.array as cla
 from .base import load_library, primes, VkFFTApp as VkFFTAppBase, VkFFTResult, check_vkfft_result
+from . import config
 
 _vkfft_opencl = load_library("_vkfft_opencl")
 
@@ -164,7 +165,10 @@ class VkFFTApp(VkFFTAppBase):
         :param src: the source pyopencl Array
         :param dest: the destination pyopencl Array. Should be None for an inplace transform
         :param queue: the pyopencl CommandQueue to use for the transform. If not given,
-            the queue given when constructing the application is used.
+            the queue of the source array is used. If the queue does not match
+            the application's, a warning is emitted (see config.WARN_OPENCL_QUEUE_MISMATCH).
+            If a queue is not supplied and the source and destination arrays do not have the
+            same queue, then a RuntimeError is raised.
         :raises RuntimeError: in case of a GPU kernel launch error
         :return: the transformed array. For a R2C inplace transform, the complex view of the
             array is returned.
@@ -173,19 +177,19 @@ class VkFFTApp(VkFFTAppBase):
             if dest is None:
                 if src.queue is None:
                     warnings.warn("queue is not given and the source array does not have a queue "
-                        "attached to it. Falling back to the queue given to the constructor "
-                        "of VkFFTApp. This is deprecated and will stop working in the future. "
-                        "Use src_array.with_queue(queue) to attach a queue to the array or "
-                        "pass a queue to this method", DeprecationWarning)
+                                  "attached to it. Falling back to the queue given to the constructor "
+                                  "of VkFFTApp. This is deprecated and will stop working in the future. "
+                                  "Use src_array.with_queue(queue) to attach a queue to the array or "
+                                  "pass a queue to this method", DeprecationWarning)
                     queue = self.queue
                 else:
                     queue = src.queue
             elif dest.queue is None and src.queue is None:
                 warnings.warn("queue is not given and the source/dest arrays do not have a queue "
-                        "attached to it. Falling back to the queue given to the constructor "
-                        "of VkFFTApp. This is deprecated and will stop working in the future. "
-                        "Use src_array.with_queue(queue) to attach a queue to the array or "
-                        "pass a queue to this method", DeprecationWarning)
+                              "attached to it. Falling back to the queue given to the constructor "
+                              "of VkFFTApp. This is deprecated and will stop working in the future. "
+                              "Use src_array.with_queue(queue) to attach a queue to the array or "
+                              "pass a queue to this method", DeprecationWarning)
                 queue = self.queue
             elif dest.queue != src.queue:
                 if dest.queue is None:
@@ -193,17 +197,17 @@ class VkFFTApp(VkFFTAppBase):
                 elif src.queue is None:
                     queue = dest.queue
                 else:
-                    warnings.warn("queue is not given and the source/dest arrays are not equal. "
-                        "Falling back to the queue given to the constructor. This is deprecated "
-                        "and will stop working in the future. "
-                        "Use src_array.with_queue(queue) to attach a queue to the array or "
-                        "pass a queue to this method", DeprecationWarning)
-                    queue = self.queue
+                    raise RuntimeError("queue is not given and the source/dest arrays queues differ. "
+                                       "Please supply a queue when calling fft(...), or "
+                                       "use array.with_queue(queue)")
             else:
                 queue = src.queue
 
-        if queue != self.queue:
-            self.queue.finish()
+        if config.WARN_OPENCL_QUEUE_MISMATCH and self.queue != queue:
+            warnings.warn("Using the array queue for transform, which differs from the application "
+                          "queue. NB: this warning will be removed in a future version , and you can "
+                          "suppress it using config.WARN_OPENCL_QUEUE_MISMATCH",
+                          UserWarning)
 
         if self.inplace:
             if dest is not None:
@@ -240,7 +244,10 @@ class VkFFTApp(VkFFTAppBase):
         :param src: the source pyopencl.Array
         :param dest: the destination pyopencl.Array. Can be None for an inplace transform
         :param queue: the pyopencl CommandQueue to use for the transform. If not given,
-            the queue given when constructing the application is used.
+            the queue of the source array is used. If the queue does not match
+            the application, a warning is emitted (see config.WARN_OPENCL_QUEUE_MISMATCH).
+            If a queue is not supplied and the source and destination arrays do not have the
+            same queue, then a RuntimeError is raised.
         :raises RuntimeError: in case of a GPU kernel launch error
         :return: the transformed array. For a C2R inplace transform, the float view of the
             array is returned.
@@ -249,19 +256,19 @@ class VkFFTApp(VkFFTAppBase):
             if dest is None:
                 if src.queue is None:
                     warnings.warn("queue is not given and the source array does not have a queue "
-                        "attached to it. Falling back to the queue given to the constructor "
-                        "of VkFFTApp. This is deprecated and will stop working in the future. "
-                        "Use src_array.with_queue(queue) to attach a queue to the array or "
-                        "pass a queue to this method", DeprecationWarning)
+                                  "attached to it. Falling back to the queue given to the constructor "
+                                  "of VkFFTApp. This is deprecated and will stop working in the future. "
+                                  "Use src_array.with_queue(queue) to attach a queue to the array or "
+                                  "pass a queue to this method", DeprecationWarning)
                     queue = self.queue
                 else:
                     queue = src.queue
             elif dest.queue is None and src.queue is None:
                 warnings.warn("queue is not given and the source/dest arrays do not have a queue "
-                        "attached to it. Falling back to the queue given to the constructor "
-                        "of VkFFTApp. This is deprecated and will stop working in the future. "
-                        "Use src_array.with_queue(queue) to attach a queue to the array or "
-                        "pass a queue to this method", DeprecationWarning)
+                              "attached to it. Falling back to the queue given to the constructor "
+                              "of VkFFTApp. This is deprecated and will stop working in the future. "
+                              "Use src_array.with_queue(queue) to attach a queue to the array or "
+                              "pass a queue to this method", DeprecationWarning)
                 queue = self.queue
             elif dest.queue != src.queue:
                 if dest.queue is None:
@@ -269,17 +276,17 @@ class VkFFTApp(VkFFTAppBase):
                 elif src.queue is None:
                     queue = dest.queue
                 else:
-                    warnings.warn("queue is not given and the source/dest arrays are not equal. "
-                        "Falling back to the queue given to the constructor. This is deprecated "
-                        "and will stop working in the future. "
-                        "Use src_array.with_queue(queue) to attach a queue to the array or "
-                        "pass a queue to this method", DeprecationWarning)
-                    queue = self.queue
+                    raise RuntimeError("queue is not given and the source/dest arrays queues differ. "
+                                       "Please supply a queue when calling fft(...), or "
+                                       "use array.with_queue(queue)")
             else:
                 queue = src.queue
 
-        if queue != self.queue:
-            self.queue.finish()
+        if config.WARN_OPENCL_QUEUE_MISMATCH and self.queue != queue:
+            warnings.warn("Using the array queue for transform, which differs from the application "
+                          "queue. NB: this warning will be removed in a future version , and you can "
+                          "suppress it using config.WARN_OPENCL_QUEUE_MISMATCH",
+                          UserWarning)
 
         if self.inplace:
             if dest is not None:
