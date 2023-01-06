@@ -27,6 +27,7 @@ from pyvkfft.base import primes, radix_gen, radix_gen_n
 from pyvkfft.fft import fftn as vkfftn, ifftn as vkifftn, rfftn as vkrfftn, \
     irfftn as vkirfftn, dctn as vkdctn, idctn as vkidctn
 from pyvkfft.accuracy import test_accuracy, test_accuracy_kwargs, fftn, init_ctx, gpu_ctx_dic, has_dct_ref, has_scipy
+import pyvkfft.config
 
 try:
     import pycuda.gpuarray as cua
@@ -48,6 +49,7 @@ except ImportError:
 try:
     import pyopencl as cl
     import pyopencl.array as cla
+    from pyvkfft.opencl import VkFFTApp as clVkFFTApp
 
     has_pyopencl = True
 except ImportError:
@@ -415,6 +417,123 @@ class TestFFT(unittest.TestCase):
                 for i in range(n_streams):
                     dn = np.roll(d, i * 7, axis=1)
                     self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
+
+    @unittest.skipIf(not has_pyopencl, "pyopencl is not available")
+    def test_pyopencl_queues(self):
+        """
+        Test multiple FFT with queues different from the queue used
+        in creating the VkFFTApp
+        """
+        has_cl_fp64 = gpu_ctx_dic["pyopencl"][3] if "pyopencl" in self.vbackend else True
+        vtype = (np.complex64, np.complex128)
+        if not has_cl_fp64:
+            vtype = (np.complex64,)
+        # Disable warning
+        old_warning = pyvkfft.config.WARN_OPENCL_QUEUE_MISMATCH
+        pyvkfft.config.WARN_OPENCL_QUEUE_MISMATCH = False
+        for dtype in vtype:
+            with self.subTest(dtype=np.dtype(dtype)):
+                init_ctx("pyopencl", gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
+                ctx = gpu_ctx_dic["pyopencl"][2].context
+                if dtype == np.complex64:
+                    rtol = 5e-6
+                else:
+                    rtol = 1e-12
+                sh = (256, 256)
+                d = (np.random.uniform(-0.5, 0.5, sh) + 1j * np.random.uniform(-0.5, 0.5, sh)).astype(dtype)
+                n_queues = 5
+                vd = []
+                vapp = []
+
+                for i in range(n_queues):
+                    vapp.append(clVkFFTApp(d.shape, d.dtype, ndim=2, norm=1, queue=cl.CommandQueue(ctx)))
+
+                queues = [cl.CommandQueue(ctx) for _ in range(2 * n_queues)]
+                for i in range(n_queues):
+                    vd.append(cla.to_device(queues[i], np.roll(d, i * 7, axis=1)))
+
+                # test transforms with a supplied queue
+                for i in range(n_queues):
+                    vapp[i].fft(vd[i], queue=queues[i])
+                    dn = fftn(np.roll(d, i * 7, axis=1))
+                    self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
+
+                for i in range(n_queues):
+                    vapp[i].ifft(vd[i], queue=queues[i])
+                    dn = np.roll(d, i * 7, axis=1)
+                    self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
+
+                # test transforms with a supplied queue, different from the arrays'
+                for i in range(n_queues):
+                    vapp[i].fft(vd[i], queue=queues[i + n_queues])
+                    dn = fftn(np.roll(d, i * 7, axis=1))
+                    queues[i + n_queues].finish()
+                    self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
+
+                for i in range(n_queues):
+                    vapp[i].ifft(vd[i], queue=queues[i + n_queues])
+                    dn = np.roll(d, i * 7, axis=1)
+                    queues[i + n_queues].finish()
+                    self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
+
+                # test transforms with the arrays queues
+                for i in range(n_queues):
+                    vapp[i].fft(vd[i])
+                    dn = fftn(np.roll(d, i * 7, axis=1))
+                    self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
+
+                for i in range(n_queues):
+                    vapp[i].ifft(vd[i])
+                    dn = np.roll(d, i * 7, axis=1)
+                    self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
+
+                # Test using the simple fft interface: inplace, same queue as array
+                for i in range(n_queues):
+                    vd[i] = vkfftn(vd[i], vd[i])
+                    dn = fftn(np.roll(d, i * 7, axis=1))
+                    self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
+
+                    vd[i] = vkifftn(vd[i], vd[i])
+                    dn = np.roll(d, i * 7, axis=1)
+                    self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
+
+                # Test using the simple fft interface: inplace, different queue for the transform
+                # A synchronisation is needed as get() will use the array's queue and not the transform's
+                for i in range(n_queues):
+                    vd[i] = vkfftn(vd[i], vd[i], cl_queue=queues[i + n_queues])
+                    dn = fftn(np.roll(d, i * 7, axis=1))
+                    queues[i + n_queues].finish()
+                    self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
+
+                    vd[i] = vkifftn(vd[i], vd[i], cl_queue=queues[i + n_queues])
+                    dn = np.roll(d, i * 7, axis=1)
+                    queues[i + n_queues].finish()
+                    self.assertTrue(np.allclose(dn, vd[i].get(), rtol=rtol, atol=abs(dn).max() * rtol))
+
+                # Test using the simple fft interface: out-of-place, same queue as array
+                # The newly allocated array has the same queu as the source array, so no synchronisation issue
+                for i in range(n_queues):
+                    d1 = vkfftn(vd[i])
+                    dn = fftn(np.roll(d, i * 7, axis=1))
+                    self.assertTrue(np.allclose(dn, d1.get(), rtol=rtol, atol=abs(dn).max() * rtol))
+
+                    d2 = vkifftn(d1)
+                    dn = np.roll(d, i * 7, axis=1)
+                    self.assertTrue(np.allclose(dn, d2.get(), rtol=rtol, atol=abs(dn).max() * rtol))
+
+                # Test using the simple fft interface: out-of-place, different queue for the transform
+                # A synchronisation is needed as get() will use the array's queue and not the transform's
+                for i in range(n_queues):
+                    d1 = vkfftn(vd[i], cl_queue=queues[i + n_queues])
+                    dn = fftn(np.roll(d, i * 7, axis=1))
+                    queues[i + n_queues].finish()
+                    self.assertTrue(np.allclose(dn, d1.get(), rtol=rtol, atol=abs(dn).max() * rtol))
+
+                    d2 = vkifftn(d1, cl_queue=queues[i + n_queues])
+                    dn = np.roll(d, i * 7, axis=1)
+                    queues[i + n_queues].finish()
+                    self.assertTrue(np.allclose(dn, d2.get(), rtol=rtol, atol=abs(dn).max() * rtol))
+        pyvkfft.config.WARN_OPENCL_QUEUE_MISMATCH = old_warning
 
 
 # The class parameters are written in pyvkfft_test.main()

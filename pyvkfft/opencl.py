@@ -11,6 +11,7 @@ import numpy as np
 import pyopencl as cl
 import pyopencl.array as cla
 from .base import load_library, primes, VkFFTApp as VkFFTAppBase, VkFFTResult, check_vkfft_result
+from . import config
 
 _vkfft_opencl = load_library("_vkfft_opencl")
 
@@ -158,20 +159,61 @@ class VkFFTApp(VkFFTAppBase):
                                          int(self.use_lut), int(self.keepShaderCode),
                                          n_batch, skipx, skipy, skipz)
 
-    def fft(self, src: cla.Array, dest: cla.Array = None):
+    def fft(self, src: cla.Array, dest: cla.Array = None, queue: cl.CommandQueue = None):
         """
         Compute the forward FFT
         :param src: the source pyopencl Array
         :param dest: the destination pyopencl Array. Should be None for an inplace transform
+        :param queue: the pyopencl CommandQueue to use for the transform. If not given,
+            the queue of the source array is used. If the queue does not match
+            the application's, a warning is emitted (see config.WARN_OPENCL_QUEUE_MISMATCH).
+            If a queue is not supplied and the source and destination arrays do not have the
+            same queue, then a RuntimeError is raised.
         :raises RuntimeError: in case of a GPU kernel launch error
         :return: the transformed array. For a R2C inplace transform, the complex view of the
             array is returned.
         """
+        if not queue:
+            if dest is None:
+                if src.queue is None:
+                    warnings.warn("queue is not given and the source array does not have a queue "
+                                  "attached to it. Falling back to the queue given to the constructor "
+                                  "of VkFFTApp. This is deprecated and will stop working in the future. "
+                                  "Use src_array.with_queue(queue) to attach a queue to the array or "
+                                  "pass a queue to this method", DeprecationWarning)
+                    queue = self.queue
+                else:
+                    queue = src.queue
+            elif dest.queue is None and src.queue is None:
+                warnings.warn("queue is not given and the source/dest arrays do not have a queue "
+                              "attached to it. Falling back to the queue given to the constructor "
+                              "of VkFFTApp. This is deprecated and will stop working in the future. "
+                              "Use src_array.with_queue(queue) to attach a queue to the array or "
+                              "pass a queue to this method", DeprecationWarning)
+                queue = self.queue
+            elif dest.queue != src.queue:
+                if dest.queue is None:
+                    queue = src.queue
+                elif src.queue is None:
+                    queue = dest.queue
+                else:
+                    raise RuntimeError("queue is not given and the source/dest arrays queues differ. "
+                                       "Please supply a queue when calling fft(...), or "
+                                       "use array.with_queue(queue)")
+            else:
+                queue = src.queue
+
+        if config.WARN_OPENCL_QUEUE_MISMATCH and self.queue != queue:
+            warnings.warn("Using the array queue for transform, which differs from the application "
+                          "queue. NB: this warning will be removed in a future version , and you can "
+                          "suppress it using config.WARN_OPENCL_QUEUE_MISMATCH",
+                          UserWarning)
+
         if self.inplace:
             if dest is not None:
                 if src.data.int_ptr != dest.data.int_ptr:
                     raise RuntimeError("VkFFTApp.fft: dest is not None but this is an inplace transform")
-            res = _vkfft_opencl.fft(self.app, int(src.data.int_ptr), int(src.data.int_ptr), int(self.queue.int_ptr))
+            res = _vkfft_opencl.fft(self.app, int(src.data.int_ptr), int(src.data.int_ptr), int(queue.int_ptr))
             check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
                                self.dct, backend="opencl")
             if self.norm == "ortho":
@@ -189,27 +231,68 @@ class VkFFTApp(VkFFTAppBase):
                 raise RuntimeError("VkFFTApp.fft: dest and src are identical but this is an out-of-place transform")
             if self.r2c:
                 assert (dest.size == src.size // src.shape[-1] * (src.shape[-1] // 2 + 1))
-            res = _vkfft_opencl.fft(self.app, int(src.data.int_ptr), int(dest.data.int_ptr), int(self.queue.int_ptr))
+            res = _vkfft_opencl.fft(self.app, int(src.data.int_ptr), int(dest.data.int_ptr), int(queue.int_ptr))
             check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
                                self.dct, backend="opencl")
             if self.norm == "ortho":
                 dest *= self._get_fft_scale(norm=0)
             return dest
 
-    def ifft(self, src: cla.Array, dest: cla.Array = None):
+    def ifft(self, src: cla.Array, dest: cla.Array = None, queue: cl.CommandQueue = None):
         """
         Compute the backward FFT
         :param src: the source pyopencl.Array
         :param dest: the destination pyopencl.Array. Can be None for an inplace transform
+        :param queue: the pyopencl CommandQueue to use for the transform. If not given,
+            the queue of the source array is used. If the queue does not match
+            the application, a warning is emitted (see config.WARN_OPENCL_QUEUE_MISMATCH).
+            If a queue is not supplied and the source and destination arrays do not have the
+            same queue, then a RuntimeError is raised.
         :raises RuntimeError: in case of a GPU kernel launch error
         :return: the transformed array. For a C2R inplace transform, the float view of the
             array is returned.
         """
+        if not queue:
+            if dest is None:
+                if src.queue is None:
+                    warnings.warn("queue is not given and the source array does not have a queue "
+                                  "attached to it. Falling back to the queue given to the constructor "
+                                  "of VkFFTApp. This is deprecated and will stop working in the future. "
+                                  "Use src_array.with_queue(queue) to attach a queue to the array or "
+                                  "pass a queue to this method", DeprecationWarning)
+                    queue = self.queue
+                else:
+                    queue = src.queue
+            elif dest.queue is None and src.queue is None:
+                warnings.warn("queue is not given and the source/dest arrays do not have a queue "
+                              "attached to it. Falling back to the queue given to the constructor "
+                              "of VkFFTApp. This is deprecated and will stop working in the future. "
+                              "Use src_array.with_queue(queue) to attach a queue to the array or "
+                              "pass a queue to this method", DeprecationWarning)
+                queue = self.queue
+            elif dest.queue != src.queue:
+                if dest.queue is None:
+                    queue = src.queue
+                elif src.queue is None:
+                    queue = dest.queue
+                else:
+                    raise RuntimeError("queue is not given and the source/dest arrays queues differ. "
+                                       "Please supply a queue when calling fft(...), or "
+                                       "use array.with_queue(queue)")
+            else:
+                queue = src.queue
+
+        if config.WARN_OPENCL_QUEUE_MISMATCH and self.queue != queue:
+            warnings.warn("Using the array queue for transform, which differs from the application "
+                          "queue. NB: this warning will be removed in a future version , and you can "
+                          "suppress it using config.WARN_OPENCL_QUEUE_MISMATCH",
+                          UserWarning)
+
         if self.inplace:
             if dest is not None:
                 if src.data.int_ptr != dest.data.int_ptr:
                     raise RuntimeError("VkFFTApp.fft: dest!=src but this is an inplace transform")
-            res = _vkfft_opencl.ifft(self.app, int(src.data.int_ptr), int(src.data.int_ptr), int(self.queue.int_ptr))
+            res = _vkfft_opencl.ifft(self.app, int(src.data.int_ptr), int(src.data.int_ptr), int(queue.int_ptr))
             check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
                                self.dct, backend="opencl")
             if self.norm == "ortho":
@@ -230,10 +313,10 @@ class VkFFTApp(VkFFTAppBase):
                 # Special case, src and dest buffer sizes are different,
                 # VkFFT is configured to go back to the source buffer
                 res = _vkfft_opencl.ifft(self.app, int(dest.data.int_ptr), int(src.data.int_ptr),
-                                         int(self.queue.int_ptr))
+                                         int(queue.int_ptr))
             else:
                 res = _vkfft_opencl.ifft(self.app, int(src.data.int_ptr), int(dest.data.int_ptr),
-                                         int(self.queue.int_ptr))
+                                         int(queue.int_ptr))
             check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
                                self.dct, backend="opencl")
             if self.norm == "ortho":

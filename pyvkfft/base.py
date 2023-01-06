@@ -12,7 +12,7 @@ import ctypes
 import warnings
 from enum import Enum
 import numpy as np
-from .config import USE_LUT
+from . import config
 
 # np.complex32 does not exist yet https://github.com/numpy/numpy/issues/14753
 complex32 = np.dtype([('re', np.float16), ('im', np.float16)])
@@ -527,8 +527,8 @@ class VkFFTApp:
                 self.use_lut = -1
             else:
                 self.use_lut = kwargs["useLUT"]
-        elif USE_LUT is not None:
-            self.use_lut = USE_LUT
+        elif config.USE_LUT is not None:
+            self.use_lut = config.USE_LUT
         else:
             self.use_lut = -1
 
