@@ -37,6 +37,19 @@ This package can be installed from source using ``pip install .``.
 *Note:* ``python setup.py install`` is now disabled, to avoid messed up environments
 where both methods have been used.
 
+Installation using conda
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+You can use ``conda`` to install pre-compiled binaries with CUDA and OpenCL support
+on ``linux-x86_64, linux-aarch64, linux-ppc64le, win-amd64, macos-x86_64, macos-arm64``
+platforms.
+
+.. code-block:: shell
+
+   conda config --add channels conda-forge
+   conda install pyvkfft
+
+
 Examples
 --------
 
