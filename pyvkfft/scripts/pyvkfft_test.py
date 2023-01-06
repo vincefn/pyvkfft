@@ -93,7 +93,7 @@ def make_html_pre_post(overwrite=False):
               '<p>Note: for the R2C inverse transform, the result of the forward ' \
               'transform is used instead of re-using the random array (in order to have ' \
               'a proper half-Hermitian array), contrary to what is done for other ' \
-              'transforms. This explains with the IFFT R2C maximum (L<sub>&infin;</sub>) ' \
+              'transforms. This explains why the IFFT R2C maximum (L<sub>&infin;</sub>) ' \
               'errors are larger.' \
               '<p>Note 2: some "errors" for DCT may be due to unsupported sizes in VkFFT, ' \
               'which vary depending on the card and language used (amount of ' \
@@ -579,7 +579,6 @@ def main():
             html_out = name_next_file("pyvkfft-test%03d.html")
         with open(html_out, 'w') as f:
             f.write(html)
-
     sys.exit(int(nb_err_fail > 0))
 
 
