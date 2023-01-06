@@ -276,7 +276,7 @@ def radix_gen_n(nmax, max_size, radix, ndim=None, even=False, exclude_one=True, 
     return v
 
 
-def calc_transform_axes(shape, axes=None, ndim=None):
+def calc_transform_axes(shape, axes=None, ndim=None, strides=None):
     """ Compute the final shape of the array to be passed
     to VkFFT, and the axes for which the transform should
     be skipped.
@@ -290,7 +290,8 @@ def calc_transform_axes(shape, axes=None, ndim=None):
     - shape=(4,5,6,7) and axes=(2,3): the first two axes will be collapsed
       to a (20,6,7) axis
     - shape=(4,5,6,7,8,9) and axes=(2,3): the first two axes will be collapsed
-      to a (20,6,7) axis and a batch size of 8*9=81 will be used
+      to a (20,6,7) axis (the first axis is skipped) and a batch size
+      of 8*9=81 will be used
     Examples of impossible transforms:
     - shape=(4,5,6,7) with ndim=4: only 3D transforms are allowed
     - shape=(4,5,6,7) with axes=(1,2,3): the index of the last transformed
@@ -303,6 +304,8 @@ def calc_transform_axes(shape, axes=None, ndim=None):
         are transformed, or up to ndim.
     :param ndim: the number of dimensions for the transform. If None,
         the number of axes is used
+    :param strides: the array strides. If None, a C-order is assumed
+        with the fastest axes along the last dimensions (numpy default)
     :return: (shape, skip_axis, ndim) with the 4D shape after collapsing
         consecutive non-transformed axes (padded with ones if necessary,
         with the order adequate for VkFFT (nx, ny, nz, n_batch),
@@ -324,6 +327,16 @@ def calc_transform_axes(shape, axes=None, ndim=None):
         else:
             if ndim1 != len(axes):
                 raise RuntimeError("The number of transform axes does not match ndim:", axes, ndim)
+
+    if strides is not None and len(shape) > 1:
+        idx = np.argsort(strides)[::-1]
+        if not np.alltrue((idx[1:] - idx[:-1]) > 0):
+            # Array is not C-ordered, need to move axes
+            idxend = -len(idx) + idx
+            # print("Re-ordering:", shape1, np.take(shape1, idx), "axes:", axes, [idxend[i] for i in axes])
+            shape1 = np.take(shape1, idx).tolist()
+            axes = [idxend[i] for i in axes]
+
     # Collapse non-transform axes when possible
     skip_axis = [True for i in range(len(shape1))]
     for i in axes:
@@ -421,7 +434,7 @@ class VkFFTApp:
     """
 
     def __init__(self, shape, dtype: type, ndim=None, inplace=True, norm=1,
-                 r2c=False, dct=False, axes=None, **kwargs):
+                 r2c=False, dct=False, axes=None, strides=None, **kwargs):
         """
         Init function for the VkFFT application.
 
@@ -452,7 +465,11 @@ class VkFFTApp:
             reinterpret the type) will have a shape (..., nx//2 + 1).
             For an out-of-place transform, if the input (real) shape is (..., nx),
             the output (complex) shape should be (..., nx//2+1).
-            Note that for C2R transforms with ndim>=2, the source (complex) array
+            Note 1: the above shape changes are true for C-contiguous arrays;
+            generally the axis which is halved by the R2C transform always is
+            the fast axis -with a stride of 1 element. For F-contiguous arrays
+            this will be the first dimension instead of the last.
+            Note 2:for C2R transforms with ndim>=2, the source (complex) array
             is modified.
         :param dct: used to perform a Direct Cosine Transform (DCT) aka a R2R transform.
             An integer can be given to specify the type of DCT (1, 2, 3 or 4).
@@ -460,6 +477,7 @@ class VkFFTApp:
         :param axes: a list or tuple of axes along which the transform should be made.
             if None, the transform is done along the ndim fastest axes, or all
             axes if ndim is None. Not allowed for R2C transforms
+        :param strides: the array strides - needed if not C-ordered.
         :raises RuntimeError:  if the transform dimensions are not allowed by VkFFT.
         """
         self.app = None
@@ -470,9 +488,14 @@ class VkFFTApp:
             raise RuntimeError("R2C or DCT selected but input type is not real !")
         if r2c and axes is not None:
             raise RuntimeError("axes=... is not allowed for R2C transforms")
+        if strides is not None and dct and len(shape) > 1:
+            # TODO: update support status for non-C-contiguous DCT transforms
+            s = np.array(strides)
+            if not np.alltrue((s[:-1] - s[1:]) > 0):
+                raise RuntimeError("A C-contiguous array is required for DCT transforms")
         # Get the final shape passed to VkFFT, collapsing non-transform axes
-        # as necessary. The calculated shape has 4 dimensions (nx, ny, nz, n_batch)
-        self.shape, self.skip_axis, self.ndim = calc_transform_axes(shape, axes, ndim)
+        # as necessary. The calculated shape has 4 dimensions (nx, ny, nz, n_batch).
+        self.shape, self.skip_axis, self.ndim = calc_transform_axes(shape, axes, ndim, strides)
         self.inplace = inplace
         self.r2c = r2c
         if dct is False:
@@ -546,6 +569,8 @@ class VkFFTApp:
                 ndim_real += 1
         s = np.sqrt(s)
         if self.r2c and self.inplace:
+            # Note: this is still correct for non-C-ordered arrays since
+            # self.shape has been re-ordered
             s *= np.sqrt((self.shape[0] - 2) / self.shape[0])
         if self.dct:
             s *= 2 ** (0.5 * ndim_real)

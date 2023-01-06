@@ -17,9 +17,12 @@ def main():
     gpu_gb = 32
     dry_run = False
     backend = 'cupy'
+    opencl_platform = None
 
     # Basic test
     com = "pyvkfft-test --nproc %d --html --range-mb 0 4100" % nproc0
+    if opencl_platform is not None:
+        com += ' --opencl_platform ' + opencl_platform
     if dry_run:
         print(com)
     else:
