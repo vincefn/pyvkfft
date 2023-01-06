@@ -28,13 +28,13 @@ def make_parser():
     parser.add_argument('--gpu', action='store',
                         help="Name (or sub-string) of the GPU to use. If not given, "
                              "the first available will be used")
-    parser.add_argument('--nproc', action='store', nargs=1,
+    parser.add_argument('--nproc', action='store',
                         help="Maximum number of parallel process to use to speed up tests. "
                              "This number will be decreased for larger arrays (e.g. 3D), but"
                              "it should be checked to avoid memory errors. A good value"
                              "for 32 GB is 20 processes.",
                         default=10, type=int)
-    parser.add_argument('--gpumem', action='store', nargs=1,
+    parser.add_argument('--gpumem', action='store',
                         help="Available GPU memory.",
                         default=16, type=int)
     parser.add_argument('--backend', action='store', required=True,
