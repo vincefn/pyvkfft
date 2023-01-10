@@ -11,6 +11,7 @@ Version 2023.1 (2023-XX-XX)
   to the fft() and ifft() methods.
   (from @isuruf, https://github.com/vincefn/pyvkfft/pull/17)
 * Fix simple fft interface import when only pycuda is used
+* Add cuda_driver_version, cuda_compile_version, cuda_runtime_version
 
 Version 2022.1.1 (2022-02-14)
 -----------------------------

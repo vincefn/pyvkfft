@@ -296,3 +296,39 @@ def vkfft_version():
     """
     int_ver = _vkfft_cuda.vkfft_version()
     return "%d.%d.%d" % (int_ver // 10000, (int_ver % 10000) // 100, int_ver % 100)
+
+
+def cuda_runtime_version(raw=False):
+    """
+    Get CUDA runtime version
+    :param raw: if True, return the version as X*1000+Y*10+Z
+    :return: version as X.Y.Z
+    """
+    int_ver = _vkfft_cuda.cuda_runtime_version()
+    if raw:
+        return raw
+    return "%d.%d.%d" % (int_ver // 1000, (int_ver % 1000) // 10, int_ver % 10)
+
+
+def cuda_driver_version(raw=False):
+    """
+    Get CUDA driver version
+    :param raw: if True, return the version as X*1000+Y*10+Z
+    :return: version as X.Y.Z
+    """
+    int_ver = _vkfft_cuda.cuda_driver_version()
+    if raw:
+        return raw
+    return "%d.%d.%d" % (int_ver // 1000, (int_ver % 1000) // 10, int_ver % 10)
+
+
+def cuda_compile_version(raw=False):
+    """
+    Get CUDA version against which pyvkfft was compiled
+    :param raw: if True, return the version as X*1000+Y*10+Z
+    :return: version as X.Y.Z
+    """
+    if raw:
+        return raw
+    int_ver = _vkfft_cuda.cuda_compile_version()
+    return "%d.%d.%d" % (int_ver // 1000, (int_ver % 1000) // 10, int_ver % 10)

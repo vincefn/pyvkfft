@@ -37,6 +37,12 @@ LIBRARY_API void free_config(VkFFTConfiguration *config);
 
 LIBRARY_API uint32_t vkfft_version();
 
+LIBRARY_API int cuda_runtime_version();
+
+LIBRARY_API int cuda_driver_version();
+
+LIBRARY_API int cuda_compile_version();
+
 
 class PyVkFFT
 {
@@ -290,4 +296,28 @@ void free_config(VkFFTConfiguration *config)
 uint32_t vkfft_version()
 {
   return VkFFTGetVersion();
+};
+
+/// CUDA runtime version
+int cuda_runtime_version()
+{
+  int v=0;
+  const cudaError_t err = cudaRuntimeGetVersion(&v);
+  if(err==cudaSuccess) return v;
+  return 0;
+};
+
+/// CUDA driver version
+int cuda_driver_version()
+{
+  int v=0;
+  const CUresult err = cuDriverGetVersion(&v);
+  if(err==CUDA_SUCCESS) return v;
+  return 0;
+};
+
+/// CUDA version against which pyvkfft was compiled
+int cuda_compile_version()
+{
+  return (int)CUDA_VERSION;
 };

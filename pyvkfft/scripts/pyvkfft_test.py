@@ -20,6 +20,16 @@ from pyvkfft.test import TestFFT, TestFFTSystematic
 from pyvkfft.version import __version__, vkfft_version
 
 
+def cuda_info_str():
+    try:
+        # The functions used should not create a context on the GPU
+        from ..cuda import cuda_compile_version, cuda_runtime_version, cuda_driver_version
+        return "CUDA: driver %s, runtime %s, compiled %s" % \
+               (cuda_driver_version(), cuda_runtime_version(), cuda_compile_version())
+    except:
+        return ""
+
+
 def suite_default():
     suite = unittest.TestSuite()
     load_tests = unittest.defaultTestLoader.loadTestsFromTestCase
@@ -82,7 +92,7 @@ def make_html_pre_post(overwrite=False):
               '<body>\n' \
               '<div class="center">' \
               '<h2>pyVkFFT test results</h2>\n' \
-              '<h3>pyvkfft version: %s  VkFFFT version:%s host : %s</h3>\n' \
+              '<h3>pyvkfft: %s,  VkFFFT:%s %s host : %s</h3>\n' \
               '<div style="text-align:left;">' \
               '<p>Methodology: the included graphs measure the accuracy of the forward ' \
               'and backward transforms: an array is generated with random uniform values ' \
@@ -119,7 +129,7 @@ def make_html_pre_post(overwrite=False):
               '           <th>ERROR</th>' \
               '       </tr>\n' \
               '   </thead>\n' \
-              '<tbody class="center">\n' % (__version__, vkfft_version(), socket.gethostname())
+              '<tbody class="center">\n' % (__version__, vkfft_version(), cuda_info_str(), socket.gethostname())
         open("pyvkfft-test1000.html", "w").write(tmp)
     if ('pyvkfft-test1999.html' not in os.listdir()) or overwrite:
         tmp = '</tbody>\n' \
