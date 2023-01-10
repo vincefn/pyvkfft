@@ -109,12 +109,12 @@ def main():
                                 n1 = 3 if 'dct 4' in transform else 2
                                 if ndim == 1:
                                     if 'dct 1' in transform:
-                                        n2 = 767 if 'double' in prec else 1535
+                                        n2 = 760 if 'double' in prec else 1500  # cuda: 767, 1535
                                     elif 'dct' in transform:
                                         if 'double' in prec:
-                                            n2 = 1536 if 'bluestein' in radix else 3071
+                                            n2 = 1500 if 'bluestein' in radix else 3071  # cuda: 1536, 3071
                                         else:
-                                            n2 = 3071 if 'bluestein' in radix else 4096
+                                            n2 = 3000 if 'bluestein' in radix else 4096  # cuda: 3071, 4096
                                     else:
                                         n2 = 100000 if 'radix' in radix else 10000
                                 elif ndim == 2:
@@ -159,22 +159,22 @@ def main():
     # and radix and Bluestein transforms are mixed.
     v = []
     if 2 in vdim:
-        v += [(' --radix', '', '', '', 2, 2, 4500, ' --range-nd-narrow 0.02 4 --radix-max-pow 3'),
-              (' --radix', ' --lut', '', '', 2, 2, 4500, ' --range-nd-narrow 0.02 4 --radix-max-pow 3'),
-              (' --radix', '', ' --inplace', '', 2, 2, 4500, ' --range-nd-narrow 0.02 4 --radix-max-pow 3'),
-              (' --radix', '', '', ' --double', 2, 2, 4500, ' --range-nd-narrow 0.02 4 --radix-max-pow 3')]
+        v += [(' --radix', '', '', '', 2, 2, 4500, ' --range-nd-narrow 0.04 8 --radix-max-pow 3'),
+              (' --radix', ' --lut', '', '', 2, 2, 4500, ' --range-nd-narrow 0.04 8 --radix-max-pow 3'),
+              (' --radix', '', ' --inplace', '', 2, 2, 4500, ' --range-nd-narrow 0.04 8 --radix-max-pow 3'),
+              (' --radix', '', '', ' --double', 2, 2, 4500, ' --range-nd-narrow 0.04 8 --radix-max-pow 3')]
         if not radix:
-            v += [('', '', '', '', 2, 1008, 1040, ' --range-nd-narrow 0.02 4'),
-                  ('', '', '', '', 2, 2032, 2064, ' --range-nd-narrow 0.02 4'),
-                  ('', '', '', '', 2, 4080, 4112, ' --range-nd-narrow 0.02 4'),
+            v += [('', '', '', '', 2, 1008, 1040, ' --range-nd-narrow 0.04 8'),
+                  ('', '', '', '', 2, 2032, 2064, ' --range-nd-narrow 0.04 8'),
+                  ('', '', '', '', 2, 4080, 4112, ' --range-nd-narrow 0.04 8'),
                   ]
     if 3 in vdim:
-        v += [(' --radix', '', '', '', 3, 2, 150, ' --range-nd-narrow 0.02 4 --radix-max-pow 3'),
-              (' --radix', ' --lut', '', '', 3, 2, 150, ' --range-nd-narrow 0.02 4 --radix-max-pow 3'),
-              (' --radix', '', ' --inplace', '', 3, 2, 150, ' --range-nd-narrow 0.02 4 --radix-max-pow 3'),
-              (' --radix', '', '', ' --double', 3, 2, 150, ' --range-nd-narrow 0.02 4 --radix-max-pow 3')]
+        v += [(' --radix', '', '', '', 3, 2, 150, ' --range-nd-narrow 0.04 8 --radix-max-pow 3'),
+              (' --radix', ' --lut', '', '', 3, 2, 150, ' --range-nd-narrow 0.04 8 --radix-max-pow 3'),
+              (' --radix', '', ' --inplace', '', 3, 2, 150, ' --range-nd-narrow 0.04 8 --radix-max-pow 3'),
+              (' --radix', '', '', ' --double', 3, 2, 150, ' --range-nd-narrow 0.04 8 --radix-max-pow 3')]
         if not radix:
-            v += [('', '', '', '', 3, 120, 140, ' --range-nd-narrow 0.02 4'),
+            v += [('', '', '', '', 3, 120, 140, ' --range-nd-narrow 0.04 8'),
                   ]
 
     for transform in vtransform:
