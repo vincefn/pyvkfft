@@ -17,7 +17,13 @@ import warnings
 import os
 import timeit
 from multiprocessing import Process, Queue
+import platform
+from itertools import permutations
+from time import localtime, strftime
 import numpy as np
+import matplotlib.pyplot as plt
+from pyvkfft.version import vkfft_version
+from pyvkfft.base import primes
 
 
 # test for GPU packages in parallel process (slower but cleaner)
@@ -114,7 +120,7 @@ def test_gpyfft():
     Test if gpyfft is available. The test is made in a separate process.
     """
     q = Queue()
-    p = Process(target=test_gpyfft, args=(q,))
+    p = Process(target=_test_gpyfft, args=(q,))
     p.start()
     has_gpyfft = q.get()
     p.join()
@@ -174,7 +180,7 @@ def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_na
 
 def bench_pyvkfft_opencl(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None, opencl_platform=None):
     q = Queue()
-    p = Process(target=_bench_pyvkfft_opencl, args=(q, sh, precision, ndim, nb_repeat, gpu_name))
+    p = Process(target=_bench_pyvkfft_opencl, args=(q, sh, precision, ndim, nb_repeat, gpu_name, opencl_platform))
     p.start()
     dt, gbps, gpu_name_real = q.get()
     p.join()
@@ -230,7 +236,7 @@ def bench_pyvkfft_cuda(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=Non
     q = Queue()
     p = Process(target=_bench_pyvkfft_cuda, args=(q, sh, precision, ndim, nb_repeat, gpu_name))
     p.start()
-    dt, gbps, gpu_name_real = q.get(timeout=5)
+    dt, gbps, gpu_name_real = q.get(timeout=10)
     p.join()
     return dt, gbps, gpu_name_real
 
@@ -282,6 +288,291 @@ def bench_skcuda(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None):
     q = Queue()
     p = Process(target=_bench_skcuda, args=(q, sh, precision, ndim, nb_repeat, gpu_name))
     p.start()
-    dt, gbps, gpu_name_real = q.get(timeout=5)
+    dt, gbps, gpu_name_real = q.get(timeout=10)
     p.join()
     return dt, gbps, gpu_name_real
+
+
+def _bench_gpyfft(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None, opencl_platform=None):
+    if max(primes(sh[-ndim:])) > 13:
+        q.put((0, 0, None))
+    else:
+        import pyopencl as cl
+        from pyopencl import clrandom
+        import gpyfft
+        dtype = np.complex128 if precision == 'double' else np.complex64
+        if 'PYOPENCL_CTX' in os.environ:
+            cl_ctx = cl.create_some_context()
+        else:
+            cl_ctx = None
+            for p in cl.get_platforms():
+                if opencl_platform is not None:
+                    if opencl_platform.lower() not in p.name.lower():
+                        continue
+                for d in p.get_devices():
+                    if gpu_name is not None:
+                        if gpu_name.lower() not in d.name.lower():
+                            continue
+                    if d.type & cl.device_type.GPU == 0:
+                        continue
+                    gpu_name_real = "%s:%s" % (p.name, d.name)
+                    # print("Selected OpenCL device: ", d.name)
+                    cl_ctx = cl.Context(devices=(d,))
+                    break
+                if cl_ctx is not None:
+                    break
+        cq = cl.CommandQueue(cl_ctx)
+        dt = 0
+        d = clrandom.rand(cq, shape=sh, dtype=np.float32).astype(dtype)
+        for axes in permutations([-1, -2, -3][:ndim]):
+            gpyfft_plan = gpyfft.FFT(cl_ctx, cq, d, None, axes=axes)
+            # Shuffle axes order to find fastest transform
+            for i in range(nb_repeat):
+                cq.finish()
+                t0 = timeit.default_timer()
+                gpyfft_plan.enqueue(forward=True)
+                gpyfft_plan.enqueue(forward=False)
+                cq.finish()
+                dt1 = timeit.default_timer() - t0
+                if dt == 0:
+                    dt = dt1
+                elif dt1 < dt:
+                    dt = dt1
+            del gpyfft_plan
+        gbps = d.nbytes * ndim * 2 * 2 / dt / 1024 ** 3
+        q.put((dt, gbps, gpu_name_real))
+
+
+def bench_gpyfft(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None):
+    q = Queue()
+    p = Process(target=_bench_gpyfft, args=(q, sh, precision, ndim, nb_repeat, gpu_name))
+    p.start()
+    dt, gbps, gpu_name_real = q.get(timeout=10)
+    p.join()
+    return dt, gbps, gpu_name_real
+
+
+def plot_benchmark(results, ndim, gpu_name_real, radix_max, legend_loc="lower left",
+                   fig=None, figsize=(16, 8)):
+    if fig is None:
+        plt.figure(figsize=figsize)
+    else:
+        plt.clf()
+    if radix_max > 13:
+        # Use a different symbol for Bluestein
+        x = results['n']
+        maxprime = np.array(results['maxprime'])
+        idx7a = np.where(maxprime <= 7)[0]
+        idx7b = np.where(maxprime > 7)[0]
+        idx13a = np.where(maxprime <= 13)[0]
+        idx13b = np.where(maxprime > 13)[0]
+        if "gpyfft[clFFT]" in results:
+            y = results["gpyfft[clFFT]"]
+            plt.plot(np.take(x, idx13a), np.take(y, idx13a), color='#00FF0D', marker='o', markersize=3, linestyle='',
+                     label="gpyfft[clFFT]")
+        if "skcuda[cuFFT]" in results:
+            y = results["skcuda[cuFFT]"]
+            plt.plot(np.take(x, idx7a), np.take(y, idx7a), color='#0073FF', marker='o', markersize=3,
+                     linestyle='', label="skcuda[cuFFT] (radix-7)")
+            plt.plot(np.take(x, idx7b), np.take(y, idx7b), color='#0073FF', marker='+', markersize=3,
+                     linestyle='', label="skcuda[cuFFT] (Bluestein/?)")
+        if "vkFFT.opencl" in results:
+            y = results["vkFFT.opencl"]
+            plt.plot(np.take(x, idx13a), np.take(y, idx13a), color='#FF00F2', marker='o', markersize=3,
+                     linestyle='', label="vkFFT.opencl (radix-13)")
+            plt.plot(np.take(x, idx13b), np.take(y, idx13b), color='#FF00F2', marker='+', markersize=3,
+                     linestyle='', label="vkFFT.opencl (Bluestein)")
+        if "vkFFT.cuda" in results:
+            y = results["vkFFT.cuda"]
+            plt.plot(np.take(x, idx13a), np.take(y, idx13a), color='#FF8C00', marker='o', markersize=3,
+                     linestyle='', label="vkFFT.cuda (radix-13)")
+            plt.plot(np.take(x, idx13b), np.take(y, idx13b), color='#FF8C00', marker='+', markersize=3,
+                     linestyle='', label="vkFFT.cuda (Bluestein)")
+    else:
+        x = results['n']
+        if "gpyfft[clFFT]" in results:
+            y = results["gpyfft[clFFT]"]
+            plt.plot(x, y, color='#00FF0D', marker='o', markersize=3, linestyle='', label="gpyfft[clFFT]")
+        if "skcuda[cuFFT]" in results:
+            y = results["skcuda[cuFFT]"]
+            plt.plot(x, y, color='#0073FF', marker='o', markersize=3, linestyle='', label="skcuda[cuFFT]")
+        if "vkFFT.opencl" in results:
+            y = results["vkFFT.opencl"]
+            plt.plot(x, y, color='#FF00F2', marker='o', markersize=3, linestyle='', label="vkFFT.opencl")
+        if "vkFFT.cuda" in results:
+            y = results["vkFFT.cuda"]
+            plt.plot(x, y, color='#FF8C00', marker='o', markersize=3, linestyle='', label="vkFFT.cuda")
+
+    plt.legend(loc=legend_loc, fontsize=10)
+    plt.xlabel("FFT size", fontsize=12)
+    plt.ylabel("idealised throughput [Gbytes/s]", fontsize=12)
+    plt.suptitle("%dD FFT speed [%s, VkFFT %s, %s, %s]" % (ndim, gpu_name_real, vkfft_version(),
+                                                           platform.platform(), platform.node()), fontsize=12)
+    plt.title("Batched FFTs, 'Ideal' throughput assumes one r+w operation per FFT axis", fontsize=10)
+    plt.grid(which='both', alpha=0.3)
+    plt.xlim(0)
+    plt.ylim(0)
+    plt.tight_layout()
+
+    # Force refresh
+    plt.draw()
+    plt.gcf().canvas.draw()
+    plt.pause(.001)
+
+
+def init_results(has_pyvkfft_opencl, has_pyvkfft_cuda, has_skcuda, has_gpyfft):
+    results = {"n": [], "maxprime": []}
+    if "vkFFT.opencl" not in results and has_pyvkfft_opencl:
+        results["vkFFT.opencl"] = []
+        results["vkFFT.opencl-dt"] = []
+    if "gpyfft[clFFT]" not in results and has_gpyfft:
+        results["gpyfft[clFFT]"] = []
+        results["gpyfft[clFFT]-dt"] = []
+    if "vkFFT.cuda" not in results and has_pyvkfft_cuda:
+        results["vkFFT.cuda"] = []
+        results["vkFFT.cuda-dt"] = []
+    if "skcuda[cuFFT]" not in results and has_skcuda:
+        results["skcuda[cuFFT]"] = []
+        results["skcuda[cuFFT]-dt"] = []
+    return results
+
+
+def run(nmin, nmax, radix_max, ndim, precision="single", nb_repeat=3, gpu_name=None,
+        batch=True, opencl_platform=None, figsize=(16, 8),
+        has_pyvkfft_opencl=None, has_pyvkfft_cuda=None, has_gpyfft=None, has_skcuda=None):
+    """
+    Run the benchmark, measuring the idealised memory throughput (assuming a single
+    read+write operation per axis) for an inplace C2C transform using different
+    fft backends available.
+
+
+    :param nmin: smallest size N of the array, e.g. with a shape (batch, N, N)
+        for a 2D transform.
+    :param nmax: largest size N for the array.
+    :param radix_max: maximum radix for the tested sizes. Use a large value (1e7)
+        to test all sizes regardless of the prime decomposition.
+    :param precision: either 'single' or 'double'
+    :param nb_repeat: number of times each fft+ifft cycle is performed, the best
+        timing is kept
+    :param gpu_name: name or substring (case-insensitive) of the GPU to use.
+        If None, the first found will be used.
+    :param batch: if True (the default), all transforms are batched so that
+        the array size is large enough to yield a measurable transform time. Each
+        array takes a shape e.g. (batch, N, N) for a 2D transform.
+    :param opencl_platform: name or substring (case-insensitive) of the OpenCL
+        platform to use. If None, the first found will be used.
+    :param figsize: figure size for plotting. Set to None to disable plotting.
+    :param has_pyvkfft_opencl: if True, will test pvkfft.opencl. If None,
+        will be automatically detected
+    :param has_pyvkfft_cuda: if True, will test pvkfft.cuda. If None,
+        will be automatically detected
+    :param has_gpyfft: if True, will test gpyfft (clFFT). If None,
+        will be automatically detected
+    :param has_skcuda: if True, will test scikit.cuda (cuFFT). If None,
+        will be automatically detected
+    """
+    if has_pyvkfft_opencl is None:
+        has_pyvkfft_opencl = test_pyvkfft_opencl()
+    if has_pyvkfft_cuda is None:
+        has_pyvkfft_cuda = test_pyvkfft_cuda()
+    if has_skcuda is None:
+        has_skcuda = test_skcuda()
+    if has_gpyfft is None:
+        has_gpyfft = test_gpyfft()
+
+    results = init_results(has_pyvkfft_opencl, has_pyvkfft_cuda, has_skcuda, has_gpyfft)
+    if ndim == 1:
+        header_results = "    1 x batch x     N [%dD]" % (ndim)
+    elif ndim == 2:
+        header_results = "batch x     N x     N [%dD]" % (ndim)
+    else:
+        header_results = "batch x    N x    N x    N [%dD]" % (ndim)
+    for b in results.keys():
+        if b not in ["n", "maxprime"] and "-dt" not in b:
+            header_results += "%17s  " % b
+
+    print("Gbytes/s and time given for a couple (FFT, iFFT), dtype=%s" % np.dtype(np.complex64).name)
+    print()
+    print(header_results)
+
+    if figsize is not None:
+        fig = plt.figure(figsize=figsize)
+
+    dtype = np.complex128 if precision == 'double' else np.complex64
+
+    for n in range(nmin, nmax + 1):
+        maxprime = max(primes(n))
+        if maxprime > radix_max:
+            continue
+        results["n"].append(n)
+        results["maxprime"].append(maxprime)
+        if batch:
+            # Estimate batch size to last 0.05s with at least 100 GB/s
+            nb = int(round(0.05 * 100 / (n ** ndim * np.dtype(dtype).itemsize * ndim * 2 * 2 / 1024 ** 3)))
+            nb = max(nb, 1)
+            nb = min(nb, 99999)
+        else:
+            nb = 1
+
+        if ndim == 1:
+            sh = 1, nb, n
+        elif ndim == 2:
+            sh = nb, n, n
+        else:
+            sh = nb, n, n, n
+
+        # OpenCL backends
+        if has_pyvkfft_opencl:
+            dt, gbps, gpu_name_real = bench_pyvkfft_opencl(sh, precision, ndim, nb_repeat, gpu_name, opencl_platform)
+            results["vkFFT.opencl"].append(gbps)
+            results["vkFFT.opencl-dt"].append(dt)
+
+        if has_gpyfft:
+            dt, gbps, junk = bench_gpyfft(sh, precision, ndim, nb_repeat, gpu_name)
+            results["gpyfft[clFFT]"].append(gbps)
+            results["gpyfft[clFFT]-dt"].append(dt)
+
+        # CUDA backends
+        if has_pyvkfft_cuda:
+            dt, gbps, gpu_name_real = bench_pyvkfft_cuda(sh, precision, ndim, nb_repeat, gpu_name)
+            results["vkFFT.cuda"].append(gbps)
+            results["vkFFT.cuda-dt"].append(dt)
+
+        if has_skcuda:
+            dt, gbps, gpu_name_real = bench_skcuda(sh, precision, ndim, nb_repeat, gpu_name)
+            results["skcuda[cuFFT]"].append(gbps)
+            results["skcuda[cuFFT]-dt"].append(dt)
+
+        # text output
+        if ndim == 3:
+            r = " %4d x %4d x %4d x %4d      " % sh
+        else:
+            r = "%5d x %5d x %5d      " % sh
+        for b in results.keys():
+            if b not in ["n", "maxprime"] and "-dt" not in b:
+                dt = results[b + '-dt'][-1] / nb
+                if dt < 1e-3:
+                    r += "%7.2f [%6.2f µs]" % (results[b][-1], dt * 1e6)
+                elif dt > 1:
+                    r += "%7.2f [%6.2f  s]" % (results[b][-1], dt)
+                else:
+                    r += "%7.2f [%6.2f ms]" % (results[b][-1], dt * 1000)
+        print(r)
+
+        if len(results['n']) % 10 == 9 and figsize is not None:
+            plot_benchmark(results, ndim, gpu_name_real, radix_max, legend_loc="upper right",
+                           fig=fig)
+
+    if figsize is not None:
+        plot_benchmark(results, ndim, gpu_name_real, radix_max, "upper right", fig=fig)
+        figname = 'benchmark-%dDFFT-%s-%s-%s-%s.png' % (ndim, gpu_name_real.replace(' ', '_'),
+                                                        platform.platform(), platform.node(),
+                                                        strftime("%Y-%m-%d-%Hh%M", localtime()))
+        plt.savefig(figname)
+        print("Saved benchmark figure to: \n    %s" % figname)
+    return results
+
+
+if __name__ == '__main__':
+    res = run(nmin=32, nmax=256, radix_max=7, ndim=2, gpu_name=None)
+    res = run(nmin=32, nmax=256, radix_max=7, ndim=2, gpu_name=None, batch=False)
