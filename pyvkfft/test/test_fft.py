@@ -545,6 +545,7 @@ class TestFFTSystematic(unittest.TestCase):
     db = None
     dry_run = False
     dtype = np.float32
+    fast_random = None
     graph = None
     gpu = None
     inplace = False
@@ -620,6 +621,10 @@ class TestFFTSystematic(unittest.TestCase):
         vkwargs = []
         for backend in self.vbackend:
             for s in self.vshape:
+                if self.fast_random is not None and len(vkwargs):
+                    # Randomly skip tests to go faster
+                    if np.random.uniform(0, 100) > self.fast_random:
+                        continue
                 kwargs = {"backend": backend, "shape": s, "ndim": len(s), "axes": self.axes,
                           "dtype": self.dtype, "inplace": self.inplace, "norm": self.norm, "use_lut": self.lut,
                           "r2c": self.r2c, "dct": self.dct, "gpu_name": self.gpu,

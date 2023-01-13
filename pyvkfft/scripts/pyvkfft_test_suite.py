@@ -15,22 +15,25 @@ import sys
 
 def make_parser():
     epilog = "Examples:\n" \
-             "   pyvkfft-test-suite --gpumem 32 --backend pycuda --gpu V100\n" \
+             "   pyvkfft-test-suite --gpumem 32 --backend pycuda --gpu V100\n\n" \
              "This will run the full test suite with a maximum of 20 parallel\n" \
              "process (based on the available memory), using pycuda on a V100 GPU\n\n" \
-             "   pyvkfft-test-suite --gpumem 32 --backend pycuda --gpu V100 --transform c2c --ndim 1 2\n" \
-             "This will run the test suite only for 1D and 2D C2C transforms\n" \
-             "WARNING: due to the level of multi-processing used, this suite is \n" \
-             "very difficult to interrupt !"
+             "   pyvkfft-test-suite --gpumem 32 --backend pycuda --gpu V100 --transform c2c --ndim 1 2\n\n" \
+             "This will run the test suite only for 1D and 2D C2C transforms"
     parser = argparse.ArgumentParser(prog='pyvkfft-test-suite', epilog=epilog,
-                                     description='Run pyvkfft unit tests, regular or systematic',
+                                     description='Run a complete test suite including the basic test, '
+                                                 'followed by systematic tests for C2C, R2C, DCT, 1D, 2D and 3D\n'
+                                                 'single and double precision, in and out-of-place, '
+                                                 'different normalisations, with or without LUT (single),\n'
+                                                 'radix and non-radix, plus a few asymmetric 2D and 3D tests.\n\n'
+                                                 'Note that the full test suite typically takes 24 to 30 hours.',
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--gpu', action='store',
                         help="Name (or sub-string) of the GPU to use. If not given, "
                              "the first available will be used")
     parser.add_argument('--nproc', action='store',
                         help="Maximum number of parallel process to use to speed up tests. "
-                             "This number will be decreased for larger arrays (e.g. 3D), but"
+                             "This number will be decreased for larger arrays (e.g. 3D), but "
                              "it should be checked to avoid memory errors. A good value"
                              "for 32 GB is 20 processes.",
                         default=10, type=int)
@@ -47,12 +50,17 @@ def make_parser():
                         default=['c2c', 'r2c', 'dct'], choices=['c2c', 'r2c', 'dct'])
     parser.add_argument('--radix', action='store_true',
                         help="Use this option to only test radix transforms")
+    parser.add_argument('--single', action='store_true',
+                        help="Use this option to only test single precision transforms")
     parser.add_argument('--ndim', action='store', nargs='+',
                         help="Number of dimensions for the tests. Several values can be given, "
                              "e.g. 1 2 3",
                         default=[1, 2, 3], type=int, choices=[1, 2, 3])
+    parser.add_argument('--fast-random', action='store', default=None, type=int,
+                        help="Use this option to run a random percentage of the systematic tests, "
+                             "for faster results. A number (percentage) between 5 and 100 is required.")
     parser.add_argument('--dry-run', action='store_true',
-                        help="Perform a dry-run, printing the number of tests")
+                        help="Perform a dry-run, printing the commands for each sub-test.")
     return parser
 
 
@@ -68,6 +76,9 @@ def main():
     opencl_platform = args.opencl_platform
     radix = args.radix
     vdim = args.ndim
+
+    if args.fast_random is not None:
+        assert 5 <= args.fast_random <= 100, "--fast-random must be between 5 and 100"
 
     # Basic test
     com = "pyvkfft-test --nproc %d --html --range-mb 0 4100 --backend %s" % (nproc0, backend)
@@ -92,7 +103,10 @@ def main():
             vtransform.append(' --dct %d' % i)
     vnorm = [' --norm 1', ' --norm 0']
     vlut = ['', ' --lut']
-    vprec = ['', ' --double']
+    if args.single:
+        vprec = ['']
+    else:
+        vprec = ['', ' --double']
     vradix = [' --radix'] if radix else [' --radix', ' --bluestein']
     vinplace = ['', ' --inplace']
     for radix in vradix:
@@ -146,6 +160,8 @@ def main():
                                 com += transform + radix + inplace + prec + lut + norm + ' --range-mb 0 4100'
                                 if opencl_platform is not None:
                                     com += ' --opencl_platform ' + opencl_platform
+                                if args.fast_random is not None:
+                                    com += ' --fast-random %d' % args.fast_random
                                 if dry_run:
                                     print(com)
                                     # os.system(com + ' --dry-run')
@@ -161,8 +177,9 @@ def main():
     if 2 in vdim:
         v += [(' --radix', '', '', '', 2, 2, 4500, ' --range-nd-narrow 0.04 8 --radix-max-pow 3'),
               (' --radix', ' --lut', '', '', 2, 2, 4500, ' --range-nd-narrow 0.04 8 --radix-max-pow 3'),
-              (' --radix', '', ' --inplace', '', 2, 2, 4500, ' --range-nd-narrow 0.04 8 --radix-max-pow 3'),
-              (' --radix', '', '', ' --double', 2, 2, 4500, ' --range-nd-narrow 0.04 8 --radix-max-pow 3')]
+              (' --radix', '', ' --inplace', '', 2, 2, 4500, ' --range-nd-narrow 0.04 8 --radix-max-pow 3')]
+        if not args.single:
+            v += [(' --radix', '', '', ' --double', 2, 2, 4500, ' --range-nd-narrow 0.04 8 --radix-max-pow 3')]
         if not radix:
             v += [('', '', '', '', 2, 1008, 1040, ' --range-nd-narrow 0.04 8'),
                   ('', '', '', '', 2, 2032, 2064, ' --range-nd-narrow 0.04 8'),
@@ -171,8 +188,9 @@ def main():
     if 3 in vdim:
         v += [(' --radix', '', '', '', 3, 2, 150, ' --range-nd-narrow 0.04 8 --radix-max-pow 3'),
               (' --radix', ' --lut', '', '', 3, 2, 150, ' --range-nd-narrow 0.04 8 --radix-max-pow 3'),
-              (' --radix', '', ' --inplace', '', 3, 2, 150, ' --range-nd-narrow 0.04 8 --radix-max-pow 3'),
-              (' --radix', '', '', ' --double', 3, 2, 150, ' --range-nd-narrow 0.04 8 --radix-max-pow 3')]
+              (' --radix', '', ' --inplace', '', 3, 2, 150, ' --range-nd-narrow 0.04 8 --radix-max-pow 3')]
+        if not args.single:
+            v += [(' --radix', '', '', ' --double', 3, 2, 150, ' --range-nd-narrow 0.04 8 --radix-max-pow 3')]
         if not radix:
             v += [('', '', '', '', 3, 120, 140, ' --range-nd-narrow 0.04 8'),
                   ]
@@ -199,6 +217,8 @@ def main():
             com += transform + radix + inplace + prec + lut + norm + rn + ' --range-mb 0 4100'
             if opencl_platform is not None:
                 com += ' --opencl_platform ' + opencl_platform
+            if args.fast_random is not None:
+                com += ' --fast-random %d' % args.fast_random
 
             if dry_run:
                 print(com)

@@ -15,6 +15,7 @@ import unittest
 import time
 import timeit
 import socket
+import psutil
 import numpy as np
 from pyvkfft.test import TestFFT, TestFFTSystematic
 from pyvkfft.version import __version__, vkfft_version
@@ -25,7 +26,7 @@ def cuda_info_str():
         # The functions used should not create a context on the GPU
         from ..cuda import cuda_compile_version, cuda_runtime_version, cuda_driver_version
         return "CUDA: driver %s, runtime %s, compiled %s" % \
-               (cuda_driver_version(), cuda_runtime_version(), cuda_compile_version())
+            (cuda_driver_version(), cuda_runtime_version(), cuda_compile_version())
     except:
         return ""
 
@@ -46,6 +47,14 @@ def suite_systematic():
 
 def make_html_pre_post(overwrite=False):
     if ('pyvkfft-test1000.html' not in os.listdir()) or overwrite:
+        # if this was called by a parent pyvkfft-test-suite, print that command
+        com = ""
+        for c in psutil.Process(os.getppid()).cmdline():
+            com += "%s " % c
+        if 'pyvkfft-test-suite' in com:
+            com = 'Command:<tt>%s</tt>\n' % com
+        else:
+            com = ''
         # Need the html header, styles and the results' table beginning
         tmp = '<!DOCTYPE html>\n <html>\n <head> <style>\n' \
               'th, td { border: 1px solid grey;}\n' \
@@ -94,7 +103,7 @@ def make_html_pre_post(overwrite=False):
               '<h2>pyVkFFT test results</h2>\n' \
               '<h3>pyvkfft: %s,  VkFFFT:%s %s host : %s</h3>\n' \
               '<div style="text-align:left;">' \
-              '<p>Methodology: the included graphs measure the accuracy of the forward ' \
+              '<p>%s<p>Methodology: the included graphs measure the accuracy of the forward ' \
               'and backward transforms: an array is generated with random uniform values ' \
               'between -0.5 and 0.5, and the results of its transform are compared ' \
               'with either pyfftw (in long double precision) if available, or scipy if ' \
@@ -129,7 +138,8 @@ def make_html_pre_post(overwrite=False):
               '           <th>ERROR</th>' \
               '       </tr>\n' \
               '   </thead>\n' \
-              '<tbody class="center">\n' % (__version__, vkfft_version(), cuda_info_str(), socket.gethostname())
+              '<tbody class="center">\n' % (__version__, vkfft_version(), cuda_info_str(),
+                                            socket.gethostname(), com)
         open("pyvkfft-test1000.html", "w").write(tmp)
     if ('pyvkfft-test1999.html' not in os.listdir()) or overwrite:
         tmp = '</tbody>\n' \
@@ -277,6 +287,9 @@ def main():
                         help="Use double precision (float64/complex128) instead of single")
     sysgrp.add_argument('--dry-run', action='store_true',
                         help="Perform a dry-run, printing the number of array shapes to test")
+    parser.add_argument('--fast-random', action='store', default=None,
+                        help="Use this option to run a random percentage of the full test suite, "
+                             "for faster results. A number between 5 and 100 is required.", type=int)
     sysgrp.add_argument('--inplace', action='store_true',
                         help="Use inplace transforms (NB: for R2C with ndim>=2, the x-axis "
                              "must be even-sized)")
@@ -376,6 +389,9 @@ def main():
         t.db = args.db[0] if args.db is not None else None
         t.dry_run = args.dry_run
         t.dtype = np.float64 if args.double else np.float32
+        t.fast_random = args.fast_random
+        if args.fast_random is not None:
+            assert 5 <= args.fast_random <= 100, "--fast-random must be between 5 and 100"
         t.gpu = args.gpu
         t.opencl_platform = args.opencl_platform
         t.graph = args.graph
