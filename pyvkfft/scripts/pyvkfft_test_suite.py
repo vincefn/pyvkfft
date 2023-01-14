@@ -26,7 +26,9 @@ def make_parser():
                                                  'single and double precision, in and out-of-place, '
                                                  'different normalisations, with or without LUT (single),\n'
                                                  'radix and non-radix, plus a few asymmetric 2D and 3D tests.\n\n'
-                                                 'Note that the full test suite typically takes 24 to 30 hours.',
+                                                 'Note that the full test suite typically takes 24 to 30 hours.\n\n'
+                                                 'To merge the html files at the end, use:\n'
+                                                 '      cat pyvkfft-test1*.html > pyvkfft-test.html ',
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--gpu', action='store',
                         help="Name (or sub-string) of the GPU to use. If not given, "
@@ -143,13 +145,26 @@ def main():
                                         n2 = 500
                                     else:
                                         n2 = 550
+                                # Estimate maximum memory usage
                                 mem = n2 ** ndim * 8
+                                # Assume 48 or 64 KB of shared memory to see if Vkfft needs a temp buffer.
+                                # For single precision and 64 KB, x-axis can be up to 8192 single upload,
+                                # 4096 for the other axes.
+                                if 'opencl' in backend:
+                                    b = (n2 * (16 if 'double' in prec else 8) / (48 * 1024)) * (1 + int(ndim > 1)) >= 1
+                                else:
+                                    b = (n2 * (16 if 'double' in prec else 8) / (64 * 1024)) * (1 + int(ndim > 1)) >= 1
+
                                 if 'double' in prec:
+                                    mem *= 2 + int(b)
+                                elif b:
                                     mem *= 2
+
                                 if 'inplace' not in inplace:
                                     mem *= 2
                                 if 'dct' in transform or 'r2c' in transform:
                                     mem /= 2
+                                mem += 200 * 1024 ** 2  # context memory
                                 nproc1 = gpumem // (mem / 1024 ** 3 * 1.5)
                                 nproc = max(1, min(nproc1, nproc0))
                                 com = 'pyvkfft-test --systematic --backend %s' % backend

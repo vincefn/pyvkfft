@@ -683,7 +683,9 @@ class TestFFTSystematic(unittest.TestCase):
                             res = test_accuracy_kwargs(v)
                         else:
                             try:
-                                res = results.next(timeout=self.timeout)
+                                # increase timeout for large 3D systems
+                                r = 2 if np.prod(sh) > 2 ** 24 and ndim == 3 else 1
+                                res = results.next(timeout=self.timeout * r)
                             except multiprocessing.TimeoutError as ex:
                                 # NB: the timeout won't change the next() result, so will need
                                 # to terminate & restart the pool

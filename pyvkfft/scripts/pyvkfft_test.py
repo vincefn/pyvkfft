@@ -50,6 +50,8 @@ def make_html_pre_post(overwrite=False):
         # if this was called by a parent pyvkfft-test-suite, print that command
         com = ""
         for c in psutil.Process(os.getppid()).cmdline():
+            if "/" in c and "pyvkfft-test-suite" in c:
+                c = os.path.split(c)[-1]
             com += "%s " % c
         if 'pyvkfft-test-suite' in com:
             com = 'Command:<tt>%s</tt>\n' % com

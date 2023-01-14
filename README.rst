@@ -123,8 +123,8 @@ Features
 - pyvkfft results are now evaluated before any release with a comprehensive test
   suite, comparing transform results for all types of transforms: single and double
   precision, 1D, 2D and 3D, inplace and out-of-place, different norms, radix and
-  Bluestein, etc... See ``pyvkfft/pyvkfft_test_suite.py`` to run the full suite, which
-  takes 28 hours on a V100 GPU using up to 20 parallel process.
+  Bluestein, etc... The ``pyvkfft-test-suite`` script can be used to run the full suite,
+  which takes 28 hours on a V100 GPU using up to 20 parallel process.
 
 Performance
 -----------
@@ -145,7 +145,7 @@ Notes regarding this plot:
   could produce smaller performances, or better ones when fully cached.
 * a number of blue + (CuFFT) are actually performed as radix-N transforms with 7<N<127 (e.g. 11)
   -hence the performance similar to the blue dots- but the list of supported radix transforms
-  is undocumented so they are not correctly labeled.
+  is undocumented (?) so they are not correctly labeled.
 
 The general results are:
 
@@ -175,7 +175,7 @@ Analysis:
 * in single precision on the nVidia Titan V card, the VkFFT computed accuracy is
   about 3 times larger (worse) than pyfftw (also computed in single precision),
   e.g. 6e-7 vs 2e-7, which can be pretty negligible for most applications.
-  However when using a lookup-table for trigonometric values instead of hardware
+  However when using a lookup-table (LUT) for trigonometric values instead of hardware
   functions (useLUT=1 in VkFFTApp), the accuracy is identical to pyfftw, and
   better than cuFFT.
 * accuracy is the same for cuda and opencl, though this can depend on the card
@@ -186,8 +186,10 @@ You can easily test a transform using the ``pyvkfft-test`` command line script, 
 
 Use ``pyvkfft-test --help`` to list available options.
 
-You can use the ``pyvkfft/pyvkfft_test_suite.py`` script to run the comprehensive
-test suite which is used to evaluate pyvkfft before a new release.
+You can use the ``pyvkfft-test-suite`` script to run the comprehensive
+test suite which is used to evaluate pyvkfft before a new release. Several
+options are available to target specific (C2C, R2C..) transforms or even
+run a random subset of transform sizes for fast detection of issues.
 
 TODO
 ----
