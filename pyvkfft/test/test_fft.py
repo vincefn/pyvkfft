@@ -323,11 +323,18 @@ class TestFFT(unittest.TestCase):
                     vtype = (np.complex64,)
                 v = self.verbose and not dry_run
                 if dry_run or self.nproc == 1:
-                    tmp = self.run_fft([backend], [30, 34], vtype=vtype, verbose=v, dry_run=dry_run, shuffle_axes=False)
+                    tmp = self.run_fft([backend], [30, 34], vtype=vtype, verbose=v, dry_run=dry_run, shuffle_axes=True)
                     ct += tmp[0]
                     vkwargs += tmp[1]
-                    tmp = self.run_fft([backend], [808], vtype=vtype, dims_max=2, verbose=v, dry_run=dry_run,
-                                       shuffle_axes=False)
+                    # Test larger sizes (including multi-upload) for 1D and 2D transforms
+                    # 2988 decomposes in a Sophie Germain safe prime, hence its inclusion..
+                    tmp = self.run_fft([backend], [808, 2988, 4200], vtype=vtype, dims_max=3, ndim_max=2, verbose=v,
+                                       dry_run=dry_run, shuffle_axes=True)
+                    ct += tmp[0]
+                    vkwargs += tmp[1]
+                    # Test even larger 1D transform sizes
+                    tmp = self.run_fft([backend], [13000, 13002], vtype=vtype, dims_max=2, ndim_max=1, verbose=v,
+                                       dry_run=dry_run, shuffle_axes=True)
                     ct += tmp[0]
                     vkwargs += tmp[1]
                 else:
