@@ -36,22 +36,24 @@ def _test_pyvkfft_cuda(q):
         import pycuda.gpuarray as cua
         from pycuda import curandom
         import pyvkfft.cuda
-        from pyvkfft.cuda import primes, VkFFTApp as cuVkFFTApp
-        q.put(True)
+        from pyvkfft.cuda import primes, VkFFTApp as cuVkFFTApp, cuda_compile_version, \
+            cuda_driver_version, cuda_runtime_version
+        q.put((True, cuda_compile_version(), cuda_driver_version(), cuda_runtime_version()))
     except:
-        q.put(False)
+        q.put((False, None, None, None))
 
 
 def test_pyvkfft_cuda():
     """
     Test if pyvkfft_cuda is available. The test is made in a separate process.
+    Also return the
     """
     q = Queue()
     p = Process(target=_test_pyvkfft_cuda, args=(q,))
     p.start()
-    has_pyvkfft_cuda = q.get()
+    has_pyvkfft_cuda, cu_version_compile, cu_version_driver, cu_version_runtime = q.get()
     p.join()
-    return has_pyvkfft_cuda
+    return has_pyvkfft_cuda, cu_version_compile, cu_version_driver, cu_version_runtime
 
 
 def _test_pyvkfft_opencl(q):
@@ -87,18 +89,19 @@ def _test_skcuda(q):
             import pycuda.gpuarray as cua
             from pycuda import curandom
             import skcuda.fft as cu_fft
-            q.put(True)
+            from skcuda.cufft import _cufft_version as v
+            q.put((True, "%d.%d.%d" % (v // 1000, (v // 100) % 100, v % 100)))
         except:
-            q.put(False)
+            q.put((False, None))
 
 
 def test_skcuda():
     q = Queue()
     p = Process(target=_test_skcuda, args=(q,))
     p.start()
-    has_skcuda = q.get()
+    has_skcuda, cufft_version = q.get()
     p.join()
-    return has_skcuda
+    return has_skcuda, cufft_version
 
 
 def _test_gpyfft(q):
@@ -424,9 +427,21 @@ def plot_benchmark(results, ndim, gpu_name_real, radix_max, legend_loc="lower le
     plt.legend(loc=legend_loc, fontsize=10)
     plt.xlabel("FFT size", fontsize=12)
     plt.ylabel("idealised throughput [Gbytes/s]", fontsize=12)
-    plt.suptitle("%dD FFT speed [%s, VkFFT %s, %s, %s]" % (ndim, gpu_name_real, vkfft_version(),
-                                                           platform.platform(), platform.node()), fontsize=12)
-    plt.title("Batched FFTs, 'Ideal' throughput assumes one r+w operation per FFT axis", fontsize=10)
+    if "skcuda[cuFFT]" in results:
+        has_skcuda, cufft_version = test_skcuda()
+        cufft_version = ", cuFFT " + cufft_version
+    else:
+        cufft_version = ""
+    if "vkFFT.cuda" in results:
+        has_pyvkfft_cuda, cu_version_compile, cu_version_driver, cu_version_runtime = test_pyvkfft_cuda()
+        cu_version = ", CUDA driver %s runtime %s" % (cu_version_driver, cu_version_runtime)
+    else:
+        cu_version = ""
+    plt.suptitle("%dD FFT speed [%s, VkFFT %s%s%s]" % (ndim, gpu_name_real, vkfft_version(), cu_version,
+                                                       cufft_version),
+                 fontsize=12)
+    plt.title("Batched FFTs, 'Ideal' throughput assumes one r+w operation per FFT axis [%s, %s]" %
+              (platform.platform(), platform.node()), fontsize=10)
     plt.grid(which='both', alpha=0.3)
     plt.xlim(0)
     plt.ylim(0)
@@ -492,9 +507,9 @@ def run(nmin, nmax, radix_max, ndim, precision="single", nb_repeat=3, gpu_name=N
     if has_pyvkfft_opencl is None:
         has_pyvkfft_opencl = test_pyvkfft_opencl()
     if has_pyvkfft_cuda is None:
-        has_pyvkfft_cuda = test_pyvkfft_cuda()
+        has_pyvkfft_cuda, cu_version_compile, cu_version_driver, cu_version_runtime = test_pyvkfft_cuda()
     if has_skcuda is None:
-        has_skcuda = test_skcuda()
+        has_skcuda, cufft_version = test_skcuda()
     if has_gpyfft is None:
         has_gpyfft = test_gpyfft()
 
@@ -591,9 +606,10 @@ def run(nmin, nmax, radix_max, ndim, precision="single", nb_repeat=3, gpu_name=N
 
     if figsize is not None:
         plot_benchmark(results, ndim, gpu_name_real_ok, radix_max, "upper right", fig=fig)
-        figname = 'benchmark-%dDFFT-%s-%s-%s-%s.png' % (ndim, gpu_name_real_ok.replace(' ', '_'),
-                                                        platform.platform(), platform.node(),
-                                                        strftime("%Y-%m-%d-%Hh%M", localtime()))
+        r = "-radix%d" % radix_max if radix_max < 100 else ""
+        figname = 'benchmark-%dDFFT%s-%s-%s-%s-%s.png' % (ndim, gpu_name_real_ok.replace(' ', '_'), r,
+                                                          platform.platform(), platform.node(),
+                                                          strftime("%Y-%m-%d-%Hh%M", localtime()))
         plt.savefig(figname)
         print("Saved benchmark figure to: \n    %s" % figname)
     return results
