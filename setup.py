@@ -269,7 +269,7 @@ setup(name="pyvkfft",
       },
       classifiers=[
           "Programming Language :: Python :: 3",
-          "OSI Approved :: MIT License",
+          "License :: OSI Approved :: MIT License",
           "Operating System :: OS Independent",
           "Environment :: GPU",
       ],
