@@ -1,5 +1,7 @@
-Version 2023.1 (2023-XX-XX)
+Version 2023.1 (2023-01-19)
 -----------------------------
+* VkFFT 1.2.33, now using Rader algorithm for better performance
+  with many non-radix sizes.
 * Fix R2C tests when using numpy (scipy unavailable) [#19]
 * Add support for F-ordered arrays (C2C and R2C)
 * Allow selection of backend for non-systematic pvkfft-test
@@ -12,6 +14,10 @@ Version 2023.1 (2023-XX-XX)
   (from @isuruf, https://github.com/vincefn/pyvkfft/pull/17)
 * Fix simple fft interface import when only pycuda is used
 * Add cuda_driver_version, cuda_compile_version, cuda_runtime_version
+  functions.
+* Add simpler interface to run benchmarks, using separate processes.
+* add pyvkfft-test-suite for long tests (up to 30 hours) for validation
+  before new releases.
 
 Version 2022.1.1 (2022-02-14)
 -----------------------------

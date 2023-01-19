@@ -173,11 +173,11 @@ OPENCL = None
 
 for k, v in os.environ.items():
     if "VKFFT_BACKEND" in k:
-        # Kludge to manually select vkfft backends. useful e.g. if nvidia tools
+        # Environment variable to manually select vkfft backends. useful e.g. if nvidia tools
         # are installed but not functional
         # e.g. use:
-        #   VKFFT_BACKEND=cuda,opencl python setup.py install
         #   VKFFT_BACKEND=opencl pip install pyvkfft
+        #   VKFFT_BACKEND=cuda pip install .
         if 'opencl' not in v.lower():
             exclude_packages.append('opencl')
         if 'cuda' not in v.lower():

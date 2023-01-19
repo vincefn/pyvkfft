@@ -477,7 +477,8 @@ def run(nmin, nmax, radix_max, ndim, precision="single", nb_repeat=3, gpu_name=N
     Run the benchmark, measuring the idealised memory throughput (assuming a single
     read+write operation per axis) for an inplace C2C transform using different
     fft backends available.
-
+    Note that each test is made in a separate individual process, so this can
+    take a long time.
 
     :param nmin: smallest size N of the array, e.g. with a shape (batch, N, N)
         for a 2D transform.

@@ -28,7 +28,8 @@ Requirements:
 - ``pycuda`` or ``cupy`` and CUDA developments tools (`nvcc`) for the cuda backend
 - ``numpy``
 - on Windows, this requires visual studio (c++ tools) and a cuda toolkit installation,
-  with either CUDA_PATH or CUDA_HOME environment variable.
+  with either CUDA_PATH or CUDA_HOME environment variable. However it should be
+  simpler to install using ``conda``, as detailed below
 - *Only when installing from source*: ``vkfft.h`` installed in the usual include
   directories, or in the 'src' directory
 
@@ -105,8 +106,8 @@ Features
 - unit tests for all transforms: see test sub-directory. Note that these take a **long**
   time to finish due to the exhaustive number of sub-tests.
 - Note that out-of-place C2R transform currently destroys the complex array for FFT dimensions >=2
-- tested on macOS (10.13.6), Linux (Debian/Ubuntu, x86-64 and power9), and Windows 10
-  (Anaconda python 3.8 with Visual Studio 2019 and the CUDA toolkit 11.2)
+- tested on macOS (10.13.6/x86, 12.6/M1), Linux (Debian/Ubuntu, x86-64 and power9),
+  and Windows 10 (Anaconda python 3.8 with Visual Studio 2019 and the CUDA toolkit 11.2)
 - GPUs tested: mostly nVidia cards, but also some AMD cards and macOS with M1 GPUs.
 - inplace transforms do not require an extra buffer or work area (as in cuFFT), unless the x
   size is larger than 8192, or if the y and z FFT size are larger than 2048. In that case
@@ -131,9 +132,9 @@ Performance
 See the benchmark notebook, which allows to plot OpenCL and CUDA backend throughput, as well as compare
 with cuFFT (using scikit-cuda) and clFFT (using gpyfft).
 
-Example result for batched 2D FFT with array dimensions of batch x N x N using a Titan V:
+Example result for batched 2D, single precision FFT with array dimensions of batch x N x N using a V100:
 
-.. image:: https://raw.githubusercontent.com/vincefn/pyvkfft/master/doc/benchmark-2DFFT-TITAN_V-Linux.png
+.. image:: https://raw.githubusercontent.com/vincefn/pyvkfft/master/doc/benchmark-2DFFT-NVIDIA-Tesla_V100-Linux.png
 
 Notes regarding this plot:
 
@@ -143,9 +144,8 @@ Notes regarding this plot:
 * the batch size is adapted for each N so the transform takes long enough, in practice the
   transformed array is at around 600MB. Transforms on small arrays with small batch sizes
   could produce smaller performances, or better ones when fully cached.
-* a number of blue + (CuFFT) are actually performed as radix-N transforms with 7<N<127 (e.g. 11)
-  -hence the performance similar to the blue dots- but the list of supported radix transforms
-  is undocumented (?) so they are not correctly labeled.
+* The dots which are labelled as using a Blustein algorithm can also be using a Rader one,
+  hence the better performance of many sizes, both for vkFFT and cuFFT
 
 The general results are:
 
@@ -153,12 +153,19 @@ The general results are:
   efficient than cuFFT due to the smaller number of read and write per FFT axis
   (apart from isolated radix-2 3 sizes)
 * the OpenCL and CUDA backends of vkFFT perform similarly, though there are ranges
-  where CUDA performs better, due to different cache . [Note that if the card is also used for display,
+  where CUDA performs better, due to different cache. [Note that if the card is also used for display,
   then difference can increase, e.g. for nvidia cards opencl performance is more affected
   when being used for display than the cuda backend]
 * clFFT (via gpyfft) generally performs much worse than the other transforms, though this was
   tested using nVidia cards. (Note that the clFFT/gpyfft benchmark tries all FFT axis permutations
   to find the fastest combination)
+
+Another example on an A40 card (only with radix<=13 transforms):
+
+.. image:: https://raw.githubusercontent.com/vincefn/pyvkfft/master/doc/benchmark-2DFFT-NVIDIA-Tesla_A40-Linux-radix13.png
+
+On this card the cuFFT is significantly better, even if the 11 and 13 radix transforms
+supported by vkFFT give globally better results.
 
 Accuracy
 --------
