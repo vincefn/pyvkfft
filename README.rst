@@ -121,11 +121,15 @@ Features
   corresponding VkFFTApp (see the example notebook pyvkfft-fft.ipynb).
 - the ``pyvkfft-test`` command-line script allows to test specifc transforms against
   expected accuracy values, for all types of transforms.
-- pyvkfft results are now evaluated before any release with a comprehensive test
-  suite, comparing transform results for all types of transforms: single and double
+- pyvkfft results are now evaluated before any release with a **comprehensive test
+  suite**, comparing transform results for all types of transforms: single and double
   precision, 1D, 2D and 3D, inplace and out-of-place, different norms, radix and
   Bluestein, etc... The ``pyvkfft-test-suite`` script can be used to run the full suite,
-  which takes 28 hours on a V100 GPU using up to 20 parallel process.
+  which takes 28 hours on a V100 GPU using up to 20 parallel process (less than 12h on an A40).
+  Here are the test results for pyvkfft 2023.1:
+  
+  - `A40 cuda test results <http://ftp.esrf.fr/pub/scisoft/PyNX/pyvkfft-test/pyvkfft-test-2023-01-20-a40cu/pyvkfft-test.html>`_
+  - `A40 opencl test results <http://ftp.esrf.fr/pub/scisoft/PyNX/pyvkfft-test/pyvkfft-test-2023-01-20-a40cl/pyvkfft-test.html>`_
 
 Performance
 -----------
