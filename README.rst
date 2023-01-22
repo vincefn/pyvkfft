@@ -130,6 +130,7 @@ Features
   
   - `A40 cuda test results <http://ftp.esrf.fr/pub/scisoft/PyNX/pyvkfft-test/pyvkfft-test-2023-01-20-a40cu/pyvkfft-test.html>`_
   - `A40 opencl test results <http://ftp.esrf.fr/pub/scisoft/PyNX/pyvkfft-test/pyvkfft-test-2023-01-20-a40cl/pyvkfft-test.html>`_
+  - `V100 cuda test resukts <http://ftp.esrf.fr/pub/scisoft/PyNX/pyvkfft-test/pyvkfft-test-2023-01-20-v100cu11.7/pyvkfft-test.html>`_
 
 Performance
 -----------
