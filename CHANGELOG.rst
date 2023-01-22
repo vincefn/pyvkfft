@@ -1,3 +1,7 @@
+Version 2023.1.1 (2023-01-22)
+-----------------------------
+* Fix MANIFEST.in including vkfft_cuda.cu for python setup.py sdist
+
 Version 2023.1 (2023-01-19)
 -----------------------------
 * VkFFT 1.2.33, now using Rader algorithm for better performance

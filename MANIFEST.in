@@ -1,2 +1,4 @@
 include src/vkFFT.h
+include src/*.cu
+include src/*.cpp
 include LICENSE LICENSE_VkFFT README_VkFFT.md
