@@ -1,3 +1,8 @@
+Version 2023.1.X (2023-XX-XX)
+-----------------------------
+* Add pyvkfft-benchmark script.
+* Add ability to automatically download VkFFT.h for a given version or git tag.
+
 Version 2023.1.1 (2023-01-22)
 -----------------------------
 * Fix MANIFEST.in including vkfft_cuda.cu for python setup.py sdist

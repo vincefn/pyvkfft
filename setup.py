@@ -4,6 +4,7 @@
 import os
 import sys
 import platform
+import subprocess
 from os.path import join as pjoin
 import warnings
 from setuptools import setup, find_packages
@@ -171,17 +172,59 @@ exclude_packages = ['examples']
 CUDA = None
 OPENCL = None
 
-for k, v in os.environ.items():
-    if "VKFFT_BACKEND" in k:
-        # Environment variable to manually select vkfft backends. useful e.g. if nvidia tools
-        # are installed but not functional
-        # e.g. use:
-        #   VKFFT_BACKEND=opencl pip install pyvkfft
-        #   VKFFT_BACKEND=cuda pip install .
-        if 'opencl' not in v.lower():
-            exclude_packages.append('opencl')
-        if 'cuda' not in v.lower():
-            exclude_packages.append('cuda')
+if "VKFFT_BACKEND" in os.environ:
+    v = os.environ["VKFFT_BACKEND"]
+    # Environment variable to manually select vkfft backends. useful e.g. if nvidia tools
+    # are installed but not functional
+    # e.g. use:
+    #   VKFFT_BACKEND=opencl pip install pyvkfft
+    #   VKFFT_BACKEND=cuda pip install .
+    if 'opencl' not in v.lower():
+        exclude_packages.append('opencl')
+    if 'cuda' not in v.lower():
+        exclude_packages.append('cuda')
+
+# Download automatically a new version of the VkFFT header ?
+if "VKFFT_GIT_TAG" in os.environ:
+    tag = os.environ['VKFFT_GIT_TAG']
+    # Not all VkFFT versions are git-tagged
+    if tag == "v1.2.20":
+        tag = "e878d1bc"
+    elif tag == "v1.2.21":
+        tag = "84b86bab"
+    elif tag == "v1.2.22":
+        tag = "bde2a0c4"
+    elif tag == "v1.2.23":
+        tag = "3997679e"
+    elif tag == "v1.2.24":
+        tag = "b5de8194"
+    elif tag == "v1.2.25":
+        tag = "1677b4b8"
+    elif tag == "v1.2.26":
+        tag = "96408364"
+    elif tag == "v1.2.27":
+        tag = "bae7c4ae"
+    elif tag == "v1.2.28":
+        tag = "33109a00"
+    elif tag == "v1.2.29":
+        tag = "9fea863b"
+    elif tag == "v1.2.31":
+        tag = "e1c58868"
+    elif tag == "v1.2.32":
+        tag = "1310bfa9"
+    elif tag == "v1.2.33":
+        tag = "5c4a24e1"
+    print(f"Downloading VkFFT header for git tag={os.environ['VKFFT_GIT_TAG']}")
+    if False:
+        # List existing tags ?
+        tags = ['master'] + [t.split('tags/')[-1] for t in subprocess.check_output(
+            "git ls-remote --tags https://github.com/DTolm/VkFFT", timeout=20, shell=True).decode().split('\n')[:-1]]
+        if tag not in tags:
+            raise RuntimeError("Given VkFFT git tag not available from https://github.com/DTolm/VkFFT")
+    os.system(f"curl https://raw.githubusercontent.com/DTolm/VkFFT/{tag}/vkFFT/vkFFT.h "
+              f" -o src/VkFFT.h")
+else:
+    print("VKFFT_GIT_TAG in os.environ ? no")
 
 if 'cuda' not in exclude_packages:
     try:
@@ -242,7 +285,8 @@ class bdist_egg_disabled(bdist_egg):
 
 
 # Console scripts, available e.g. as 'pyvkfft-test'
-scripts = ['pyvkfft/scripts/pyvkfft_test.py', 'pyvkfft/scripts/pyvkfft_test_suite.py']
+scripts = ['pyvkfft/scripts/pyvkfft_test.py', 'pyvkfft/scripts/pyvkfft_test_suite.py',
+           'pyvkfft/scripts/pyvkfft_benchmark.py']
 
 console_scripts = []
 for s in scripts:
