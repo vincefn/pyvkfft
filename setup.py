@@ -222,7 +222,7 @@ if "VKFFT_GIT_TAG" in os.environ:
         if tag not in tags:
             raise RuntimeError("Given VkFFT git tag not available from https://github.com/DTolm/VkFFT")
     os.system(f"curl https://raw.githubusercontent.com/DTolm/VkFFT/{tag}/vkFFT/vkFFT.h "
-              f" -o src/VkFFT.h")
+              f" -o src/vkFFT.h")
 else:
     print("VKFFT_GIT_TAG in os.environ ? no")
 
