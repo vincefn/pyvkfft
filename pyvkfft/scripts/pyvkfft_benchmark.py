@@ -10,12 +10,14 @@
 
 
 import argparse
+import numpy as np
 import time
 from datetime import datetime
 import socket
 import sqlite3
 from pyvkfft.benchmark import test_gpyfft, test_skcuda, test_pyvkfft_opencl, test_pyvkfft_cuda, \
     bench_gpyfft, bench_skcuda, bench_pyvkfft_cuda, bench_pyvkfft_opencl
+from pyvkfft.base import radix_gen_n
 from pyvkfft.version import __version__, vkfft_version
 
 
@@ -54,7 +56,7 @@ default_config = [
 ]
 
 
-def run_test(config, gpu_name, inplace: bool = True, precision: str = 'single', language='cuda', lib='pyvkfft',
+def run_test(config, gpu_name, inplace: bool = True, precision: str = 'single', backend='cuda',
              opencl_platform=None, verbose=False, db=None, compare=False):
     # results = []
     dbc = None
@@ -63,53 +65,47 @@ def run_test(config, gpu_name, inplace: bool = True, precision: str = 'single', 
     for c in config:
         c.precision = precision
         c.inplace = inplace
-        sh = c.shape
+        sh = tuple(c.shape)
         ndim = c.ndim
         nb_repeat = 5
-        if language == 'cuda':
-            if lib == 'pyvkfft':
-                dt, gbps, gpu_name_real = bench_pyvkfft_cuda(sh, precision, ndim, nb_repeat, gpu_name)
-            elif lib == 'skcuda':
-                dt, gbps, gpu_name_real = bench_skcuda(sh, precision, ndim, nb_repeat, gpu_name)
-            else:
-                raise RuntimeError(f"Unknown library to benchmark:{lib}")
-        else:
-            if lib == 'pyvkfft':
-                dt, gbps, gpu_name_real = bench_pyvkfft_opencl(sh, precision, ndim, nb_repeat, gpu_name,
-                                                               opencl_platform=opencl_platform)
-            elif lib == 'skcuda':
-                dt, gbps, gpu_name_real = bench_gpyfft(sh, precision, ndim, nb_repeat, gpu_name,
-                                                       opencl_platform=opencl_platform)
-            else:
-                raise RuntimeError(f"Unknown library to benchmark:{lib}")
+        if backend == 'cuda':
+            dt, gbps, gpu_name_real = bench_pyvkfft_cuda(sh, precision, ndim, nb_repeat, gpu_name)
+        elif backend == 'opencl':
+            dt, gbps, gpu_name_real = bench_pyvkfft_opencl(sh, precision, ndim, nb_repeat, gpu_name,
+                                                           opencl_platform=opencl_platform)
+        elif backend == 'skcuda':
+            dt, gbps, gpu_name_real = bench_skcuda(sh, precision, ndim, nb_repeat, gpu_name)
+        elif backend == 'skcuda':
+            dt, gbps, gpu_name_real = bench_gpyfft(sh, precision, ndim, nb_repeat, gpu_name,
+                                                   opencl_platform=opencl_platform)
         # results.append({'transform': str(c), 'gbps': gbps, 'dt': dt, 'gpu': gpu_name_real})
         g = gpu_name_real.replace(' ', '_').replace(':', '_')
         if db:
             if first:
                 if type(db) != str:
                     db = f"pyvkfft{__version__}-{vkfft_version()}-" \
-                         f"{g}-{language}-" \
+                         f"{g}-{backend}-" \
                          f"{datetime.now().strftime('%Y_%m_%d_%Hh_%Mm_%Ss')}-benchmark.sql"
 
                 hostname = socket.gethostname()
                 db = sqlite3.connect(db)
                 dbc = db.cursor()
                 dbc.execute('CREATE TABLE IF NOT EXISTS pyvkfft_benchmark (epoch int, hostname text,'
-                            'library text, language text, transform text, shape text,'
+                            'backend text, transform text, shape text,'
                             'ndim int, precision text, inplace int, gbps float, gpu text)')
                 db.commit()
             dbc.execute('INSERT INTO pyvkfft_benchmark VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-                        (time.time(), hostname, lib, language, c.transform,
+                        (time.time(), hostname, backend, c.transform,
                          'x'.join(str(i) for i in sh), ndim, precision, inplace, gbps, g))
             db.commit()
         if compare and first:
             dbc0 = sqlite3.connect(compare).cursor()
         if verbose:
-            s = f"{str(c):>30} {gbps:6.1f} GB/s {gpu_name_real} {language:6^} "
+            s = f"{str(c):>30} {gbps:6.1f} GB/s {gpu_name_real} {backend:6^} "
             if db is not None and compare:
                 # Find similar result
-                q = f"SELECT * from pyvkfft_benchmark WHERE library = '{lib}' " \
-                    f"AND gpu = '{g}' AND language = '{language}' AND transform = '{c.transform}'" \
+                q = f"SELECT * from pyvkfft_benchmark WHERE backend = '{backend}' " \
+                    f"AND gpu = '{g}' AND transform = '{c.transform}'" \
                     f"AND shape = '{'x'.join(str(i) for i in sh)}' AND ndim = {ndim} " \
                     f"AND precision = '{precision}' AND inplace = {int(inplace)} ORDER by epoch"
                 dbc0.execute(q)
@@ -136,10 +132,9 @@ def run_test(config, gpu_name, inplace: bool = True, precision: str = 'single', 
 def main():
     parser = argparse.ArgumentParser(prog='pyvkfft-benchmark',
                                      description='Run pyvkfft benchmark tests')
-    parser.add_argument('--language', action='store', choices=['cuda', 'opencl'],
-                        default='cuda', help="GPU language to test")
-    parser.add_argument('--library', action='store', choices=['pyvkfft', 'gpyfft', 'skcuda'],
-                        default='pyvkfft', help="GPU FFT library to test")
+    parser.add_argument('--backend', action='store', choices=['cuda', 'opencl', 'gpyfft', 'skcuda'],
+                        default='pyvkfft', help="FFT backend to use, 'cuda' and 'opencl' will "
+                                                "use pyvkfft with the corresponding language.")
     parser.add_argument('--precision', action='store', choices=['single', 'double'],
                         default='single', help="Precision for the benchmark")
     parser.add_argument('--gpu', action='store', type=str, default=None, help="GPU name (or sub-string)")
@@ -147,9 +142,59 @@ def main():
     parser.add_argument('--save', action='store_true', default=False, help="Save results to an sql file")
     parser.add_argument('--compare', action='store', type=str,
                         help="Name of database file to compare to.")
+    parser.add_argument('--systematic', action='store_true',
+                        help="Perform a systematic benchmark over a range of array sizes.\n"
+                             "Without this argument only a small number of array sizes is tested.")
+    parser.add_argument('--dry-run', action='store_true',
+                        help="Perform a dry-run, printing the number of array shapes to test")
+    sysgrp = parser.add_argument_group("systematic", "Options for --systematic:")
+    sysgrp.add_argument('--radix', action='store', nargs='*', type=int,
+                        help="Perform only radix transforms. If no value is given, all available "
+                             "radix transforms are allowed. Alternatively a list can be given: "
+                             "'--radix 2' (only 2**n array sizes), '--radix 2 3 5' "
+                             "(only 2**N1 * 3**N2 * 5**N3)",
+                        choices=[2, 3, 5, 7, 11, 13], default=[2, 3, 5, 7, 11, 13])
+    sysgrp.add_argument('--ndim', action='store', nargs='*',
+                        help="Number of dimensions for the transform. The arrays will be "
+                             "stacked so that each batch transform is at least 1GB.",
+                        default=[2], type=int, choices=[1, 2, 3])
+    sysgrp.add_argument('--range', action='store', nargs=2, type=int,
+                        help="Range of array lengths [min, max] along each transform dimension, "
+                             "'--range 2 128'. This is combined with --range-mb to determine the "
+                             "actual range, so you can put large values here and let the maximum "
+                             "total size limit the actual memory used.",
+                        default=[2, 256])
+    sysgrp.add_argument('--range-mb', action='store', nargs=2, type=int,
+                        help="Range of array sizes in MBytes. This is combined with --range to"
+                             "find the actual range to use.",
+                        default=[2, 128])
     args = parser.parse_args()
-    run_test(default_config, args.gpu, language=args.language, verbose=args.verbose,
-             db=args.save, compare=args.compare)
+    if args.systematic:
+        config = []
+        for ndim in args.ndim:
+            size_min_max = np.array(args.range_mb) * 1024 ** 2
+            if args.precision == 'double':
+                size_min_max //= 16
+            else:
+                size_min_max //= 8
+            size_min_max = np.round(size_min_max**(1/ndim)).astype(int)
+            vshape = np.array(radix_gen_n(nmax=args.range[1], max_size=size_min_max[1],
+                                          radix=args.radix, ndim=1, even=False,
+                                          nmin=args.range[0], max_pow=None,
+                                          range_nd_narrow=None, min_size=size_min_max[0]),
+                              dtype=int).flatten()
+            nbatch = 1e8 / (vshape ** ndim * (8 if args.precision == 'double' else 4))
+            nbatch = np.maximum(1, nbatch).astype(int)
+            config += [BenchConfig('c2c', [b] + [n] * ndim, ndim) for b, n in zip(nbatch, vshape)]
+    else:
+        config = default_config
+    if args.dry_run:
+        for c in config:
+            print(c)
+        print("Total number of arrays to test: ", len(config))
+    else:
+        run_test(config, args.gpu, backend=args.backend, verbose=args.verbose,
+                 db=args.save, compare=args.compare)
 
 
 if __name__ == '__main__':

@@ -346,7 +346,7 @@ def main():
                         default=[2, 128])
     sysgrp.add_argument('--range-mb', action='store', nargs=2, type=int,
                         help="Allowed range of array sizes [min, max] in Mbytes, e.g. "
-                             "'--range 2 128'. This can be used to limit the arrays size "
+                             "'--range-mb 2 128'. This can be used to limit the arrays size "
                              "while allowing large lengths along individual dimensions. "
                              "It can also be used to separate runs with a given size range "
                              "and different nproc values. This takes into account the "
