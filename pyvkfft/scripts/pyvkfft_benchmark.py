@@ -94,7 +94,7 @@ def run_test(config, gpu_name, inplace: bool = True, precision: str = 'single', 
                             'backend text, transform text, shape text,'
                             'ndim int, precision text, inplace int, gbps float, gpu text)')
                 db.commit()
-            dbc.execute('INSERT INTO pyvkfft_benchmark VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+            dbc.execute('INSERT INTO pyvkfft_benchmark VALUES (?,?,?,?,?,?,?,?,?,?)',
                         (time.time(), hostname, backend, c.transform,
                          'x'.join(str(i) for i in sh), ndim, precision, inplace, gbps, g))
             db.commit()
