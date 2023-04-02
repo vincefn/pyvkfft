@@ -91,18 +91,18 @@ def run_test(config, gpu_name, inplace: bool = True, precision: str = 'single', 
                 db = sqlite3.connect(db)
                 dbc = db.cursor()
                 dbc.execute('CREATE TABLE IF NOT EXISTS pyvkfft_benchmark (epoch int, hostname text,'
-                            'backend text, transform text, shape text,'
+                            'pyvkfft text, vkfft text, backend text, transform text, shape text,'
                             'ndim int, precision text, inplace int, gbps float, gpu text)')
                 db.commit()
-            dbc.execute('INSERT INTO pyvkfft_benchmark VALUES (?,?,?,?,?,?,?,?,?,?)',
-                        (time.time(), hostname, backend, c.transform,
+            dbc.execute('INSERT INTO pyvkfft_benchmark VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+                        (time.time(), hostname, __version__, vkfft_version(), backend, c.transform,
                          'x'.join(str(i) for i in sh), ndim, precision, inplace, gbps, g))
             db.commit()
         if compare and first:
             dbc0 = sqlite3.connect(compare).cursor()
         if verbose:
             s = f"{str(c):>30} {gbps:6.1f} GB/s {gpu_name_real} {backend:6^} "
-            if db is not None and compare:
+            if compare:
                 # Find similar result
                 q = f"SELECT * from pyvkfft_benchmark WHERE backend = '{backend}' " \
                     f"AND gpu = '{g}' AND transform = '{c.transform}'" \
@@ -147,6 +147,10 @@ def main():
                              "Without this argument only a small number of array sizes is tested.")
     parser.add_argument('--dry-run', action='store_true',
                         help="Perform a dry-run, printing the number of array shapes to test")
+    parser.add_argument('--plot', action='store', nargs='+', type=str,
+                        help="Plot results stored in *.sql files. Separate plots are given "
+                             "for different dimensions. Multiple *.sql files can be given "
+                             "for comparison. This parameter supersedes all others.")
     sysgrp = parser.add_argument_group("systematic", "Options for --systematic:")
     sysgrp.add_argument('--radix', action='store', nargs='*', type=int,
                         help="Perform only radix transforms. If no value is given, all available "
@@ -154,7 +158,7 @@ def main():
                              "'--radix 2' (only 2**n array sizes), '--radix 2 3 5' "
                              "(only 2**N1 * 3**N2 * 5**N3)",
                         choices=[2, 3, 5, 7, 11, 13], default=[2, 3, 5, 7, 11, 13])
-    sysgrp.add_argument('--ndim', action='store', nargs='*',
+    sysgrp.add_argument('--ndim', action='store', nargs='+',
                         help="Number of dimensions for the transform. The arrays will be "
                              "stacked so that each batch transform is at least 1GB.",
                         default=[2], type=int, choices=[1, 2, 3])
@@ -169,6 +173,49 @@ def main():
                              "find the actual range to use.",
                         default=[2, 128])
     args = parser.parse_args()
+    if args.plot:
+        import matplotlib.pyplot as plt
+        res_all = {}
+        for ndim in (1, 2, 3):
+            for src in args.plot:
+                dbc0 = sqlite3.connect(src).cursor()
+                dbc0.execute(f"SELECT * from pyvkfft_benchmark WHERE ndim = {ndim} ORDER by epoch")
+                res = dbc0.fetchall()
+                if len(res):
+                    vk = [k[0] for k in dbc0.description]
+                    gpu = res[0][vk.index('gpu')]
+                    vkfft_ver = res[0][vk.index('vkfft')]
+
+                    igbps = vk.index('gbps')
+                    vgbps = [r[igbps] for r in res]
+                    ish = vk.index('shape')
+                    vlength = [int(r[ish].split('x')[-1]) for r in res]
+
+                    if ndim not in res_all:
+                        res_all[ndim] = {f"VkFFT {vkfft_ver}[{gpu}]": [vlength, vgbps]}
+                    else:
+                        res_all[ndim][f"VkFFT {vkfft_ver}[{gpu}]"] = [vlength, vgbps]
+        for ndim, res in res_all.items():
+            plt.figure(figsize=(16, 8))
+            for k, v in res.items():
+                x, y = v
+                plt.plot(x, y, '.', label=k)
+
+            plt.xlabel("array length")
+            plt.ylabel("Theoretical throughput (GBytes/s)")
+            plt.ylim(0)
+
+            # Use powers of 2 for xticks
+            xmin, xmax = plt.xlim()
+            step = 2 ** (round(np.log2(xmax - xmin + 1) - 4))
+            xmin -= xmin % step
+            plt.xticks(np.arange(xmin, xmax, step))
+
+            plt.legend()
+            plt.grid(True)
+            plt.tight_layout()
+            plt.savefig(f"pyvkfft-benchmark-{ndim}D.png")
+        return
     if args.systematic:
         config = []
         for ndim in args.ndim:
@@ -177,7 +224,7 @@ def main():
                 size_min_max //= 16
             else:
                 size_min_max //= 8
-            size_min_max = np.round(size_min_max**(1/ndim)).astype(int)
+            size_min_max = np.round(size_min_max ** (1 / ndim)).astype(int)
             vshape = np.array(radix_gen_n(nmax=args.range[1], max_size=size_min_max[1],
                                           radix=args.radix, ndim=1, even=False,
                                           nmin=args.range[0], max_pow=None,
