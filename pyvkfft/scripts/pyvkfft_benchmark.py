@@ -78,6 +78,9 @@ def run_test(config, gpu_name, inplace: bool = True, precision: str = 'single', 
         elif backend == 'skcuda':
             dt, gbps, gpu_name_real = bench_gpyfft(sh, precision, ndim, nb_repeat, gpu_name,
                                                    opencl_platform=opencl_platform)
+        if gpu_name_real is None:
+            # Something went wrong ? Possible timeout ?
+            continue
         # results.append({'transform': str(c), 'gbps': gbps, 'dt': dt, 'gpu': gpu_name_real})
         g = gpu_name_real.replace(' ', '_').replace(':', '_')
         if db:
