@@ -130,7 +130,8 @@ def test_gpyfft():
     return has_gpyfft
 
 
-def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None, opencl_platform=None):
+def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None,
+                          opencl_platform=None, args=None):
     import pyopencl as cl
     import pyopencl.array as cla
     from pyopencl import clrandom
@@ -160,8 +161,15 @@ def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_na
     cq = cl.CommandQueue(cl_ctx)
     dt = 0
     d = clrandom.rand(cq, shape=sh, dtype=np.float32).astype(dtype)
-    if True:
-        app = clVkFFTApp(d.shape, dtype=dtype, queue=cq, ndim=ndim)
+    try:
+        kwargs = {}
+        if args is not None:
+            for k, v in args.items():
+                if k in ["disableReorderFourStep", "coalescedMemory", "numSharedBanks",
+                         "aimThreads", "performBandwidthBoost", "registerBoost",
+                         "registerBoostNonPow2", "registerBoost4Step", "warpSize", "useLUT"]:
+                    kwargs[k] = v
+        app = clVkFFTApp(d.shape, dtype=dtype, queue=cq, ndim=ndim, **kwargs)
         for i in range(nb_repeat):
             cq.finish()
             t0 = timeit.default_timer()
@@ -176,14 +184,16 @@ def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_na
         # print("%4d %4dx%4d 2D FFT+iFFT dt=%6.2f ms %7.2f Gbytes/s [pyvkfft.opencl]  [nb=%4d]" %
         #      (nz, n, n, dt / nb * 1000, gbps, nb))
         gbps = d.nbytes * ndim * 2 * 2 / dt / 1024 ** 3
-    else:
+    except:
         gbps = 0
     q.put((dt, gbps, gpu_name_real))
 
 
-def bench_pyvkfft_opencl(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None, opencl_platform=None):
+def bench_pyvkfft_opencl(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None,
+                         opencl_platform=None, args=None):
     q = Queue()
-    p = Process(target=_bench_pyvkfft_opencl, args=(q, sh, precision, ndim, nb_repeat, gpu_name, opencl_platform))
+    p = Process(target=_bench_pyvkfft_opencl, args=(q, sh, precision, ndim, nb_repeat, gpu_name,
+                                                    opencl_platform, args))
     p.start()
     try:
         dt, gbps, gpu_name_real = q.get()
@@ -193,7 +203,7 @@ def bench_pyvkfft_opencl(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=N
     return dt, gbps, gpu_name_real
 
 
-def _bench_pyvkfft_cuda(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None):
+def _bench_pyvkfft_cuda(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None, args=None):
     import pycuda.autoprimaryctx  # See https://github.com/lebedov/scikit-cuda/issues/330#issuecomment-1125471345
     import pycuda.driver as cu_drv
     import pycuda.gpuarray as cua
@@ -215,7 +225,14 @@ def _bench_pyvkfft_cuda(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name
     dt = 0
     d = curandom.rand(shape=sh, dtype=np.float32).astype(dtype)
     try:
-        app = cuVkFFTApp(d.shape, dtype=dtype, ndim=ndim)
+        kwargs = {}
+        if args is not None:
+            for k, v in args.items():
+                if k in ["disableReorderFourStep", "coalescedMemory", "numSharedBanks",
+                         "aimThreads", "performBandwidthBoost", "registerBoost",
+                         "registerBoostNonPow2", "registerBoost4Step", "warpSize", "useLUT"]:
+                    kwargs[k] = v
+        app = cuVkFFTApp(d.shape, dtype=dtype, ndim=ndim, **kwargs)
         start = cu_drv.Event()
         stop = cu_drv.Event()
         for i in range(nb_repeat):
@@ -240,9 +257,9 @@ def _bench_pyvkfft_cuda(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name
     q.put((dt, gbps, gpu_name_real))
 
 
-def bench_pyvkfft_cuda(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None):
+def bench_pyvkfft_cuda(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None, args=None):
     q = Queue()
-    p = Process(target=_bench_pyvkfft_cuda, args=(q, sh, precision, ndim, nb_repeat, gpu_name))
+    p = Process(target=_bench_pyvkfft_cuda, args=(q, sh, precision, ndim, nb_repeat, gpu_name, args))
     p.start()
     try:
         dt, gbps, gpu_name_real = q.get(timeout=10)

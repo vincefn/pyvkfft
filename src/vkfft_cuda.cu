@@ -23,7 +23,8 @@ typedef float2 Complex;
 
 LIBRARY_API VkFFTConfiguration* make_config(const size_t, const size_t, const size_t, const size_t, void*, void*, void*,
                                 const int, const size_t, const int, const int, const int, const int,
-                                const int, const int, const size_t, const int, const int, const int);
+                                const int, const int, const size_t, const int, const int, const int,
+                                const int, const int, const int, const int, const int, const int, const int);
 
 LIBRARY_API VkFFTApplication* init_app(const VkFFTConfiguration*, int*);
 
@@ -79,7 +80,11 @@ VkFFTConfiguration* make_config(const size_t nx, const size_t ny, const size_t n
                                 const int norm, const size_t precision, const int r2c, const int dct,
                                 const int disableReorderFourStep, const int registerBoost,
                                 const int useLUT, const int keepShaderCode, const size_t n_batch,
-                                const int skipx, const int skipy, const int skipz)
+                                const int skipx, const int skipy, const int skipz,
+                                const int coalescedMemory, const int numSharedBanks,
+                                const int aimThreads, const int performBandwidthBoost,
+                                const int registerBoostNonPow2, const int registerBoost4Step,
+                                const int warpSize)
 {
   VkFFTConfiguration *config = new VkFFTConfiguration({});
   config->FFTdim = fftdim;
@@ -107,6 +112,27 @@ VkFFTConfiguration* make_config(const size_t nx, const size_t ny, const size_t n
 
   if(keepShaderCode>=0)
     config->keepShaderCode = keepShaderCode;
+
+  if(coalescedMemory>=0)
+    config->coalescedMemory = coalescedMemory;
+
+  if(numSharedBanks>=0)
+    config->numSharedBanks = numSharedBanks;
+
+  if(aimThreads>=0)
+    config->aimThreads = aimThreads;
+
+  if(performBandwidthBoost>=0)
+    config->performBandwidthBoost = performBandwidthBoost;
+
+  if(registerBoostNonPow2>=0)
+    config->registerBoostNonPow2 = registerBoostNonPow2;
+
+  if(registerBoost4Step>=0)
+    config->registerBoost4Step = registerBoost4Step;
+
+  if(warpSize>=0)
+    config->warpSize = warpSize;
 
   switch(precision)
   {

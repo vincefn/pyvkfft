@@ -40,7 +40,9 @@ _vkfft_cuda.make_config.argtypes = [ctypes.c_size_t, ctypes.c_size_t, ctypes.c_s
                                     ctypes.c_void_p, ctypes.c_void_p, _types.stream, ctypes.c_int,
                                     ctypes.c_size_t, ctypes.c_int, ctypes.c_int, ctypes.c_int,
                                     ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_size_t,
-                                    ctypes.c_int, ctypes.c_int, ctypes.c_int]
+                                    ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                    ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                    ctypes.c_int]
 
 _vkfft_cuda.init_app.restype = ctypes.c_void_p
 _vkfft_cuda.init_app.argtypes = [_types.vkfft_config, ctypes.POINTER(ctypes.c_int)]
@@ -173,7 +175,11 @@ class VkFFTApp(VkFFTAppBase):
                                        norm, self.precision, int(self.r2c), int(self.dct),
                                        int(self.disableReorderFourStep), int(self.registerBoost),
                                        int(self.use_lut), int(self.keepShaderCode),
-                                       n_batch, skipx, skipy, skipz)
+                                       n_batch, skipx, skipy, skipz,
+                                       int(self.coalescedMemory), int(self.numSharedBanks),
+                                       int(self.aimThreads), int(self.performBandwidthBoost),
+                                       int(self.registerBoostNonPow2), int(self.registerBoost4Step),
+                                       int(self.warpSize))
 
     def fft(self, src, dest=None):
         """

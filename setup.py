@@ -72,7 +72,7 @@ def locate_cuda():
                               '--compiler-options=-fPIC']
         extra_link_args = ['--shared', '-L%s' % libdir]
     cudaconfig = {'home': home, 'nvcc': nvcc,
-                  'include_dirs': [pjoin(home, 'include')],
+                  'include_dirs': [pjoin(home, 'include'), 'src/vkFFT'],
                   'extra_compile_args': extra_compile_args,
                   'extra_link_args': extra_link_args}
     for k in ['home', 'nvcc']:
@@ -87,7 +87,7 @@ def locate_opencl():
     Get the opencl configuration
     :return:
     """
-    include_dirs = []
+    include_dirs = ['src/vkFFT']
     library_dirs = []
     extra_compile_args = ['-std=c++11', '-Wno-format-security']
     extra_link_args = None

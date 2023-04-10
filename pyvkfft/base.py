@@ -515,10 +515,123 @@ class VkFFTApp:
         else:
             self.disableReorderFourStep = -1
 
+        # uint64_t coalescedMemory - number of bytes to coalesce per one transaction.
+        # For Nvidia and AMD is equal to 32, Intel is equal to 64. Going to work regardless,
+        # but if specified by the user correctly, the performance will be higher. Default 64
+        # for other GPUs. For half-precision should be multiplied by two. Should be a power of two.
+        if "coalescedMemory" in kwargs:
+            self.coalescedMemory = kwargs["coalescedMemory"]
+        else:
+            self.coalescedMemory = -1
+
+        # uint64_t numSharedBanks - configure the number of shared banks on the target GPU.
+        # Default 32. Minor performance boost as it solves shared memory conflicts for
+        # the power of two systems.
+        if "numSharedBanks" in kwargs:
+            self.numSharedBanks = kwargs["numSharedBanks"]
+        else:
+            self.numSharedBanks = -1
+
+        # uint64_t aimThreads - try to aim all kernels at this amount of threads.
+        # Gains/losses are not predictable, just a parameter to play with
+        # (it is not guaranteed that the target kernel will use that many threads).
+        # Default 128.
+        if "aimThreads" in kwargs:
+            self.aimThreads = kwargs["aimThreads"]
+        else:
+            self.aimThreads = -1
+
+        # uint64_t performBandwidthBoost - try to reduce coalesced number by a factor of X
+        # to get bigger sequence in one upload for strided axes.
+        # Default: -1(inf) for DCT, 2 for Bluestein’s algorithm (or -1 if DCT), 0 otherwise
+        if "performBandwidthBoost" in kwargs:
+            self.performBandwidthBoost = kwargs["performBandwidthBoost"]
+        else:
+            self.performBandwidthBoost = -1
+
+        # uint64_t registerBoost - specify if the register file size is bigger than
+        # shared memory and can be used to extend it X times (on Nvidia 256KB register
+        # file can be used instead of 32KB of shared memory, set this constant to 4 to
+        # emulate 128KB of shared memory). Default 1 - no over-utilization. In Vulkan,
+        # OpenCL and Level Zero it is set to 4 on Nvidia GPUs, to 2 if the driver
+        # shows 64KB or more of shared memory on AMD, to 2 if the driver shows less
+        # than 64KB of shared memory on AMD, to 1 if the driver shows 64KB or more
+        # of shared memory on Intel, to 2 if the driver shows less than 64KB of shared
+        # memory on Intel.
         if "registerBoost" in kwargs:
             self.registerBoost = kwargs["registerBoost"]
         else:
             self.registerBoost = -1
+
+        # uint64_t registerBoostNonPow2 - specify if register over-utilization should
+        # be used on non-power of 2 sequences. Default 0, set to 1 to enable.
+        if "registerBoostNonPow2" in kwargs:
+            self.registerBoostNonPow2 = kwargs["registerBoostNonPow2"]
+        else:
+            self.registerBoostNonPow2 = -1
+
+        # uint64_t registerBoost4Step - specify if register file over-utilization
+        # should be used in big sequences (>2^14), same definition as registerBoost.
+        # Default 1.
+        if "registerBoost4Step" in kwargs:
+            self.registerBoost4Step = kwargs["registerBoost4Step"]
+        else:
+            self.registerBoost4Step = -1
+
+        # # uint64_t maxComputeWorkGroupCount[3] - how many workgroups can be launched
+        # # at one dispatch. Automatically derived from the driver, can be artificially
+        # # lowered. Then VkFFT will perform a logical split and extension of the
+        # # number of workgroups to cover the required range.
+        # if "maxComputeWorkGroupCount" in kwargs:
+        #     self.maxComputeWorkGroupCount = kwargs["maxComputeWorkGroupCount"]
+        # else:
+        #     self.maxComputeWorkGroupCount = (-1, -1, -1)
+        #
+        # # uint64_t maxComputeWorkGroupSize[3] - max dimensions of the workgroup.
+        # # Automatically derived from the driver. Can be modified if there are
+        # # some issues with the driver (as there were with ROCm 4.0, when it returned
+        # # 1024 for maxComputeWorkGroupSize and actually supported only up to 256 threads).
+        # if "maxComputeWorkGroupSize" in kwargs:
+        #     self.maxComputeWorkGroupSize = kwargs["maxComputeWorkGroupSize"]
+        # else:
+        #     self.maxComputeWorkGroupSize = (-1, -1, -1)
+        #
+        # # uint64_t maxThreadsNum - max number of threads per block. Similar to maxCompute
+        # # - WorkGroupSize, but aggregated. Automatically derived from the driver.
+        # if "maxThreadsNum" in kwargs:
+        #     self.maxThreadsNum = kwargs["maxThreadsNum"]
+        # else:
+        #     self.maxThreadsNum = -1
+        #
+        # # uint64_t sharedMemorySizeStatic - available for static allocation shared
+        # # memory size, in bytes. Automatically derived from the driver.
+        # if "sharedMemorySizeStatic" in kwargs:
+        #     self.sharedMemorySizeStatic = kwargs["sharedMemorySizeStatic"]
+        # else:
+        #     self.sharedMemorySizeStatic = -1
+        #
+        # # uint64_t sharedMemorySize - available for allocation shared memory size,
+        # # in bytes. VkFFT uses dynamic shared memory in CUDA/HIP as it allows for
+        # # bigger allocations.
+        # if "sharedMemorySize" in kwargs:
+        #     self.sharedMemorySize = kwargs["sharedMemorySize"]
+        # else:
+        #     self.sharedMemorySize = -1
+        #
+        # # uint64_t sharedMemorySizePow2 - the power of 2 which is less or equal to
+        # # sharedMemorySize, in bytes.
+        # if "sharedMemorySizePow2" in kwargs:
+        #     self.sharedMemorySizePow2 = kwargs["sharedMemorySizePow2"]
+        # else:
+        #     self.sharedMemorySizePow2 = -1
+
+        # uint64_t warpSize - number of threads per warp/wavefront. Automatically derived
+        # from the driver, but can be modified (can increase performance, though
+        # unpredictable as defaults have good values). Must be a power of two.
+        if "warpSize" in kwargs:
+            self.warpSize = kwargs["warpSize"]
+        else:
+            self.warpSize = -1
 
         if "useLUT" in kwargs:
             # useLUT=1 may be beneficial on platforms which have a low accuracy for

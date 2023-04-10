@@ -56,9 +56,16 @@ default_config = [
 ]
 
 
-def run_test(config, gpu_name, inplace: bool = True, precision: str = 'single', backend='cuda',
-             opencl_platform=None, verbose=False, db=None, compare=False):
+def run_test(config, args):
     # results = []
+    gpu_name = args.gpu
+    inplace = True
+    precision = args.precision
+    backend = args.backend
+    opencl_platform = None
+    verbose = args.verbose
+    db = args.save
+    compare = args.compare
     dbc = None
     dbc0 = None
     first = True
@@ -69,10 +76,10 @@ def run_test(config, gpu_name, inplace: bool = True, precision: str = 'single', 
         ndim = c.ndim
         nb_repeat = 5
         if backend == 'cuda':
-            dt, gbps, gpu_name_real = bench_pyvkfft_cuda(sh, precision, ndim, nb_repeat, gpu_name)
+            dt, gbps, gpu_name_real = bench_pyvkfft_cuda(sh, precision, ndim, nb_repeat, gpu_name, args=vars(args))
         elif backend == 'opencl':
             dt, gbps, gpu_name_real = bench_pyvkfft_opencl(sh, precision, ndim, nb_repeat, gpu_name,
-                                                           opencl_platform=opencl_platform)
+                                                           opencl_platform=opencl_platform, args=vars(args))
         elif backend == 'skcuda':
             dt, gbps, gpu_name_real = bench_skcuda(sh, precision, ndim, nb_repeat, gpu_name)
         elif backend == 'skcuda':
@@ -93,13 +100,23 @@ def run_test(config, gpu_name, inplace: bool = True, precision: str = 'single', 
                 hostname = socket.gethostname()
                 db = sqlite3.connect(db)
                 dbc = db.cursor()
-                dbc.execute('CREATE TABLE IF NOT EXISTS pyvkfft_benchmark (epoch int, hostname text,'
-                            'pyvkfft text, vkfft text, backend text, transform text, shape text,'
-                            'ndim int, precision text, inplace int, gbps float, gpu text)')
+                dbc.execute('CREATE TABLE IF NOT EXISTS config (epoch int, hostname text,'
+                            'pyvkfft text, vkfft text, backend text, transform text,'
+                            'precision text, inplace int, gpu text, disableReorderFourStep int,'
+                            'coalescedMemory int, numSharedBanks int,'
+                            'aimThreads int, performBandwidthBoost int, registerBoost int,'
+                            'registerBoostNonPow2 int, registerBoost4Step int, warpSize int, useLUT int)')
+                dbc.execute('INSERT INTO config VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                            (time.time(), hostname, __version__, vkfft_version(), backend, c.transform,
+                             precision, inplace, g, args.disableReorderFourStep,
+                             args.coalescedMemory, args.numSharedBanks,
+                             args.aimThreads, args.performBandwidthBoost, args.registerBoost,
+                             args.registerBoostNonPow2, args.registerBoost4Step, args.warpSize, args.useLUT))
                 db.commit()
-            dbc.execute('INSERT INTO pyvkfft_benchmark VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-                        (time.time(), hostname, __version__, vkfft_version(), backend, c.transform,
-                         'x'.join(str(i) for i in sh), ndim, precision, inplace, gbps, g))
+                dbc.execute('CREATE TABLE IF NOT EXISTS benchmark (epoch int, ndim int, shape text, gbps float)')
+                db.commit()
+            dbc.execute('INSERT INTO benchmark VALUES (?,?,?,?)',
+                        (time.time(), ndim, 'x'.join(str(i) for i in sh), gbps))
             db.commit()
         if compare and first:
             dbc0 = sqlite3.connect(compare).cursor()
@@ -107,10 +124,7 @@ def run_test(config, gpu_name, inplace: bool = True, precision: str = 'single', 
             s = f"{str(c):>30} {gbps:6.1f} GB/s {gpu_name_real} {backend:6^} "
             if compare:
                 # Find similar result
-                q = f"SELECT * from pyvkfft_benchmark WHERE backend = '{backend}' " \
-                    f"AND gpu = '{g}' AND transform = '{c.transform}'" \
-                    f"AND shape = '{'x'.join(str(i) for i in sh)}' AND ndim = {ndim} " \
-                    f"AND precision = '{precision}' AND inplace = {int(inplace)} ORDER by epoch"
+                q = f"SELECT * from benchmark WHERE shape = '{'x'.join(str(i) for i in sh)}' ORDER by epoch"
                 dbc0.execute(q)
                 res = dbc0.fetchall()
                 idx = [k[0] for k in dbc0.description].index('gbps')
@@ -174,7 +188,42 @@ def main():
     sysgrp.add_argument('--range-mb', action='store', nargs=2, type=int,
                         help="Range of array sizes in MBytes. This is combined with --range to"
                              "find the actual range to use.",
-                        default=[2, 128])
+                        default=[0, 128])
+    sysgrp = parser.add_argument_group("advanced", "Advanced options for VkFFT. Do NOT use unless you "
+                                                   "really know what these mean. -1 will always "
+                                                   "defer the choice to VkFFT.")
+    sysgrp.add_argument('--disableReorderFourStep', action='store', choices=[-1, 0, 1], type=int,
+                        default=-1, help="Disables unshuffling of Four step algorithm."
+                                         " Requires tempbuffer allocation")
+    sysgrp.add_argument('--coalescedMemory', action='store', choices=[-1, 16, 32, 64, 128], type=int,
+                        default=-1, help="Number of bytes to coalesce per one transaction: "
+                                         "defaults to 32 for Nvidia and AMD, 64 for others."
+                                         "Should be a power of two")
+    sysgrp.add_argument('--numSharedBanks', action='store', choices=[-1] + list(range(16, 64 + 1, 4)), type=int,
+                        default=-1, help="Number of shared banks on the target GPU. Default is 32. ")
+    sysgrp.add_argument('--aimThreads', action='store', choices=[-1] + list(range(16, 256 + 1, 4)), type=int,
+                        default=-1, help="Try to aim all kernels at this amount of threads. ")
+    sysgrp.add_argument('--performBandwidthBoost', action='store', choices=[-1, 0, 1, 2, 4], type=int,
+                        default=-1, help="Try to reduce coalesced number by a factor of X"
+                                         "to get bigger sequence in one upload for strided axes. ")
+    sysgrp.add_argument('--registerBoost', action='store', choices=[-1, 1, 2, 4], type=int,
+                        default=-1, help="Specify if the register file size is bigger than "
+                                         "shared memory and can be used to extend it X times "
+                                         "(on Nvidia 256KB register  file can be used instead "
+                                         "of 32KB of shared memory, set this constant to 4 to "
+                                         "emulate 128KB of shared memory). ")
+    sysgrp.add_argument('--registerBoostNonPow2', action='store', choices=[-1, 0, 1], type=int,
+                        default=-1, help="Specify if register over-utilization should "
+                                         "be used on non-power of 2 sequences ")
+    sysgrp.add_argument('--registerBoost4Step', action='store', choices=[-1, 1, 2, 4], type=int,
+                        default=-1, help="Specify if register file over-utilization "
+                                         "should be used in big sequences (>2^14), "
+                                         "same definition as registerBoost ")
+    sysgrp.add_argument('--warpSize', action='store', choices=[-1, 1, 2, 4, 8, 16, 32, 64, 128, 256], type=int,
+                        default=-1, help="Number of threads per warp/wavefront. Normally automatically "
+                                         "derived from the driver. Must be a power of two")
+    sysgrp.add_argument('--useLUT', action='store', choices=[-1, 0, 1], type=int,
+                        default=-1, help="Use a look-up table to bypass the native sincos functions.")
     args = parser.parse_args()
     if args.plot:
         import matplotlib.pyplot as plt
@@ -182,22 +231,40 @@ def main():
         for ndim in (1, 2, 3):
             for src in args.plot:
                 dbc0 = sqlite3.connect(src).cursor()
-                dbc0.execute(f"SELECT * from pyvkfft_benchmark WHERE ndim = {ndim} ORDER by epoch")
+
+                dbc0.execute(f"SELECT * from config")
+                r = dbc0.fetchone()
+                config = {col[0]: r[i] for i, col in enumerate(dbc0.description)}
+                gpu = config['gpu']
+                vkfft_ver = config['vkfft']
+
+                dbc0.execute(f"SELECT * from benchmark WHERE ndim = {ndim} ORDER by epoch")
                 res = dbc0.fetchall()
                 if len(res):
                     vk = [k[0] for k in dbc0.description]
-                    gpu = res[0][vk.index('gpu')]
-                    vkfft_ver = res[0][vk.index('vkfft')]
-
                     igbps = vk.index('gbps')
                     vgbps = [r[igbps] for r in res]
                     ish = vk.index('shape')
                     vlength = [int(r[ish].split('x')[-1]) for r in res]
 
+                    k = f"VkFFT {vkfft_ver}[{gpu}]"
+                    if config['warpSize'] != -1:
+                        k += f"-warp{config['warpSize']}"
+                    if config['registerBoost'] != -1:
+                        k += f"-rboost{config['registerBoost']}"
+                    if config['registerBoostNonPow2'] != -1:
+                        k += f"-rboostn2{config['registerBoostNonPow2']}"
+                    if config['coalescedMemory'] != -1:
+                        k += f"-coalmem{config['coalescedMemory']}"
+                    if config['aimThreads'] != -1:
+                        k += f"-threads{config['aimThreads']}"
+                    if config['numSharedBanks'] != -1:
+                        k += f"-banks{config['numSharedBanks']}"
+
                     if ndim not in res_all:
-                        res_all[ndim] = {f"VkFFT {vkfft_ver}[{gpu}]": [vlength, vgbps]}
+                        res_all[ndim] = {k: [vlength, vgbps]}
                     else:
-                        res_all[ndim][f"VkFFT {vkfft_ver}[{gpu}]"] = [vlength, vgbps]
+                        res_all[ndim][k] = [vlength, vgbps]
         for ndim, res in res_all.items():
             plt.figure(figsize=(16, 8))
             for k, v in res.items():
@@ -207,6 +274,7 @@ def main():
             plt.xlabel("array length")
             plt.ylabel("Theoretical throughput (GBytes/s)")
             plt.ylim(0)
+            plt.title(f"{ndim}D FFT")
 
             # Use powers of 2 for xticks
             xmin, xmax = plt.xlim()
@@ -243,8 +311,7 @@ def main():
             print(c)
         print("Total number of arrays to test: ", len(config))
     else:
-        run_test(config, args.gpu, backend=args.backend, verbose=args.verbose,
-                 db=args.save, compare=args.compare)
+        run_test(config, args)
 
 
 if __name__ == '__main__':
