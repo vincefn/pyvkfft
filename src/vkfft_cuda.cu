@@ -24,7 +24,8 @@ typedef float2 Complex;
 LIBRARY_API VkFFTConfiguration* make_config(const size_t, const size_t, const size_t, const size_t, void*, void*, void*,
                                 const int, const size_t, const int, const int, const int, const int,
                                 const int, const int, const size_t, const int, const int, const int,
-                                const int, const int, const int, const int, const int, const int, const int);
+                                const int, const int, const int, const int, const int, const int, const int,
+                                const int, const int, const int);
 
 LIBRARY_API VkFFTApplication* init_app(const VkFFTConfiguration*, int*);
 
@@ -84,7 +85,7 @@ VkFFTConfiguration* make_config(const size_t nx, const size_t ny, const size_t n
                                 const int coalescedMemory, const int numSharedBanks,
                                 const int aimThreads, const int performBandwidthBoost,
                                 const int registerBoostNonPow2, const int registerBoost4Step,
-                                const int warpSize)
+                                const int warpSize, const int batchx, const int batchy, const int batchz)
 {
   VkFFTConfiguration *config = new VkFFTConfiguration({});
   config->FFTdim = fftdim;
@@ -133,6 +134,10 @@ VkFFTConfiguration* make_config(const size_t nx, const size_t ny, const size_t n
 
   if(warpSize>=0)
     config->warpSize = warpSize;
+
+  if(batchx>0) config->groupedBatch[0] = batchx;
+  if(batchy>0) config->groupedBatch[1] = batchy;
+  if(batchz>0) config->groupedBatch[2] = batchz;
 
   switch(precision)
   {

@@ -42,7 +42,7 @@ _vkfft_cuda.make_config.argtypes = [ctypes.c_size_t, ctypes.c_size_t, ctypes.c_s
                                     ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_size_t,
                                     ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
                                     ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                                    ctypes.c_int]
+                                    ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
 
 _vkfft_cuda.init_app.restype = ctypes.c_void_p
 _vkfft_cuda.init_app.argtypes = [_types.vkfft_config, ctypes.POINTER(ctypes.c_int)]
@@ -146,6 +146,7 @@ class VkFFTApp(VkFFTAppBase):
         """ Create a vkfft configuration for a FFT transform"""
         nx, ny, nz, n_batch = self.shape
         skipx, skipy, skipz = self.skip_axis
+        batchx, batchy, batchz = self.groupedBatch
         if self.r2c and self.inplace:
             # the last two columns are ignored in the R array, and will be used
             # in the C array with a size nx//2+1
@@ -179,7 +180,7 @@ class VkFFTApp(VkFFTAppBase):
                                        int(self.coalescedMemory), int(self.numSharedBanks),
                                        int(self.aimThreads), int(self.performBandwidthBoost),
                                        int(self.registerBoostNonPow2), int(self.registerBoost4Step),
-                                       int(self.warpSize))
+                                       int(self.warpSize), int(batchx), int(batchy), int(batchz))
 
     def fft(self, src, dest=None):
         """

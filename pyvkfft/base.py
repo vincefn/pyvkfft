@@ -633,6 +633,12 @@ class VkFFTApp:
         else:
             self.warpSize = -1
 
+        self.groupedBatch = [-1, -1, -1]
+        if "groupedBatch" in kwargs:
+            self.groupedBatch = kwargs["groupedBatch"]
+            # In case less than 3 parameters where given
+            self.groupedBatch[:len(kwargs["groupedBatch"])] = kwargs["groupedBatch"]
+
         if "useLUT" in kwargs:
             # useLUT=1 may be beneficial on platforms which have a low accuracy for
             # the native sincos functions.

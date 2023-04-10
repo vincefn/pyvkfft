@@ -85,11 +85,12 @@ def run_test(config, args):
         elif backend == 'skcuda':
             dt, gbps, gpu_name_real = bench_gpyfft(sh, precision, ndim, nb_repeat, gpu_name,
                                                    opencl_platform=opencl_platform)
-        if gpu_name_real is None:
+        if gpu_name_real is None or gbps == 0:
             # Something went wrong ? Possible timeout ?
             continue
         # results.append({'transform': str(c), 'gbps': gbps, 'dt': dt, 'gpu': gpu_name_real})
-        g = gpu_name_real.replace(' ', '_').replace(':', '_')
+        g = gpu_name_real.replace('Apple', '')
+        g = g.strip(' _').replace(' ', '_').replace(':', '_')
         if db:
             if first:
                 if type(db) != str:
@@ -105,13 +106,15 @@ def run_test(config, args):
                             'precision text, inplace int, gpu text, disableReorderFourStep int,'
                             'coalescedMemory int, numSharedBanks int,'
                             'aimThreads int, performBandwidthBoost int, registerBoost int,'
-                            'registerBoostNonPow2 int, registerBoost4Step int, warpSize int, useLUT int)')
-                dbc.execute('INSERT INTO config VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                            'registerBoostNonPow2 int, registerBoost4Step int, warpSize int, useLUT int,'
+                            'batchedGroup text)')
+                dbc.execute('INSERT INTO config VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                             (time.time(), hostname, __version__, vkfft_version(), backend, c.transform,
                              precision, inplace, g, args.disableReorderFourStep,
                              args.coalescedMemory, args.numSharedBanks,
                              args.aimThreads, args.performBandwidthBoost, args.registerBoost,
-                             args.registerBoostNonPow2, args.registerBoost4Step, args.warpSize, args.useLUT))
+                             args.registerBoostNonPow2, args.registerBoost4Step, args.warpSize,
+                             args.useLUT, 'x'.join(str(i) for i in args.batchedGroup)))
                 db.commit()
                 dbc.execute('CREATE TABLE IF NOT EXISTS benchmark (epoch int, ndim int, shape text, gbps float)')
                 db.commit()
@@ -222,12 +225,18 @@ def main():
     sysgrp.add_argument('--warpSize', action='store', choices=[-1, 1, 2, 4, 8, 16, 32, 64, 128, 256], type=int,
                         default=-1, help="Number of threads per warp/wavefront. Normally automatically "
                                          "derived from the driver. Must be a power of two")
+    sysgrp.add_argument('--batchedGroup', action='store', nargs=3, type=int, default=[-1, -1, -1],
+                        help="How many FFTs are done per single kernel "
+                             "by a dedicated thread block, for each dimension.")
     sysgrp.add_argument('--useLUT', action='store', choices=[-1, 0, 1], type=int,
                         default=-1, help="Use a look-up table to bypass the native sincos functions.")
     args = parser.parse_args()
     if args.plot:
         import matplotlib.pyplot as plt
         res_all = {}
+        vgpu = []
+        vbackend = []
+        vopt = []
         for ndim in (1, 2, 3):
             for src in args.plot:
                 dbc0 = sqlite3.connect(src).cursor()
@@ -236,6 +245,23 @@ def main():
                 r = dbc0.fetchone()
                 config = {col[0]: r[i] for i, col in enumerate(dbc0.description)}
                 gpu = config['gpu']
+                if gpu not in vgpu:
+                    vgpu.append(gpu)
+                if config['backend'] not in vbackend:
+                    vbackend.append(config['backend'])
+                for k, v in {"disableReorderFourStep": "r4s", "coalescedMemory": "coalmem",
+                             "numSharedBanks": "nbanks", "aimThreads": "threads",
+                             "performBandwidthBoost": "bwboost", "registerBoost": "rboost",
+                             "registerBoostNonPow2": "rboostn2", "registerBoost4Step": "rboost4",
+                             "warpSize": "warp", "useLUT": "lut", "batchedGroup": "batch"}.items():
+                    if k in config:
+                        if k == "batchedGroup":
+                            # config[k] = [int(b) for b in v.split('x')]
+                            print(config[k])
+                            if config[k] != "-1x-1x-1" and v not in vopt:
+                                vopt.append(v)
+                        elif config[k] != -1 and v not in vopt:
+                            vopt.append(v)
                 vkfft_ver = config['vkfft']
 
                 dbc0.execute(f"SELECT * from benchmark WHERE ndim = {ndim} ORDER by epoch")
@@ -260,11 +286,22 @@ def main():
                         k += f"-threads{config['aimThreads']}"
                     if config['numSharedBanks'] != -1:
                         k += f"-banks{config['numSharedBanks']}"
+                    if 'batchedGroup' in config:
+                        if config['batchedGroup'] != [-1, -1, -1]:
+                            k += f"-batch{config['batchedGroup']}"
 
                     if ndim not in res_all:
                         res_all[ndim] = {k: [vlength, vgbps]}
                     else:
                         res_all[ndim][k] = [vlength, vgbps]
+        vgpu.sort()
+        vbackend.sort()
+        vopt.sort()
+        str_config = "_".join(vgpu) + f"-{','.join(vbackend)}"
+        if len(vopt):
+            str_opt = "_".join(vopt)
+        else:
+            str_opt = ""
         for ndim, res in res_all.items():
             plt.figure(figsize=(16, 8))
             for k, v in res.items():
@@ -274,7 +311,7 @@ def main():
             plt.xlabel("array length")
             plt.ylabel("Theoretical throughput (GBytes/s)")
             plt.ylim(0)
-            plt.title(f"{ndim}D FFT")
+            plt.title(f"{ndim}D FFT-" + str_config)
 
             # Use powers of 2 for xticks
             xmin, xmax = plt.xlim()
@@ -285,7 +322,7 @@ def main():
             plt.legend()
             plt.grid(True)
             plt.tight_layout()
-            plt.savefig(f"pyvkfft-benchmark-{ndim}D.png")
+            plt.savefig(f"pyvkfft-benchmark-{str_config}-{ndim}D-{str_opt}.png")
         return
     if args.systematic:
         config = []
