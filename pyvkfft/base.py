@@ -262,8 +262,8 @@ def radix_gen_n(nmax, max_size, radix, ndim=None, even=False, exclude_one=True, 
                     # print(i1, i2, i3, l1.shape, l2.shape, l3.shape)
                     s = (l01 * l02 * l3).flatten()
                     l1, l2, l3 = (l01 + np.zeros_like(l02) + np.zeros_like(l3)).flatten(), \
-                                 (l02 + np.zeros_like(l01) + np.zeros_like(l3)).flatten(), \
-                                 (l3 + np.zeros_like(l01) + np.zeros_like(l02)).flatten()
+                        (l02 + np.zeros_like(l01) + np.zeros_like(l3)).flatten(), \
+                        (l3 + np.zeros_like(l01) + np.zeros_like(l02)).flatten()
                     tmp = (s <= max_size) * (s >= min_size)
                     if range_nd_narrow is not None:
                         drel, dabs = range_nd_narrow
@@ -635,7 +635,7 @@ class VkFFTApp:
 
         self.groupedBatch = [-1, -1, -1]
         if "groupedBatch" in kwargs:
-            self.groupedBatch = kwargs["groupedBatch"]
+            self.groupedBatch = list(kwargs["groupedBatch"])
             # In case less than 3 parameters where given
             self.groupedBatch[:len(kwargs["groupedBatch"])] = kwargs["groupedBatch"]
 
