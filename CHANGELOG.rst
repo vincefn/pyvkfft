@@ -2,6 +2,9 @@ Version 2023.1.X (2023-XX-XX)
 -----------------------------
 * Add pyvkfft-benchmark script.
 * Add ability to automatically download VkFFT.h for a given version or git tag.
+* Actually use cuda_stream parameter in the pyvkfft.fft interface
+* Take into account current cuda device when automatically
+  caching VkFFTApp using the pyvkfft.fft interface(#26)
 
 Version 2023.1.1 (2023-01-22)
 -----------------------------

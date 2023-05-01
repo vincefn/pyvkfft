@@ -19,6 +19,7 @@ try:
 
     if has_pycuda:
         import pycuda.gpuarray as cua
+        import pycuda.driver as cu_drv
     if has_cupy:
         import cupy as cp
 except (ImportError, OSError):
@@ -40,7 +41,7 @@ class Backend(Enum):
     CUPY = 3
 
 
-def _prepare_transform(src, dest, cl_queue, r2c=False):
+def _prepare_transform(src, dest, cl_queue, cuda_stream, r2c=False):
     """
     Determine the backend from the input data.
     Create the destination array if necessary.
@@ -48,10 +49,14 @@ def _prepare_transform(src, dest, cl_queue, r2c=False):
     :param src: the source GPU array
     :param dest: the destination array. If None, a new GPU array is created.
     :param cl_queue: the opencl queue to use, or None
+    :param cuda_stream: the cuda stream to use (from cupy or pycuda), or None
     :param r2c: if True, this is for an R2C transform, so adapt the destination
         array accordingly.
-    :return: a tuple (backend, inplace, dest, cl_queue), also appending the
-    destination dtype for a r2c transform.
+    :return: a tuple (backend, inplace, dest, cl_queue, cuda_stream, devctx),
+        also appending the destination dtype for a r2c transform.
+        devctx is either the device or context unique ptr or id - this
+        is only used to cache the VkFFTapp (e.g. making sure the app is
+        re-instantiated if the cuda device changes).
     """
     backend = Backend.UNKNOWN
     fastidx = np.argmin(src.strides)  # fast axis is the last only for C-ordered arrays
@@ -78,7 +83,7 @@ def _prepare_transform(src, dest, cl_queue, r2c=False):
                 dtype = np.float64
     else:
         sh, dtype = None, None
-
+    devctx = None
     if has_pycuda:
         if isinstance(src, cua.GPUArray):
             backend = Backend.PYCUDA
@@ -91,6 +96,7 @@ def _prepare_transform(src, dest, cl_queue, r2c=False):
                 else:
                     dest = cua.empty_like(src)
             dest_ptr = int(dest.gpudata)
+            devctx = cu_drv.Context.handle
 
     if backend == Backend.UNKNOWN and has_opencl:
         if isinstance(src, cla.Array):
@@ -104,6 +110,7 @@ def _prepare_transform(src, dest, cl_queue, r2c=False):
             dest_ptr = dest.data.int_ptr
             if cl_queue is None:
                 cl_queue = src.queue
+            devctx = cl_queue.context
 
     if backend == Backend.UNKNOWN and has_cupy:
         if isinstance(src, cp.ndarray):
@@ -115,6 +122,9 @@ def _prepare_transform(src, dest, cl_queue, r2c=False):
                 else:
                     dest = cp.empty_like(src)
             dest_ptr = dest.__cuda_array_interface__['data'][0]
+            if cuda_stream is None:
+                cuda_stream = cp.cuda.get_current_stream()
+            devctx = cp.cuda.Device().id
 
     if backend == Backend.UNKNOWN:
         raise RuntimeError("Could note determine the type of GPU array supplied, or the "
@@ -126,13 +136,14 @@ def _prepare_transform(src, dest, cl_queue, r2c=False):
     if r2c:
         if inplace:
             dest = src.view(dtype=dtype)
-        return backend, inplace, dest, cl_queue, dtype
+        return backend, inplace, dest, cl_queue, cuda_stream, devctx, dtype
     else:
-        return backend, inplace, dest, cl_queue
+        return backend, inplace, dest, cl_queue, cuda_stream, devctx
 
 
 @lru_cache(maxsize=config.FFT_CACHE_NB)
-def _get_fft_app(backend, shape, dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue, strides=None):
+def _get_fft_app(backend, shape, dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue, devctx, strides=None):
+    del devctx  # Variable is just used for proper lru_cache
     if backend in [Backend.PYCUDA, Backend.CUPY]:
         return VkFFTApp_cuda(shape, dtype, ndim=ndim, inplace=inplace,
                              stream=cuda_stream, norm=norm, axes=axes, strides=strides)
@@ -142,7 +153,8 @@ def _get_fft_app(backend, shape, dtype, inplace, ndim, axes, norm, cuda_stream, 
 
 
 @lru_cache(maxsize=config.FFT_CACHE_NB)
-def _get_rfft_app(backend, shape, dtype, inplace, ndim, norm, cuda_stream, cl_queue, strides=None):
+def _get_rfft_app(backend, shape, dtype, inplace, ndim, norm, cuda_stream, cl_queue, devctx, strides=None):
+    del devctx  # Variable is just used for proper lru_cache
     if backend in [Backend.PYCUDA, Backend.CUPY]:
         return VkFFTApp_cuda(shape, dtype, ndim=ndim, inplace=inplace,
                              stream=cuda_stream, norm=norm, r2c=True, strides=strides)
@@ -153,7 +165,8 @@ def _get_rfft_app(backend, shape, dtype, inplace, ndim, norm, cuda_stream, cl_qu
 
 @lru_cache(maxsize=config.FFT_CACHE_NB)
 def _get_dct_app(backend, shape, dtype, inplace, ndim, norm, dct_type,
-                 cuda_stream, cl_queue):
+                 cuda_stream, cl_queue, devctx):
+    del devctx  # Variable is just used for proper lru_cache
     if backend in [Backend.PYCUDA, Backend.CUPY]:
         return VkFFTApp_cuda(shape, dtype, ndim=ndim, inplace=inplace,
                              stream=cuda_stream, norm=norm, dct=dct_type)
@@ -196,8 +209,8 @@ def fftn(src, dest=None, ndim=None, norm=1, axes=None, cuda_stream=None, cl_queu
         must be multiplied to keep its L2 norm after the transform
     :return: the destination array if return_scale is False, or (dest, scale)
     """
-    backend, inplace, dest, cl_queue = _prepare_transform(src, dest, cl_queue, False)
-    app = _get_fft_app(backend, src.shape, src.dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue,
+    backend, inplace, dest, cl_queue, cuda_stream, devctx = _prepare_transform(src, dest, cl_queue, cuda_stream, False)
+    app = _get_fft_app(backend, src.shape, src.dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue, devctx,
                        strides=src.strides)
     if backend == Backend.PYOPENCL:
         app.fft(src, dest, queue=cl_queue)
@@ -243,8 +256,8 @@ def ifftn(src, dest=None, ndim=None, norm=1, axes=None, cuda_stream=None, cl_que
         must be multiplied to keep its L2 norm after the transform
     :return: the destination array if return_scale is False, or (dest, scale)
     """
-    backend, inplace, dest, cl_queue = _prepare_transform(src, dest, cl_queue, False)
-    app = _get_fft_app(backend, src.shape, src.dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue,
+    backend, inplace, dest, cl_queue, cuda_stream, devctx = _prepare_transform(src, dest, cl_queue, cuda_stream, False)
+    app = _get_fft_app(backend, src.shape, src.dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue, devctx,
                        strides=src.strides)
     if backend == Backend.PYOPENCL:
         app.ifft(src, dest, queue=cl_queue)
@@ -294,8 +307,9 @@ def rfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
         For an in-place transform, the returned value is a view of the array
         with the appropriate type.
     """
-    backend, inplace, dest, cl_queue, dtype = _prepare_transform(src, dest, cl_queue, True)
-    app = _get_rfft_app(backend, src.shape, src.dtype, inplace, ndim, norm, cuda_stream, cl_queue,
+    backend, inplace, dest, cl_queue, cuda_stream, devctx, dtype = \
+        _prepare_transform(src, dest, cl_queue, cuda_stream, True)
+    app = _get_rfft_app(backend, src.shape, src.dtype, inplace, ndim, norm, cuda_stream, cl_queue, devctx,
                         strides=src.strides)
     if backend == Backend.PYOPENCL:
         app.fft(src, dest, queue=cl_queue)
@@ -345,8 +359,9 @@ def irfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
         For an in-place transform, the returned value is a view of the array
         with the appropriate type.
     """
-    backend, inplace, dest, cl_queue, dtype = _prepare_transform(src, dest, cl_queue, True)
-    app = _get_rfft_app(backend, dest.shape, dest.dtype, inplace, ndim, norm, cuda_stream, cl_queue,
+    backend, inplace, dest, cl_queue, cuda_stream, devctx, dtype = \
+        _prepare_transform(src, dest, cl_queue, cuda_stream, True)
+    app = _get_rfft_app(backend, dest.shape, dest.dtype, inplace, ndim, norm, cuda_stream, cl_queue, devctx,
                         strides=dest.strides)
     if backend == Backend.PYOPENCL:
         app.ifft(src, dest, queue=cl_queue)
@@ -384,9 +399,9 @@ def dctn(src, dest=None, ndim=None, norm=1, dct_type=2, cuda_stream=None, cl_que
         the source array default queue will be used
     :return: the destination array.
     """
-    backend, inplace, dest, cl_queue = _prepare_transform(src, dest, cl_queue, False)
+    backend, inplace, dest, cl_queue, cuda_stream, devctx = _prepare_transform(src, dest, cl_queue, cuda_stream, False)
     app = _get_dct_app(backend, src.shape, src.dtype, inplace, ndim, norm,
-                       dct_type, cuda_stream, cl_queue)
+                       dct_type, cuda_stream, cl_queue, devctx)
     if backend == Backend.PYOPENCL:
         app.fft(src, dest, queue=cl_queue)
     else:
@@ -420,9 +435,9 @@ def idctn(src, dest=None, ndim=None, norm=1, dct_type=2, cuda_stream=None, cl_qu
         the source array default queue will be used
     :return: the destination array.
     """
-    backend, inplace, dest, cl_queue = _prepare_transform(src, dest, cl_queue, False)
+    backend, inplace, dest, cl_queue, cuda_stream, devctx = _prepare_transform(src, dest, cl_queue, cuda_stream, False)
     app = _get_dct_app(backend, src.shape, src.dtype, inplace, ndim, norm,
-                       dct_type, cuda_stream, cl_queue)
+                       dct_type, cuda_stream, cl_queue, devctx)
     if backend == Backend.PYOPENCL:
         app.ifft(src, dest, queue=cl_queue)
     else:
