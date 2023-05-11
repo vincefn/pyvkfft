@@ -1,4 +1,7 @@
-include src/vkFFT.h
+recursive-include src/VkFFT/vkFFT *.h
+include src/VkFFT/README.md
+include src/VkFFT/LICENSE
 include src/*.cu
 include src/*.cpp
-include LICENSE LICENSE_VkFFT README_VkFFT.md
+include LICENSE
+include README.md
