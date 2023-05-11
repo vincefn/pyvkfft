@@ -60,7 +60,7 @@ except ImportError:
     has_cupy = False
     has_pycuda = False
 
-# Dictionnary of cuda/opencl (device, context). Will be initialised on-demand.
+# Dictionary of cuda/opencl (device, context). Will be initialised on-demand.
 # This is needed for multiprocessing.
 # The pyopencl entry is a tuple with (device, context, queue, has_cl_fp64)
 gpu_ctx_dic = {}
