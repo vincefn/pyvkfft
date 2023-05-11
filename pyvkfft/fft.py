@@ -96,7 +96,8 @@ def _prepare_transform(src, dest, cl_queue, cuda_stream, r2c=False):
                 else:
                     dest = cua.empty_like(src)
             dest_ptr = int(dest.gpudata)
-            devctx = cu_drv.Context.handle
+            if cuda_stream is None:
+                devctx = cu_drv.Context.get_current()
 
     if backend == Backend.UNKNOWN and has_opencl:
         if isinstance(src, cla.Array):

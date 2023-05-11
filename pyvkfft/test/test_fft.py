@@ -10,6 +10,7 @@
 import sys
 import unittest
 import multiprocessing
+import threading
 import sqlite3
 import socket
 import time
@@ -17,17 +18,52 @@ import timeit
 import numpy as np
 
 try:
-    from scipy.misc import ascent
+    from scipy.datasets import ascent
 except ImportError:
-    def ascent():
-        return np.random.randint(0, 255, (512, 512))
+    try:
+        from scipy.misc import ascent
+    except ImportError:
+        def ascent():
+            return np.random.randint(0, 255, (512, 512))
 
 from pyvkfft.version import __version__, vkfft_version
 from pyvkfft.base import primes, radix_gen, radix_gen_n
 from pyvkfft.fft import fftn as vkfftn, ifftn as vkifftn, rfftn as vkrfftn, \
-    irfftn as vkirfftn, dctn as vkdctn, idctn as vkidctn
+    irfftn as vkirfftn, dctn as vkdctn, idctn as vkidctn, clear_vkfftapp_cache
 from pyvkfft.accuracy import test_accuracy, test_accuracy_kwargs, fftn, init_ctx, gpu_ctx_dic, has_dct_ref, has_scipy
 import pyvkfft.config
+
+
+def find_gpu(backend):
+    """
+    Find available GPUs for a given backend.
+    :param backend: either 'pycuda', 'pyopencl' or 'cupy'
+    :return: a list of GPU devices
+    """
+    v = []
+    if backend == "pycuda":
+        if not has_pycuda:
+            raise RuntimeError("find_gpu: backend=%s is not available" % backend)
+        cu_drv.init()
+        for i in range(cu_drv.Device.count()):
+            v.append(cu_drv.Device(i))
+    elif backend == "pyopencl":
+        for p in cl.get_platforms():
+            if 'portable' in p.name.lower():
+                # For now, skip POCL
+                continue
+            for d0 in p.get_devices():
+                if d0.type & cl.device_type.GPU:
+                    v.append(d0)
+    elif backend == "cupy":
+        if not has_cupy:
+            raise RuntimeError("find_gpu: backend=%s is not available" % backend)
+        for i in range(cp.cuda.runtime.getDeviceCount()):
+            v.append(cp.cuda.Device(i))
+    else:
+        raise RuntimeError("find_gpu: unknown backend ", backend)
+    return v
+
 
 try:
     import pycuda.gpuarray as cua
@@ -36,15 +72,19 @@ try:
     from pyvkfft.cuda import VkFFTApp as cuVkFFTApp
 
     has_pycuda = True
+    v_gpu_pycuda = find_gpu("pycuda")
 except ImportError:
     has_pycuda = False
+    v_gpu_pycuda = []
 
 try:
     import cupy as cp
 
     has_cupy = True
+    v_gpu_cupy = find_gpu("cupy")
 except ImportError:
     has_cupy = False
+    v_gpu_cupy = []
 
 try:
     import pyopencl as cl
@@ -52,8 +92,10 @@ try:
     from pyvkfft.opencl import VkFFTApp as clVkFFTApp
 
     has_pyopencl = True
+    v_gpu_pyopencl = find_gpu("pyopencl")
 except ImportError:
     has_pyopencl = False
+    v_gpu_pyopencl = []
 
 
 def latex_float(f):
@@ -68,7 +110,7 @@ def latex_float(f):
 class TestFFT(unittest.TestCase):
     gpu = None
     nproc = 1
-    verbose = False
+    verbose = True
     colour = False
     opencl_platform = None
     vbackend = None
@@ -93,16 +135,18 @@ class TestFFT(unittest.TestCase):
         for backend in self.vbackend:
             with self.subTest(backend=backend):
                 init_ctx(backend, gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
+                a = ascent()[:256, :256]  # Crop to 256 to avoid DCT issues
                 if backend == "pycuda":
-                    dc = cua.to_gpu(ascent().astype(np.complex64))
-                    dr = cua.to_gpu(ascent().astype(np.float32))
+                    dc = cua.to_gpu(a.astype(np.complex64))
+                    dr = cua.to_gpu(a.astype(np.float32))
                 elif backend == "cupy":
-                    dc = cp.array(ascent().astype(np.complex64))
-                    dr = cp.array(ascent().astype(np.float32))
+                    cp.cuda.Device(0).use()
+                    dc = cp.array(a.astype(np.complex64))
+                    dr = cp.array(a.astype(np.float32))
                 else:
                     cq = gpu_ctx_dic["pyopencl"][2]
-                    dc = cla.to_device(cq, ascent().astype(np.complex64))
-                    dr = cla.to_device(cq, ascent().astype(np.float32))
+                    dc = cla.to_device(cq, a.astype(np.complex64))
+                    dr = cla.to_device(cq, a.astype(np.float32))
                 # C2C, new destination array
                 d = vkfftn(dc)
                 d = vkifftn(d)
@@ -138,6 +182,8 @@ class TestFFT(unittest.TestCase):
                 # DCT, inplace
                 d = vkdctn(dr, dr)
                 d = vkidctn(d, d)
+                if backend == "pycuda":
+                    gpu_ctx_dic["pycuda"][1].pop()
 
     def run_fft(self, vbackend, vn, dims_max=4, ndim_max=3, shuffle_axes=True,
                 vtype=(np.complex64, np.complex128),
@@ -168,7 +214,8 @@ class TestFFT(unittest.TestCase):
         ct = 0
         vkwargs = []
         for backend in vbackend:
-            init_ctx(backend, gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
+            # We assume the context was already initialised by the calling function
+            # init_ctx(backend, gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
             cq = gpu_ctx_dic["pyopencl"][2] if backend == "pyopencl" else None
             for n in vn:
                 for dims in range(1, dims_max + 1):
@@ -227,6 +274,11 @@ class TestFFT(unittest.TestCase):
                                                             #  is transformed
                                                             if len(axes) != dims:
                                                                 vorder = ['C']
+                                                        if backend == "cupy" and inplace:
+                                                            # cupy does not support returning a view of a float32
+                                                            # array as complex64 if the *last* axis is not
+                                                            # contiguous
+                                                            vorder = ['C']
                                                     for order in vorder:
                                                         with self.subTest(backend=backend, n=n, dims=dims, ndim=ndim,
                                                                           axes=axes, dtype=np.dtype(dtype), norm=norm,
@@ -431,6 +483,7 @@ class TestFFT(unittest.TestCase):
         Test multiple FFT with queues different from the queue used
         in creating the VkFFTApp
         """
+        init_ctx("pyopencl", gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
         has_cl_fp64 = gpu_ctx_dic["pyopencl"][3] if "pyopencl" in self.vbackend else True
         vtype = (np.complex64, np.complex128)
         if not has_cl_fp64:
@@ -541,6 +594,95 @@ class TestFFT(unittest.TestCase):
                     queues[i + n_queues].finish()
                     self.assertTrue(np.allclose(dn, d2.get(), rtol=rtol, atol=abs(dn).max() * rtol))
         pyvkfft.config.WARN_OPENCL_QUEUE_MISMATCH = old_warning
+
+    @unittest.skipIf(not has_pycuda, "pycuda is not available")
+    @unittest.skipIf(len(v_gpu_pycuda) < 2, f"{len(v_gpu_pycuda)}<2 devices available")
+    def test_zz_multi_gpu_fft_threads_pycuda(self):
+        """
+        Test the pyvkfft.fft (cached) interface with multiple GPU and parallel threads with pycuda streams
+        """
+        # Notes:
+        # * this only works with pycuda if we supply a stream for each transform
+        # * this gives a warning: "device_allocation in out-of-thread context could not be cleaned up"
+
+        clear_vkfftapp_cache()
+
+        def thread_fn(dev):
+            cu_ctx = dev.make_context()
+            cu_ctx.push()
+            # Note:
+            s = cu_drv.Stream()
+            for i in range(5):  # try to make sure threads will exec in //
+                gpu_data = cua.to_gpu(np.ones(2 ** 16).astype(np.complex64))
+                fft_gpu = vkfftn(gpu_data, cuda_stream=s)
+                time.sleep(0.01)
+            cu_ctx.pop()
+            cu_ctx.detach()
+
+        threads = []
+        for d in v_gpu_pycuda:
+            t = threading.Thread(target=thread_fn, args=(d,))
+            # t.daemon = True
+            threads.append(t)
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+    # Multi-GPU cupy test modify the cuda context so are executed last (hence the zz),
+    # to avoid messing with pycuda context management
+
+    @unittest.skipIf(not has_cupy, "cupy is not available")
+    @unittest.skipIf(len(v_gpu_cupy) < 2, f"{len(v_gpu_cupy)}<2 devices available")
+    def test_zz_multi_gpu_fft_threads_cupy(self):
+        """
+        Test the pyvkfft.fft (cached) interface with multiple GPU and parallel threads with cupy
+        """
+        clear_vkfftapp_cache()
+
+        def thread_fn(dev):
+            with dev.use():
+                for i in range(5):  # try to make sure threads will exec in //
+                    gpu_data = cp.array(np.ones(2 ** 16).astype(np.complex64))
+                    fft_gpu = vkfftn(gpu_data)
+                    time.sleep(0.01)
+
+        threads = []
+        for d in v_gpu_cupy:
+            t = threading.Thread(target=thread_fn, args=(d,))
+            # t.daemon = True
+            threads.append(t)
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+    @unittest.skipIf(not has_pyopencl, "pyopencl is not available")
+    @unittest.skipIf(len(v_gpu_pyopencl) < 2, f"{len(v_gpu_pyopencl)}<2 devices available")
+    def test_zz_multi_gpu_fft_threaded_pyopencl(self):
+        """
+        Test the pyvkfft.fft (cached) interface with multiple GPU and parallel threads with pyopencl
+        """
+        clear_vkfftapp_cache()
+
+        def thread_fn(dev):
+            cl_ctx = cl.Context([dev])
+            cq = cl.CommandQueue(cl_ctx)
+
+            for i in range(5):  # try to make sure threads will exec in //
+                gpu_data = cla.to_device(cq, np.ones(2 ** 16).astype(np.complex64))
+                fft_gpu = vkfftn(gpu_data)
+                time.sleep(0.01)
+
+        threads = []
+        for d in v_gpu_pyopencl:
+            t = threading.Thread(target=thread_fn, args=(d,))
+            # t.daemon = True
+            threads.append(t)
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
 
 
 # The class parameters are written in pyvkfft_test.main()
