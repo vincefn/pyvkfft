@@ -56,7 +56,8 @@ def _prepare_transform(src, dest, cl_queue, cuda_stream, r2c=False):
         also appending the destination dtype for a r2c transform.
         devctx is either the device or context unique ptr or id - this
         is only used to cache the VkFFTapp (e.g. making sure the app is
-        re-instantiated if the cuda device changes).
+        re-instantiated if the cuda device changes). The cuda_stream
+        output will be the int ptr.
     """
     backend = Backend.UNKNOWN
     fastidx = np.argmin(src.strides)  # fast axis is the last only for C-ordered arrays
@@ -98,6 +99,9 @@ def _prepare_transform(src, dest, cl_queue, cuda_stream, r2c=False):
             dest_ptr = int(dest.gpudata)
             if cuda_stream is None:
                 devctx = cu_drv.Context.get_current()
+            elif isinstance(cuda_stream, cu_drv.Stream):
+                # Pass an int to make sure it is hashable
+                cuda_stream = cuda_stream.handle
 
     if backend == Backend.UNKNOWN and has_opencl:
         if isinstance(src, cla.Array):
@@ -125,6 +129,8 @@ def _prepare_transform(src, dest, cl_queue, cuda_stream, r2c=False):
             dest_ptr = dest.__cuda_array_interface__['data'][0]
             if cuda_stream is None:
                 cuda_stream = cp.cuda.get_current_stream()
+            if isinstance(cuda_stream, cp.cuda.Stream):
+                    cuda_stream = cuda_stream.ptr
             devctx = cp.cuda.Device().id
 
     if backend == Backend.UNKNOWN:

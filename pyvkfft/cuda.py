@@ -83,7 +83,8 @@ class VkFFTApp(VkFFTAppBase):
         :param inplace: if True (the default), performs an inplace transform and
             the destination array should not be given in fft() and ifft().
         :param stream: the pycuda.driver.Stream or cupy.cuda.Stream to use
-            for the transform. If None, the default one will be used
+            for the transform. This can also be the pointer/handle (int) to the
+            cuda stream object. If None, the default stream will be used.
         :param norm: if 0 (unnormalised), every transform multiplies the L2
             norm of the array by its size (or the size of the transformed
             array if ndim<d.ndim).
@@ -160,6 +161,9 @@ class VkFFTApp(VkFFTAppBase):
             if has_cupy:
                 if isinstance(self.stream, cp.cuda.Stream):
                     s = self.stream.ptr
+            if s == 0 and isinstance(self.stream, int):
+                # Assume the ptr or handle was passed
+                s = self.stream
 
         if self.norm == "ortho":
             norm = 0

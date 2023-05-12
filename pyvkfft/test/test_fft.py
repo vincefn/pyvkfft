@@ -49,12 +49,21 @@ def find_gpu(backend):
             v.append(cu_drv.Device(i))
     elif backend == "pyopencl":
         for p in cl.get_platforms():
+            has_pocl = False
             if 'portable' in p.name.lower():
-                # For now, skip POCL
+                # For now, skip POCL - has issues with a number of calculations
+                has_pocl = True
                 continue
             for d0 in p.get_devices():
                 if d0.type & cl.device_type.GPU:
                     v.append(d0)
+            if len(v) == 0 and has_pocl:
+                # last resort - add pocl devices
+                for p in cl.get_platforms():
+                    if 'portable' in p.name.lower():
+                        for d0 in p.get_devices():
+                            if d0.type & cl.device_type.GPU:
+                                v.append(d0)
     elif backend == "cupy":
         if not has_cupy:
             raise RuntimeError("find_gpu: backend=%s is not available" % backend)
@@ -124,6 +133,16 @@ class TestFFT(unittest.TestCase):
                 self.vbackend.append("cupy")
             if has_pyopencl:
                 self.vbackend.append("pyopencl")
+        if "pyopencl" in self.vbackend and self.opencl_platform is None:
+            # Try to exclude PoCL unless an opencl_platform was requested
+            if len(v_gpu_pyopencl):
+                if self.gpu is None:
+                    self.opencl_platform = v_gpu_pyopencl[0].platform.name
+                else:
+                    for d in v_gpu_pyopencl:
+                        if self.gpu.lower() in d.name.lower():
+                            self.opencl_platform = d.platform.name
+                            break
 
     def test_backend(self):
         self.assertTrue(has_pycuda or has_pyopencl or has_cupy,
@@ -361,6 +380,20 @@ class TestFFT(unittest.TestCase):
                             # if n<= 3072 or 6144 (assuming 48kb shared memory)
                             self.assertTrue(src2, "The source array was modified during the iFFT")
 
+    @staticmethod
+    def backend_info(backend):
+        s = ""
+        if backend == "pycuda":
+            d = gpu_ctx_dic[backend][0]
+            s = f"{backend}, gpu: {d.name()}"
+        elif backend == "pyopencl":
+            d = gpu_ctx_dic[backend][0]
+            s = f"{backend}, gpu: {d.name}, platform: {d.platform.name}"
+        elif backend == "cupy":
+            d = gpu_ctx_dic[backend]
+            s = f"{backend}, gpu #{d.id}"
+        return s
+
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
     def test_c2c(self):
         """Run C2C tests"""
@@ -392,7 +425,7 @@ class TestFFT(unittest.TestCase):
                 else:
                     self.run_fft_parallel(vkwargs)
                 if dry_run and self.verbose:
-                    print("Running %d C2C tests (backend: %s)" % (ct, backend))
+                    print(f"Running {ct} C2C tests (backend: {self.backend_info(backend)})")
 
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
     def test_r2c(self):
@@ -418,7 +451,7 @@ class TestFFT(unittest.TestCase):
                 else:
                     self.run_fft_parallel(vkwargs)
                 if dry_run and self.verbose:
-                    print("Running %d R2C tests (backend: %s)" % (ct, backend))
+                    print(f"Running {ct} C2C tests (backend: {self.backend_info(backend)})")
 
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
     @unittest.skipIf(not has_dct_ref, "scipy and pyfftw are not available - cannot test DCT")
@@ -442,7 +475,7 @@ class TestFFT(unittest.TestCase):
                 else:
                     self.run_fft_parallel(vkwargs)
                 if dry_run and self.verbose:
-                    print("Running %d DCT tests (backend: %s)" % (ct, backend))
+                    print(f"Running {ct} DCT tests (backend: {self.backend_info(backend)})")
 
     @unittest.skipIf(not has_pycuda, "pycuda is not available")
     def test_pycuda_streams(self):

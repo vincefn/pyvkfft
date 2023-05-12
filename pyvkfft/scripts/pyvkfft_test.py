@@ -239,7 +239,10 @@ def main():
     parser.add_argument('--gpu', action='store',
                         help="Name (or sub-string) of the GPU to use")
     parser.add_argument('--opencl_platform', action='store',
-                        help="Name (or sub-string) of the opencl platform to use (case-insensitive)")
+                        help="Name (or sub-string) of the opencl platform to use (case-insensitive). "
+                             "Note that by default the PoCL platform is skipped, "
+                             "unless it is specifically requested or it is the only one available "
+                             "(PoCL has some issues with VkFFT for some transforms)")
     parser.add_argument('--mailto', action='store',
                         help="Email address the results will be sent to")
     parser.add_argument('--mailto_fail', action='store',

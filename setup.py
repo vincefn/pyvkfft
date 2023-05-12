@@ -214,15 +214,14 @@ if "VKFFT_GIT_TAG" in os.environ:
         tag = "1310bfa9"
     elif tag == "v1.2.33":
         tag = "5c4a24e1"
-    print(f"Downloading VkFFT header for git tag={os.environ['VKFFT_GIT_TAG']}")
+    print(f"Updating VkFFT submodule for git tag={os.environ['VKFFT_GIT_TAG']}")
     if False:
         # List existing tags ?
         tags = ['master'] + [t.split('tags/')[-1] for t in subprocess.check_output(
             "git ls-remote --tags https://github.com/DTolm/VkFFT", timeout=20, shell=True).decode().split('\n')[:-1]]
         if tag not in tags:
             raise RuntimeError("Given VkFFT git tag not available from https://github.com/DTolm/VkFFT")
-    os.system(f"curl https://raw.githubusercontent.com/DTolm/VkFFT/{tag}/vkFFT/vkFFT.h "
-              f" -o src/vkFFT.h")
+    os.system(f"git submodule foreach 'git checkout {tag}'")
 else:
     print("VKFFT_GIT_TAG in os.environ ? no")
 

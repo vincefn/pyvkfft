@@ -1,10 +1,13 @@
-Version 2023.1.X (2023-XX-XX)
+Version 2023.2 (2023-XX-XX)
 -----------------------------
 * Add pyvkfft-benchmark script.
-* Add ability to automatically download VkFFT.h for a given version or git tag.
+* The VkFFT source is now included as a git subproject
 * Actually use cuda_stream parameter in the pyvkfft.fft interface
 * Take into account current cuda device when automatically
   caching VkFFTApp using the pyvkfft.fft interface(#26)
+  This enable using multiple GPUs in a multi-threaded approach.
+* The pyvkfft-test will ignore the PoCL OpenCL platform if
+  another is available and unless it is explicitly selected.
 
 Version 2023.1.1 (2023-01-22)
 -----------------------------
