@@ -119,9 +119,19 @@ def init_ctx(backend, gpu_name=None, opencl_platform=None, verbose=False):
     elif backend == "cupy":
         if not has_cupy:
             raise RuntimeError("init_ctx: backend=%s is not available" % backend)
-        # Is it possible to select a device by name with cupy ?
-        # The name does not appear in the device attributes
-        gpu_ctx_dic["cupy"] = cp.cuda.Device(0).use()
+        if gpu_name is not None:
+            for i in range(cp.cuda.runtime.getDeviceCount()):
+                if gpu_name.lower() in cp.cuda.runtime.getDeviceProperties(i)['name'].decode().lower():
+                    d = cp.cuda.Device(i).use()
+                    break
+        else:
+            d = cp.cuda.Device(0).use()
+        if d is None:
+            if gpu_name is not None:
+                raise RuntimeError("Selected backend is pycuda, but no device found (name=%s)" % gpu_name)
+            else:
+                raise RuntimeError("Selected backend is pycuda, but no device found")
+        gpu_ctx_dic["cupy"] = d
 
         # TODO: The following somehow helps initialising cupy, not sure why it's useful.
         #  (some context auto-init...). Otherwise a cuLaunchKernel error occurs with

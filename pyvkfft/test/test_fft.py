@@ -391,7 +391,7 @@ class TestFFT(unittest.TestCase):
             s = f"{backend}, gpu: {d.name}, platform: {d.platform.name}"
         elif backend == "cupy":
             d = gpu_ctx_dic[backend]
-            s = f"{backend}, gpu #{d.id}"
+            s = f"{backend}, gpu: {cp.cuda.runtime.getDeviceProperties(d.id)['name'].decode()}"
         return s
 
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")

@@ -104,6 +104,29 @@ def test_skcuda():
     return has_skcuda, cufft_version
 
 
+def _test_cupy(q):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        try:
+            import cupy as cp
+            with cp.cuda.Device(0).use():
+                vd = cp.cuda.runtime.driverGetVersion()
+                vr = cp.cuda.runtime.runtimeGetVersion()
+                q.put((True, "%d.%d.%d" % (vd // 1000, (vd // 100) % 100, vd % 100),
+                       "%d.%d.%d" % (vr // 1000, (vr // 100) % 100, vr % 100)))
+        except:
+            q.put((False, None))
+
+
+def test_cupy():
+    q = Queue()
+    p = Process(target=_test_cupy, args=(q,))
+    p.start()
+    has_cupy, cuda_driver_version, cuda_runtime_version = q.get()
+    p.join()
+    return has_cupy, cuda_driver_version, cuda_runtime_version
+
+
 def _test_gpyfft(q):
     """
     Test if scikit-cuda is available. The test is made in a separate process.
@@ -142,10 +165,15 @@ def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_na
         cl_ctx = cl.create_some_context()
     else:
         cl_ctx = None
+        has_pocl = False
         for p in cl.get_platforms():
             if opencl_platform is not None:
                 if opencl_platform.lower() not in p.name.lower():
                     continue
+            elif "portable" in p.name.lower():
+                # Try to skip PoCL unless it was requested
+                has_pocl = True
+                continue
             for d in p.get_devices():
                 if gpu_name is not None:
                     if gpu_name.lower() not in d.name.lower():
@@ -158,6 +186,22 @@ def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_na
                 break
             if cl_ctx is not None:
                 break
+        if cl_ctx is None and opencl_platform is None and has_pocl:
+            # Try gain without excluding PoCL
+            for p in cl.get_platforms():
+                for d in p.get_devices():
+                    if gpu_name is not None:
+                        if gpu_name.lower() not in d.name.lower():
+                            continue
+                    if d.type & cl.device_type.GPU == 0:
+                        continue
+                    gpu_name_real = "%s:%s" % (p.name, d.name)
+                    # print("Selected OpenCL device: ", d.name)
+                    cl_ctx = cl.Context(devices=(d,))
+                    break
+                if cl_ctx is not None:
+                    break
+
     cq = cl.CommandQueue(cl_ctx)
     dt = 0
     d = clrandom.rand(cq, shape=sh, dtype=np.float32).astype(dtype)
@@ -268,6 +312,55 @@ def _bench_pyvkfft_cuda(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name
 def bench_pyvkfft_cuda(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None, args=None):
     q = Queue()
     p = Process(target=_bench_pyvkfft_cuda, args=(q, sh, precision, ndim, nb_repeat, gpu_name, args))
+    p.start()
+    try:
+        dt, gbps, gpu_name_real = q.get(timeout=10)
+    except:
+        dt, gbps, gpu_name_real = 0, 0, None
+    p.join()
+    return dt, gbps, gpu_name_real
+
+
+def _bench_cupy(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None):
+    import cupy as cp
+    import cupyx
+    dtype = np.complex128 if precision == 'double' else np.complex64
+    if gpu_name is None:
+        dev = cp.cuda.Device(0).use()
+    else:
+        for i in range(cp.cuda.runtime.getDeviceCount()):
+            if gpu_name.lower() in cp.cuda.runtime.getDeviceProperties(i)['name'].decode().lower():
+                dev = cp.cuda.Device(i).use()
+                break
+    gpu_name_real = cp.cuda.runtime.getDeviceProperties(dev.id)['name'].decode()
+    d = cp.random.uniform(0, 1, sh, dtype=np.float32).astype(dtype)
+    dt = 0
+    start = cp.cuda.Event()
+    stop = cp.cuda.Event()
+    ax = list(range(len(sh)))[-ndim:]
+    # Explicitly creating the plan does not speed up
+    # plan = cupyx.scipy.fft.get_fft_plan(d, axes=ax, value_type='C2C')
+    for i in range(nb_repeat):
+        dev.synchronize()
+        start.record()
+        cupyx.scipy.fft.fftn(d, axes=ax, overwrite_x=True)
+        cupyx.scipy.fft.ifftn(d, axes=ax, overwrite_x=True)
+        # a = cp.fft.fftn(d, axes=ax)
+        # a = cp.fft.ifftn(d, axes=ax)
+        stop.record()
+        dev.synchronize()
+        dt1 = cp.cuda.get_elapsed_time(start, stop) / 1000
+        if dt == 0:
+            dt = dt1
+        elif dt1 < dt:
+            dt = dt1
+    gbps = d.nbytes * ndim * 2 * 2 / dt / 1024 ** 3
+    q.put((dt, gbps, gpu_name_real))
+
+
+def bench_cupy(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None):
+    q = Queue()
+    p = Process(target=_bench_cupy, args=(q, sh, precision, ndim, nb_repeat, gpu_name))
     p.start()
     try:
         dt, gbps, gpu_name_real = q.get(timeout=10)

@@ -15,8 +15,8 @@ import time
 from datetime import datetime
 import socket
 import sqlite3
-from pyvkfft.benchmark import test_gpyfft, test_skcuda, test_pyvkfft_opencl, test_pyvkfft_cuda, \
-    bench_gpyfft, bench_skcuda, bench_pyvkfft_cuda, bench_pyvkfft_opencl
+from pyvkfft.benchmark import test_gpyfft, test_skcuda, test_pyvkfft_opencl, test_pyvkfft_cuda, test_cupy, \
+    bench_gpyfft, bench_skcuda, bench_pyvkfft_cuda, bench_pyvkfft_opencl, bench_cupy
 from pyvkfft.base import radix_gen_n
 from pyvkfft.version import __version__, vkfft_version
 
@@ -82,9 +82,11 @@ def run_test(config, args):
                                                            opencl_platform=opencl_platform, args=vars(args))
         elif backend == 'skcuda':
             dt, gbps, gpu_name_real = bench_skcuda(sh, precision, ndim, nb_repeat, gpu_name)
-        elif backend == 'skcuda':
+        elif backend == 'gpyfft':
             dt, gbps, gpu_name_real = bench_gpyfft(sh, precision, ndim, nb_repeat, gpu_name,
                                                    opencl_platform=opencl_platform)
+        elif backend == 'cupy':
+            dt, gbps, gpu_name_real = bench_cupy(sh, precision, ndim, nb_repeat, gpu_name)
         if gpu_name_real is None or gbps == 0:
             # Something went wrong ? Possible timeout ?
             continue
@@ -150,14 +152,40 @@ def run_test(config, args):
 
 
 def main():
-    parser = argparse.ArgumentParser(prog='pyvkfft-benchmark',
-                                     description='Run pyvkfft benchmark tests')
-    parser.add_argument('--backend', action='store', choices=['cuda', 'opencl', 'gpyfft', 'skcuda'],
+    epilog = "Examples:\n" \
+             "* Simple benchmark for radix transforms:\n" \
+             "     pyvkfft-benchmark --backend cuda --gpu titan --verbose\n\n" \
+             "* Systematic benchmark for 1D radix transforms over a given range:\n" \
+             "     pyvkfft-benchmark --backend cuda --gpu titan --systematic --ndim 1 --range 2 256 --verbose\n\n" \
+             "* Same but only for powers of 2 and 3 sizes, in 2D, and save the results " \
+             "to an SQL file for later plotting:\n" \
+             "     pyvkfft-benchmark --backend cuda --gpu titan --systematic --radix 2 3 " \
+             "--ndim 2 --range 2 256 --verbose --save\n\n" \
+             "* plot the result of a benchmark:\n" \
+             "     pyvkfft-benchmark --plot pyvkfft-version-gpu-date-etc.sql\n\n" \
+             "* plot & compare the results of multiple benchmarks (grouped by 1D/2D/3D transforms):\n" \
+             "     pyvkfft-benchmark --plot *.sql\n\n"
+
+    desc = "Run pyvkfft benchmark tests. This is pretty slow as each test runs " \
+           "in a separate process (including the GPU initialisation) - this is done to avoid " \
+           "any context a memory issues when performing a large number of tests. " \
+           "This can also be used to compare results with cufft (scikit-cuda or cupy) and gpyfft. " \
+           ""
+
+    parser = argparse.ArgumentParser(prog='pyvkfft-benchmark', epilog=epilog,
+                                     description=desc,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--backend', action='store', choices=['cuda', 'opencl', 'gpyfft', 'skcuda', 'cupy'],
                         default='pyvkfft', help="FFT backend to use, 'cuda' and 'opencl' will "
                                                 "use pyvkfft with the corresponding language.")
     parser.add_argument('--precision', action='store', choices=['single', 'double'],
                         default='single', help="Precision for the benchmark")
     parser.add_argument('--gpu', action='store', type=str, default=None, help="GPU name (or sub-string)")
+    parser.add_argument('--opencl_platform', action='store',
+                        help="Name (or sub-string) of the opencl platform to use (case-insensitive). "
+                             "Note that by default the PoCL platform is skipped, "
+                             "unless it is specifically requested or it is the only one available "
+                             "(PoCL has some issues with VkFFT for some transforms)")
     parser.add_argument('--verbose', action='store_true', help="Verbose ?")
     parser.add_argument('--save', action='store_true', default=False, help="Save results to an sql file")
     parser.add_argument('--compare', action='store', type=str,
@@ -170,14 +198,18 @@ def main():
     parser.add_argument('--plot', action='store', nargs='+', type=str,
                         help="Plot results stored in *.sql files. Separate plots are given "
                              "for different dimensions. Multiple *.sql files can be given "
-                             "for comparison. This parameter supersedes all others.")
+                             "for comparison. This parameter supersedes all others (no tests "
+                             "are run if --plot is given)")
     sysgrp = parser.add_argument_group("systematic", "Options for --systematic:")
-    sysgrp.add_argument('--radix', action='store', nargs='*', type=int,
-                        help="Perform only radix transforms. If no value is given, all available "
+    sysgrp.add_argument('--radix', action='store', nargs='+', type=int,
+                        help="Perform only radix transforms. By default, all available "
                              "radix transforms are allowed. Alternatively a list can be given: "
                              "'--radix 2' (only 2**n array sizes), '--radix 2 3 5' "
                              "(only 2**N1 * 3**N2 * 5**N3)",
                         choices=[2, 3, 5, 7, 11, 13], default=[2, 3, 5, 7, 11, 13])
+    sysgrp.add_argument('--bluestein', '--rader', action='store_true', default=False,
+                        help="Test only non-radix sizes, using the Bluestein or Rader transforms. "
+                             "Not compatible with --radix")
     sysgrp.add_argument('--ndim', action='store', nargs='+',
                         help="Number of dimensions for the transform. The arrays will be "
                              "stacked so that each batch transform is at least 1GB.",
@@ -257,8 +289,8 @@ def main():
                     if k in config:
                         if k == "batchedGroup":
                             # config[k] = [int(b) for b in v.split('x')]
-                            print(config[k])
-                            if config[k] != "-1x-1x-1" and v not in vopt:
+                            # print(config[k])
+                            if config[k] != '-1x-1x-1' and v not in vopt:
                                 vopt.append(v)
                         elif config[k] != -1 and v not in vopt:
                             vopt.append(v)
@@ -273,22 +305,25 @@ def main():
                     ish = vk.index('shape')
                     vlength = [int(r[ish].split('x')[-1]) for r in res]
 
-                    k = f"VkFFT {vkfft_ver}[{gpu}]"
-                    if config['warpSize'] != -1:
-                        k += f"-warp{config['warpSize']}"
-                    if config['registerBoost'] != -1:
-                        k += f"-rboost{config['registerBoost']}"
-                    if config['registerBoostNonPow2'] != -1:
-                        k += f"-rboostn2{config['registerBoostNonPow2']}"
-                    if config['coalescedMemory'] != -1:
-                        k += f"-coalmem{config['coalescedMemory']}"
-                    if config['aimThreads'] != -1:
-                        k += f"-threads{config['aimThreads']}"
-                    if config['numSharedBanks'] != -1:
-                        k += f"-banks{config['numSharedBanks']}"
-                    if 'batchedGroup' in config:
-                        if config['batchedGroup'] != [-1, -1, -1]:
-                            k += f"-batch{config['batchedGroup']}"
+                    if config['backend'] in ['skcuda', 'cupy', 'gpyfft']:
+                        k = f"{config['backend']}[{gpu}]"
+                    else:
+                        k = f"VkFFT.{config['backend']} {vkfft_ver}[{gpu}]"
+                        if config['warpSize'] != -1:
+                            k += f"-warp{config['warpSize']}"
+                        if config['registerBoost'] != -1:
+                            k += f"-rboost{config['registerBoost']}"
+                        if config['registerBoostNonPow2'] != -1:
+                            k += f"-rboostn2{config['registerBoostNonPow2']}"
+                        if config['coalescedMemory'] != -1:
+                            k += f"-coalmem{config['coalescedMemory']}"
+                        if config['aimThreads'] != -1:
+                            k += f"-threads{config['aimThreads']}"
+                        if config['numSharedBanks'] != -1:
+                            k += f"-banks{config['numSharedBanks']}"
+                        if 'batchedGroup' in config:
+                            if config['batchedGroup'] != '-1x-1x-1':
+                                k += f"-batch{config['batchedGroup']}"
 
                     if ndim not in res_all:
                         res_all[ndim] = {k: [vlength, vgbps]}
@@ -333,10 +368,13 @@ def main():
             else:
                 size_min_max //= 8
             size_min_max = np.round(size_min_max ** (1 / ndim)).astype(int)
+            if args.bluestein and args.radix != [2, 3, 5, 7, 11, 13]:
+                raise RuntimeError("--bluestein cannot be used with --radix")
             vshape = np.array(radix_gen_n(nmax=args.range[1], max_size=size_min_max[1],
                                           radix=args.radix, ndim=1, even=False,
                                           nmin=args.range[0], max_pow=None,
-                                          range_nd_narrow=None, min_size=size_min_max[0]),
+                                          range_nd_narrow=None, min_size=size_min_max[0],
+                                          inverted=args.bluestein),
                               dtype=int).flatten()
             nbatch = 1e8 / (vshape ** ndim * (8 if args.precision == 'double' else 4))
             nbatch = np.maximum(1, nbatch).astype(int)
