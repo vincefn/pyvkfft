@@ -161,6 +161,8 @@ def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_na
     import pyvkfft.opencl
     from pyvkfft.opencl import primes, VkFFTApp as clVkFFTApp
     dtype = np.complex128 if precision == 'double' else np.complex64
+    gpu_name_real = gpu_name
+    platform_name_real = opencl_platform
     if 'PYOPENCL_CTX' in os.environ:
         cl_ctx = cl.create_some_context()
     else:
@@ -180,7 +182,8 @@ def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_na
                         continue
                 if d.type & cl.device_type.GPU == 0:
                     continue
-                gpu_name_real = "%s:%s" % (p.name, d.name)
+                gpu_name_real = d.name
+                platform_name_real = p.name
                 # print("Selected OpenCL device: ", d.name)
                 cl_ctx = cl.Context(devices=(d,))
                 break
@@ -195,7 +198,8 @@ def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_na
                             continue
                     if d.type & cl.device_type.GPU == 0:
                         continue
-                    gpu_name_real = "%s:%s" % (p.name, d.name)
+                    gpu_name_real = d.name
+                    platform_name_real = p.name
                     # print("Selected OpenCL device: ", d.name)
                     cl_ctx = cl.Context(devices=(d,))
                     break
@@ -232,9 +236,9 @@ def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_na
     except:
         gbps = 0
     if q is None:
-        return dt, gbps, gpu_name_real
+        return dt, gbps, gpu_name_real, platform_name_real
     else:
-        q.put((dt, gbps, gpu_name_real))
+        q.put((dt, gbps, gpu_name_real, platform_name_real))
 
 
 def bench_pyvkfft_opencl(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None,
@@ -244,11 +248,11 @@ def bench_pyvkfft_opencl(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=N
                                                     opencl_platform, args))
     p.start()
     try:
-        dt, gbps, gpu_name_real = q.get()
+        dt, gbps, gpu_name_real, platform_name_real = q.get()
     except:
-        dt, gbps, gpu_name_real = 0, 0, None
+        dt, gbps, gpu_name_real, platform_name_real = 0, 0, None
     p.join()
-    return dt, gbps, gpu_name_real
+    return dt, gbps, gpu_name_real, platform_name_real
 
 
 def _bench_pyvkfft_cuda(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None, args=None):
@@ -437,6 +441,8 @@ def _bench_gpyfft(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None,
         from pyopencl import clrandom
         import gpyfft
         dtype = np.complex128 if precision == 'double' else np.complex64
+        gpu_name_real = gpu_name
+        platform_name_real = opencl_platform
         if 'PYOPENCL_CTX' in os.environ:
             cl_ctx = cl.create_some_context()
         else:
@@ -451,7 +457,8 @@ def _bench_gpyfft(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None,
                             continue
                     if d.type & cl.device_type.GPU == 0:
                         continue
-                    gpu_name_real = "%s:%s" % (p.name, d.name)
+                    gpu_name_real = d.name
+                    platform_name_real = p.name
                     # print("Selected OpenCL device: ", d.name)
                     cl_ctx = cl.Context(devices=(d,))
                     break
@@ -461,8 +468,8 @@ def _bench_gpyfft(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None,
         dt = 0
         d = clrandom.rand(cq, shape=sh, dtype=np.float32).astype(dtype)
         for axes in permutations([-1, -2, -3][:ndim]):
-            gpyfft_plan = gpyfft.FFT(cl_ctx, cq, d, None, axes=axes)
             # Shuffle axes order to find fastest transform
+            gpyfft_plan = gpyfft.FFT(cl_ctx, cq, d, None, axes=axes)
             for i in range(nb_repeat):
                 cq.finish()
                 t0 = timeit.default_timer()
@@ -476,7 +483,7 @@ def _bench_gpyfft(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None,
                     dt = dt1
             del gpyfft_plan
         gbps = d.nbytes * ndim * 2 * 2 / dt / 1024 ** 3
-        q.put((dt, gbps, gpu_name_real))
+        q.put((dt, gbps, gpu_name_real, platform_name_real))
 
 
 def bench_gpyfft(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None, opencl_platform=None):
@@ -484,11 +491,11 @@ def bench_gpyfft(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None, ope
     p = Process(target=_bench_gpyfft, args=(q, sh, precision, ndim, nb_repeat, gpu_name, opencl_platform))
     p.start()
     try:
-        dt, gbps, gpu_name_real = q.get(timeout=10)
+        dt, gbps, gpu_name_real, platform_name_real = q.get(timeout=10)
     except:
-        dt, gbps, gpu_name_real = 0, 0, None
+        dt, gbps, gpu_name_real, platform_name_real = 0, 0, None, None
     p.join()
-    return dt, gbps, gpu_name_real
+    return dt, gbps, gpu_name_real, platform_name_real
 
 
 def plot_benchmark(results, ndim, gpu_name_real, radix_max, legend_loc="lower left",

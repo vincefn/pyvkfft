@@ -10,6 +10,7 @@
 
 
 import argparse
+from string import capwords
 import numpy as np
 import time
 from datetime import datetime
@@ -75,44 +76,51 @@ def run_test(config, args):
         sh = tuple(c.shape)
         ndim = c.ndim
         nb_repeat = 5
+        gpu_name_real = ''
+        platform_name_real = ''
         if backend == 'cuda':
             dt, gbps, gpu_name_real = bench_pyvkfft_cuda(sh, precision, ndim, nb_repeat, gpu_name, args=vars(args))
         elif backend == 'opencl':
-            dt, gbps, gpu_name_real = bench_pyvkfft_opencl(sh, precision, ndim, nb_repeat, gpu_name,
-                                                           opencl_platform=opencl_platform, args=vars(args))
+            dt, gbps, gpu_name_real, platform_name_real = bench_pyvkfft_opencl(sh, precision, ndim, nb_repeat, gpu_name,
+                                                                               opencl_platform=opencl_platform,
+                                                                               args=vars(args))
         elif backend == 'skcuda':
             dt, gbps, gpu_name_real = bench_skcuda(sh, precision, ndim, nb_repeat, gpu_name)
         elif backend == 'gpyfft':
-            dt, gbps, gpu_name_real = bench_gpyfft(sh, precision, ndim, nb_repeat, gpu_name,
-                                                   opencl_platform=opencl_platform)
+            dt, gbps, gpu_name_real, platform_name_real = bench_gpyfft(sh, precision, ndim, nb_repeat, gpu_name,
+                                                                       opencl_platform=opencl_platform)
         elif backend == 'cupy':
             dt, gbps, gpu_name_real = bench_cupy(sh, precision, ndim, nb_repeat, gpu_name)
         if gpu_name_real is None or gbps == 0:
             # Something went wrong ? Possible timeout ?
             continue
         # results.append({'transform': str(c), 'gbps': gbps, 'dt': dt, 'gpu': gpu_name_real})
-        g = gpu_name_real.replace('Apple', '')
-        g = g.strip(' _').replace(' ', '_').replace(':', '_')
+        g = capwords(gpu_name_real.replace('Apple', ''))  # Redundant
+        g = g.strip(' _').replace(':', '_')
+        plat = capwords(platform_name_real).strip(' _').replace(':', '_')
+        radix = 'x'.join(str(i) for i in args.radix)
+        if args.bluestein:
+            radix = 'BluesteinRader'
         if db:
             if first:
                 if type(db) != str:
                     db = f"pyvkfft{__version__}-{vkfft_version()}-" \
-                         f"{g}-{backend}-" \
+                         f"{g.replace(' ','_')}-{backend}-" \
                          f"{datetime.now().strftime('%Y_%m_%d_%Hh_%Mm_%Ss')}-benchmark.sql"
 
                 hostname = socket.gethostname()
                 db = sqlite3.connect(db)
                 dbc = db.cursor()
                 dbc.execute('CREATE TABLE IF NOT EXISTS config (epoch int, hostname text,'
-                            'pyvkfft text, vkfft text, backend text, transform text,'
-                            'precision text, inplace int, gpu text, disableReorderFourStep int,'
-                            'coalescedMemory int, numSharedBanks int,'
+                            'pyvkfft text, vkfft text, backend text, transform text, radix text,'
+                            'precision text, inplace int, gpu text, platform text,'
+                            'disableReorderFourStep int, coalescedMemory int, numSharedBanks int,'
                             'aimThreads int, performBandwidthBoost int, registerBoost int,'
                             'registerBoostNonPow2 int, registerBoost4Step int, warpSize int, useLUT int,'
                             'batchedGroup text)')
-                dbc.execute('INSERT INTO config VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                dbc.execute('INSERT INTO config VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                             (time.time(), hostname, __version__, vkfft_version(), backend, c.transform,
-                             precision, inplace, g, args.disableReorderFourStep,
+                             radix, precision, inplace, g, plat, args.disableReorderFourStep,
                              args.coalescedMemory, args.numSharedBanks,
                              args.aimThreads, args.performBandwidthBoost, args.registerBoost,
                              args.registerBoostNonPow2, args.registerBoost4Step, args.warpSize,
@@ -277,6 +285,7 @@ def main():
                 r = dbc0.fetchone()
                 config = {col[0]: r[i] for i, col in enumerate(dbc0.description)}
                 gpu = config['gpu']
+                clplat = config['platform']
                 if gpu not in vgpu:
                     vgpu.append(gpu)
                 if config['backend'] not in vbackend:
@@ -304,11 +313,11 @@ def main():
                     vgbps = [r[igbps] for r in res]
                     ish = vk.index('shape')
                     vlength = [int(r[ish].split('x')[-1]) for r in res]
-
+                    platgpu = f'{clplat}:{gpu}' if len(clplat) else gpu
                     if config['backend'] in ['skcuda', 'cupy', 'gpyfft']:
-                        k = f"{config['backend']}[{gpu}]"
+                        k = f"{config['backend']}[{platgpu}]"
                     else:
-                        k = f"VkFFT.{config['backend']} {vkfft_ver}[{gpu}]"
+                        k = f"VkFFT.{config['backend']} {vkfft_ver}[{platgpu}]"
                         if config['warpSize'] != -1:
                             k += f"-warp{config['warpSize']}"
                         if config['registerBoost'] != -1:
@@ -324,29 +333,62 @@ def main():
                         if 'batchedGroup' in config:
                             if config['batchedGroup'] != '-1x-1x-1':
                                 k += f"-batch{config['batchedGroup']}"
-
+                    if 'bluestein' in config['radix'].lower():
+                        k += '\u0336'.join('radix') + '\u0336'
+                    r = {'length': vlength, 'gbps': vgbps, 'backend': config['backend'],
+                         'radix': 'bluestein' not in config['radix'].lower(), 'gpu': gpu,
+                         'platform': config['platform']}
                     if ndim not in res_all:
-                        res_all[ndim] = {k: [vlength, vgbps]}
+                        res_all[ndim] = {k: r}
                     else:
-                        res_all[ndim][k] = [vlength, vgbps]
+                        res_all[ndim][k] = r
         vgpu.sort()
         vbackend.sort()
         vopt.sort()
-        str_config = "_".join(vgpu) + f"-{','.join(vbackend)}"
+        str_config = ",".join(vgpu) + f"-{','.join(vbackend)}"
         if len(vopt):
-            str_opt = "_".join(vopt)
+            str_opt = "-" + "_".join(vopt)
         else:
             str_opt = ""
+
+        # Plot style:
+        # * if multiple backends are used, one colour is used per backend
+        #   and the symbol changes with the parameters
+        # * If only one backend is used, the colour changes automatically with the parameters
+
+        # Symbols used
+        vsymb = ['.', 'v', '^', '<', '>', 's', 'p', '*', 'h', 'H', 'd', 'D', '+', 'x', '1', '2', '3', '4']
+        # Colour for each backend
+        vcol = {'cuda': '#FF8C00', 'opencl': '#FF00FF', 'skcuda': '#0000FF', 'cupy': '#0090FF', 'gpyfft': '#00FF00'}
         for ndim, res in res_all.items():
             plt.figure(figsize=(16, 8))
-            for k, v in res.items():
-                x, y = v
-                plt.plot(x, y, '.', label=k)
+
+            tmp = [v['backend'] for v in res.values()]
+            if tmp.count(tmp[0]) == len(tmp):
+                one_backend = True
+            else:
+                one_backend = False
+
+            # Counter of results per backend
+            vct = {'cuda': 0, 'opencl': 0, 'skcuda': 0, 'cupy': 0, 'gpyfft': 0}
+
+            vk = sorted(res.keys())
+            for k in vk:
+                v = res[k]
+                x, y = v['length'], v['gbps']
+                backend, radix = v['backend'], v['radix']
+                if one_backend:
+                    plt.plot(x, y, '.', label=k, alpha=1 if radix else 0.2)
+                else:
+                    i = vct[backend]
+                    plt.plot(x, y, vsymb[i % len(vsymb)], color=vcol[backend],
+                             label=k, alpha=1 if radix else 0.2)
+                    vct[backend] += 1
 
             plt.xlabel("array length")
             plt.ylabel("Theoretical throughput (GBytes/s)")
             plt.ylim(0)
-            plt.title(f"{ndim}D FFT-" + str_config)
+            plt.title(f"{ndim}D FFT (batched)-" + str_config)
 
             # Use powers of 2 for xticks
             xmin, xmax = plt.xlim()
@@ -357,7 +399,9 @@ def main():
             plt.legend()
             plt.grid(True)
             plt.tight_layout()
-            plt.savefig(f"pyvkfft-benchmark-{str_config}-{ndim}D-{str_opt}.png")
+            n = f"pyvkfft-benchmark-{str_config.replace(' ', '_')}-{ndim}D{str_opt}.png"
+            plt.savefig(n)
+            print(f"Saving {ndim}D benchmark plot to: {n}")
         return
     if args.systematic:
         config = []
@@ -368,8 +412,12 @@ def main():
             else:
                 size_min_max //= 8
             size_min_max = np.round(size_min_max ** (1 / ndim)).astype(int)
-            if args.bluestein and args.radix != [2, 3, 5, 7, 11, 13]:
-                raise RuntimeError("--bluestein cannot be used with --radix")
+            if args.bluestein:
+                if args.radix != [2, 3, 5, 7, 11, 13]:
+                    raise RuntimeError("--bluestein cannot be used with --radix")
+                elif args.backend in ['skcuda', 'cupy']:
+                    # for cufft, radix transforms only till 7 (and a few undocumented primes up to 127)
+                    args.radix = [2, 3, 5, 7]
             vshape = np.array(radix_gen_n(nmax=args.range[1], max_size=size_min_max[1],
                                           radix=args.radix, ndim=1, even=False,
                                           nmin=args.range[0], max_pow=None,
