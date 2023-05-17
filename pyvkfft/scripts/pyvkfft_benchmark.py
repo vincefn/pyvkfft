@@ -18,7 +18,7 @@ import socket
 import sqlite3
 from pyvkfft.benchmark import test_gpyfft, test_skcuda, test_pyvkfft_opencl, test_pyvkfft_cuda, test_cupy, \
     bench_gpyfft, bench_skcuda, bench_pyvkfft_cuda, bench_pyvkfft_opencl, bench_cupy
-from pyvkfft.base import radix_gen_n
+from pyvkfft.base import radix_gen_n, primes
 from pyvkfft.version import __version__, vkfft_version
 
 
@@ -57,6 +57,161 @@ default_config = [
 ]
 
 
+def plot_benchmark(*sql_files):
+    import matplotlib.pyplot as plt
+    res_all = {}
+    vgpu = []
+    vbackend = []
+    vopt = []
+    for ndim in (1, 2, 3):
+        for src in sql_files:
+            dbc0 = sqlite3.connect(src).cursor()
+
+            dbc0.execute(f"SELECT * from config")
+            r = dbc0.fetchone()
+            config = {col[0]: r[i] for i, col in enumerate(dbc0.description)}
+            gpu = config['gpu']
+            clplat = config['platform']
+            if gpu not in vgpu:
+                vgpu.append(gpu)
+            if config['backend'] not in vbackend:
+                vbackend.append(config['backend'])
+            for k, v in {"disableReorderFourStep": "r4s", "coalescedMemory": "coalmem",
+                         "numSharedBanks": "nbanks", "aimThreads": "threads",
+                         "performBandwidthBoost": "bwboost", "registerBoost": "rboost",
+                         "registerBoostNonPow2": "rboostn2", "registerBoost4Step": "rboost4",
+                         "warpSize": "warp", "useLUT": "lut", "batchedGroup": "batch"}.items():
+                if k in config:
+                    if k == "batchedGroup":
+                        # config[k] = [int(b) for b in v.split('x')]
+                        # print(config[k])
+                        if config[k] != '-1x-1x-1' and v not in vopt:
+                            vopt.append(v)
+                    elif config[k] != -1 and v not in vopt:
+                        vopt.append(v)
+            vkfft_ver = config['vkfft']
+
+            dbc0.execute(f"SELECT * from benchmark WHERE ndim = {ndim} ORDER by epoch")
+            res = dbc0.fetchall()
+            if len(res):
+                vk = [k[0] for k in dbc0.description]
+                igbps = vk.index('gbps')
+                vgbps = [r[igbps] for r in res]
+                ish = vk.index('shape')
+                vlength = [int(r[ish].split('x')[-1]) for r in res]
+                platgpu = f'{clplat}:{gpu}' if len(clplat) else gpu
+                if config['backend'] in ['skcuda', 'cupy', 'gpyfft']:
+                    k = f"{config['backend']}[{platgpu}]"
+                else:
+                    k = f"VkFFT.{config['backend']} {vkfft_ver}[{platgpu}]"
+                    if config['warpSize'] != -1:
+                        if config['warpSize'] == -99:
+                            k += f"-warp=auto"
+                        else:
+                            k += f"-warp{config['warpSize']}"
+                    if config['registerBoost'] != -1:
+                        k += f"-rboost{config['registerBoost']}"
+                    if config['registerBoostNonPow2'] != -1:
+                        k += f"-rboostn2{config['registerBoostNonPow2']}"
+                    if config['coalescedMemory'] != -1:
+                        if config['coalescedMemory'] == -99:
+                            k += f"-coalmem=auto"
+                        else:
+                            k += f"-coalmem{config['coalescedMemory']}"
+                    if config['aimThreads'] != -1:
+                        if config['aimThreads'] == -99:
+                            k += f"-threads=auto"
+                        else:
+                            k += f"-threads{config['aimThreads']}"
+                    if config['numSharedBanks'] != -1:
+                        k += f"-banks{config['numSharedBanks']}"
+                    if 'batchedGroup' in config:
+                        if config['batchedGroup'] != '-1x-1x-1':
+                            k += f"-batch{config['batchedGroup']}"
+                if 'bluestein' in config['radix'].lower():
+                    k += '-' + '\u0336'.join('radix') + '\u0336'
+                elif 'none' not in config['radix'].lower():
+                    k += f"-radix{config['radix']}"
+                k += f"[{min(vlength)}-{max(vlength)}]"
+                r = {'length': vlength, 'gbps': vgbps, 'backend': config['backend'],
+                     'gpu': gpu, 'platform': config['platform']}
+                if ndim not in res_all:
+                    res_all[ndim] = {k: r}
+                else:
+                    res_all[ndim][k] = r
+                print(f"{ndim}D: {src} -> {k} [{len(vlength)} entries]")
+    vgpu.sort()
+    vbackend.sort()
+    vopt.sort()
+    str_config = ",".join(vgpu) + f"-{','.join(vbackend)}"
+    if len(vopt):
+        str_opt = "-" + "_".join(vopt)
+    else:
+        str_opt = ""
+
+    # Plot style:
+    # * if multiple backends are used, one colour is used per backend
+    #   and the symbol changes with the parameters
+    # * If only one backend is used, the colour changes automatically with the parameters
+
+    # Symbols used
+    vsymb = ['.', 'v', '^', '<', '>', 's', 'p', '*', 'h', 'H', 'd', 'D', '+', 'x', '1', '2', '3', '4']
+    # Colour for each backend
+    vcol = {'cuda': '#FF8C00', 'opencl': '#FF00FF', 'skcuda': '#0000FF', 'cupy': '#0090FF', 'gpyfft': '#00FF00'}
+    for ndim, res in res_all.items():
+        plt.figure(figsize=(16, 8))
+
+        tmp = [v['backend'] for v in res.values()]
+        if tmp.count(tmp[0]) == len(tmp):
+            one_backend = True
+        else:
+            one_backend = False
+
+        # Counter of results per backend
+        vct = {'cuda': 0, 'opencl': 0, 'skcuda': 0, 'cupy': 0, 'gpyfft': 0}
+
+        vk = sorted(res.keys())
+        for k in vk:
+            v = res[k]
+            x, y = v['length'], v['gbps']
+            backend = v['backend']
+            valpha = [max(primes(xx)) for xx in x]
+            if backend in ['cuda', 'opencl', 'gpyfft']:
+                valpha = np.array([1 if xx <= 13 else 0.2 for xx in valpha], dtype=np.float32)
+            else:
+                # cufft (cupy, skcuda)
+                valpha = np.array([1 if xx <= 7 else 0.2 for xx in valpha], dtype=np.float32)
+            print(len(x), len(valpha))
+            if one_backend:
+                plt.scatter(x, y, marker='.', label=k, alpha=valpha)
+            else:
+                i = vct[backend]
+                plt.scatter(x, y, marker=vsymb[i % len(vsymb)], color=vcol[backend],
+                            label=k, alpha=valpha)
+                vct[backend] += 1
+
+        plt.xlabel("array length")
+        plt.ylabel("Theoretical throughput (GBytes/s)")
+        plt.ylim(0)
+        plt.title(f"{ndim}D FFT (batched)-" + str_config)
+
+        # Use powers of 2 for xticks
+        xmin, xmax = plt.xlim()
+        step = 2 ** (round(np.log2(xmax - xmin + 1) - 4))
+        xmin -= xmin % step
+        if xmin < 0:
+            xmin = 0
+        plt.xticks(np.arange(xmin, xmax, step))
+
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        n = f"pyvkfft-benchmark-{str_config.replace(' ', '_')}-{ndim}D{str_opt}."
+        plt.savefig(n + 'svg')
+        plt.savefig(n + 'png')
+        print(f"Saving {ndim}D benchmark plot to: {n}png and {n}svg")
+
+
 def run_test(config, args):
     # results = []
     gpu_name = args.gpu
@@ -70,20 +225,31 @@ def run_test(config, args):
     dbc = None
     dbc0 = None
     first = True
+
+    # Separate parameters for auto-tuning coalescedMemory, aimThreads and warpSize
+    vargs = vars(args)
+    tune_config = {'backend': {'cuda': 'pycuda', 'opencl': 'pyopencl', 'cupy': 'cupy'}[backend]}
+    for k in ['coalescedMemory', 'aimThreads', 'warpSize']:
+        if len(vargs[k]) > 1:
+            tune_config[k] = vargs[k]
+        vargs[k] = vargs[k][0]  # We need a scalar
+    if len(tune_config) > 1:
+        vargs['tune_config'] = tune_config
+
     for c in config:
         c.precision = precision
         c.inplace = inplace
         sh = tuple(c.shape)
         ndim = c.ndim
-        nb_repeat = 5
+        nb_repeat = 4
         gpu_name_real = ''
         platform_name_real = ''
         if backend == 'cuda':
-            dt, gbps, gpu_name_real = bench_pyvkfft_cuda(sh, precision, ndim, nb_repeat, gpu_name, args=vars(args))
+            dt, gbps, gpu_name_real = bench_pyvkfft_cuda(sh, precision, ndim, nb_repeat, gpu_name, args=vargs)
         elif backend == 'opencl':
             dt, gbps, gpu_name_real, platform_name_real = bench_pyvkfft_opencl(sh, precision, ndim, nb_repeat, gpu_name,
                                                                                opencl_platform=opencl_platform,
-                                                                               args=vars(args))
+                                                                               args=vargs)
         elif backend == 'skcuda':
             dt, gbps, gpu_name_real = bench_skcuda(sh, precision, ndim, nb_repeat, gpu_name)
         elif backend == 'gpyfft':
@@ -98,19 +264,37 @@ def run_test(config, args):
         g = capwords(gpu_name_real.replace('Apple', ''))  # Redundant
         g = g.strip(' _').replace(':', '_')
         plat = capwords(platform_name_real).strip(' _').replace(':', '_')
-        radix = 'x'.join(str(i) for i in args.radix)
         if args.bluestein:
             radix = 'BluesteinRader'
+        elif args.radix is None:
+            radix = 'none'
+        else:
+            radix = 'x'.join(str(i) for i in args.radix)
         if db:
             if first:
                 if type(db) != str:
                     db = f"pyvkfft{__version__}-{vkfft_version()}-" \
-                         f"{g.replace(' ','_')}-{backend}-" \
+                         f"{g.replace(' ', '_')}-{backend}-" \
                          f"{datetime.now().strftime('%Y_%m_%d_%Hh_%Mm_%Ss')}-benchmark.sql"
 
                 hostname = socket.gethostname()
                 db = sqlite3.connect(db)
                 dbc = db.cursor()
+
+                # For tuned values, use -99 as special value
+                coalescedMemory = args.coalescedMemory
+                if 'coalescedMemory' in tune_config:
+                    if len(tune_config['coalescedMemory']) > 1:
+                        coalescedMemory = -99
+                aimThreads = args.aimThreads
+                if 'aimThreads' in tune_config:
+                    if len(tune_config['aimThreads']) > 1:
+                        aimThreads = -99
+                warpSize = args.warpSize
+                if 'warpSize' in tune_config:
+                    if len(tune_config['warpSize']) > 1:
+                        warpSize = -99
+
                 dbc.execute('CREATE TABLE IF NOT EXISTS config (epoch int, hostname text,'
                             'pyvkfft text, vkfft text, backend text, transform text, radix text,'
                             'precision text, inplace int, gpu text, platform text,'
@@ -121,9 +305,9 @@ def run_test(config, args):
                 dbc.execute('INSERT INTO config VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                             (time.time(), hostname, __version__, vkfft_version(), backend, c.transform,
                              radix, precision, inplace, g, plat, args.disableReorderFourStep,
-                             args.coalescedMemory, args.numSharedBanks,
-                             args.aimThreads, args.performBandwidthBoost, args.registerBoost,
-                             args.registerBoostNonPow2, args.registerBoost4Step, args.warpSize,
+                             coalescedMemory, args.numSharedBanks,
+                             aimThreads, args.performBandwidthBoost, args.registerBoost,
+                             args.registerBoostNonPow2, args.registerBoost4Step, warpSize,
                              args.useLUT, 'x'.join(str(i) for i in args.batchedGroup)))
                 db.commit()
                 dbc.execute('CREATE TABLE IF NOT EXISTS benchmark (epoch int, ndim int, shape text, gbps float)')
@@ -208,13 +392,15 @@ def main():
                              "for different dimensions. Multiple *.sql files can be given "
                              "for comparison. This parameter supersedes all others (no tests "
                              "are run if --plot is given)")
+
     sysgrp = parser.add_argument_group("systematic", "Options for --systematic:")
-    sysgrp.add_argument('--radix', action='store', nargs='+', type=int,
-                        help="Perform only radix transforms. By default, all available "
-                             "radix transforms are allowed. Alternatively a list can be given: "
+    sysgrp.add_argument('--radix', action='store', nargs='*', type=int,
+                        help="Perform only radix transforms. Without --radix, all integer "
+                             "sizes are tested. With '--radix', all radix transforms allowed "
+                             "by the backend are used. Alternatively a list can be given: "
                              "'--radix 2' (only 2**n array sizes), '--radix 2 3 5' "
                              "(only 2**N1 * 3**N2 * 5**N3)",
-                        choices=[2, 3, 5, 7, 11, 13], default=[2, 3, 5, 7, 11, 13])
+                        choices=[2, 3, 5, 7, 11, 13], default=None)
     sysgrp.add_argument('--bluestein', '--rader', action='store_true', default=False,
                         help="Test only non-radix sizes, using the Bluestein or Rader transforms. "
                              "Not compatible with --radix")
@@ -232,20 +418,31 @@ def main():
                         help="Range of array sizes in MBytes. This is combined with --range to"
                              "find the actual range to use.",
                         default=[0, 128])
+    sysgrp.add_argument('--minsize-mb', action='store', type=int, default=100,
+                        help="Minimal size (in MB) of the transformed array to ensure a precise "
+                             "enough timing, as the FT is tested on a stacked array using "
+                             "a batch transform. Larger values take more time.")
+
     sysgrp = parser.add_argument_group("advanced", "Advanced options for VkFFT. Do NOT use unless you "
                                                    "really know what these mean. -1 will always "
-                                                   "defer the choice to VkFFT.")
+                                                   "defer the choice to VkFFT. For some parameters "
+                                                   "(coalescedMemory, aimThreads and warpSize), if "
+                                                   "multiple values are used, this will trigger "
+                                                   "the automatic tuning of the transform by testing "
+                                                   "each possible configuration of parameters, "
+                                                   "before using the fastest transformation for the "
+                                                   "actual transform.")
     sysgrp.add_argument('--disableReorderFourStep', action='store', choices=[-1, 0, 1], type=int,
                         default=-1, help="Disables unshuffling of Four step algorithm."
                                          " Requires tempbuffer allocation")
     sysgrp.add_argument('--coalescedMemory', action='store', choices=[-1, 16, 32, 64, 128], type=int,
-                        default=-1, help="Number of bytes to coalesce per one transaction: "
-                                         "defaults to 32 for Nvidia and AMD, 64 for others."
-                                         "Should be a power of two")
+                        help="Number of bytes to coalesce per one transaction: "
+                             "defaults to 32 for Nvidia and AMD, 64 for others."
+                             "Should be a power of two", default=[-1], nargs='+')
     sysgrp.add_argument('--numSharedBanks', action='store', choices=[-1] + list(range(16, 64 + 1, 4)), type=int,
                         default=-1, help="Number of shared banks on the target GPU. Default is 32. ")
     sysgrp.add_argument('--aimThreads', action='store', choices=[-1] + list(range(16, 256 + 1, 4)), type=int,
-                        default=-1, help="Try to aim all kernels at this amount of threads. ")
+                        default=[-1], help="Try to aim all kernels at this amount of threads. ", nargs='+')
     sysgrp.add_argument('--performBandwidthBoost', action='store', choices=[-1, 0, 1, 2, 4], type=int,
                         default=-1, help="Try to reduce coalesced number by a factor of X"
                                          "to get bigger sequence in one upload for strided axes. ")
@@ -263,145 +460,17 @@ def main():
                                          "should be used in big sequences (>2^14), "
                                          "same definition as registerBoost ")
     sysgrp.add_argument('--warpSize', action='store', choices=[-1, 1, 2, 4, 8, 16, 32, 64, 128, 256], type=int,
-                        default=-1, help="Number of threads per warp/wavefront. Normally automatically "
-                                         "derived from the driver. Must be a power of two")
+                        default=[-1], help="Number of threads per warp/wavefront. Normally automatically "
+                                           "derived from the driver. Must be a power of two", nargs='+')
     sysgrp.add_argument('--batchedGroup', action='store', nargs=3, type=int, default=[-1, -1, -1],
                         help="How many FFTs are done per single kernel "
                              "by a dedicated thread block, for each dimension.")
     sysgrp.add_argument('--useLUT', action='store', choices=[-1, 0, 1], type=int,
                         default=-1, help="Use a look-up table to bypass the native sincos functions.")
+
     args = parser.parse_args()
     if args.plot:
-        import matplotlib.pyplot as plt
-        res_all = {}
-        vgpu = []
-        vbackend = []
-        vopt = []
-        for ndim in (1, 2, 3):
-            for src in args.plot:
-                dbc0 = sqlite3.connect(src).cursor()
-
-                dbc0.execute(f"SELECT * from config")
-                r = dbc0.fetchone()
-                config = {col[0]: r[i] for i, col in enumerate(dbc0.description)}
-                gpu = config['gpu']
-                clplat = config['platform']
-                if gpu not in vgpu:
-                    vgpu.append(gpu)
-                if config['backend'] not in vbackend:
-                    vbackend.append(config['backend'])
-                for k, v in {"disableReorderFourStep": "r4s", "coalescedMemory": "coalmem",
-                             "numSharedBanks": "nbanks", "aimThreads": "threads",
-                             "performBandwidthBoost": "bwboost", "registerBoost": "rboost",
-                             "registerBoostNonPow2": "rboostn2", "registerBoost4Step": "rboost4",
-                             "warpSize": "warp", "useLUT": "lut", "batchedGroup": "batch"}.items():
-                    if k in config:
-                        if k == "batchedGroup":
-                            # config[k] = [int(b) for b in v.split('x')]
-                            # print(config[k])
-                            if config[k] != '-1x-1x-1' and v not in vopt:
-                                vopt.append(v)
-                        elif config[k] != -1 and v not in vopt:
-                            vopt.append(v)
-                vkfft_ver = config['vkfft']
-
-                dbc0.execute(f"SELECT * from benchmark WHERE ndim = {ndim} ORDER by epoch")
-                res = dbc0.fetchall()
-                if len(res):
-                    vk = [k[0] for k in dbc0.description]
-                    igbps = vk.index('gbps')
-                    vgbps = [r[igbps] for r in res]
-                    ish = vk.index('shape')
-                    vlength = [int(r[ish].split('x')[-1]) for r in res]
-                    platgpu = f'{clplat}:{gpu}' if len(clplat) else gpu
-                    if config['backend'] in ['skcuda', 'cupy', 'gpyfft']:
-                        k = f"{config['backend']}[{platgpu}]"
-                    else:
-                        k = f"VkFFT.{config['backend']} {vkfft_ver}[{platgpu}]"
-                        if config['warpSize'] != -1:
-                            k += f"-warp{config['warpSize']}"
-                        if config['registerBoost'] != -1:
-                            k += f"-rboost{config['registerBoost']}"
-                        if config['registerBoostNonPow2'] != -1:
-                            k += f"-rboostn2{config['registerBoostNonPow2']}"
-                        if config['coalescedMemory'] != -1:
-                            k += f"-coalmem{config['coalescedMemory']}"
-                        if config['aimThreads'] != -1:
-                            k += f"-threads{config['aimThreads']}"
-                        if config['numSharedBanks'] != -1:
-                            k += f"-banks{config['numSharedBanks']}"
-                        if 'batchedGroup' in config:
-                            if config['batchedGroup'] != '-1x-1x-1':
-                                k += f"-batch{config['batchedGroup']}"
-                    if 'bluestein' in config['radix'].lower():
-                        k += '\u0336'.join('radix') + '\u0336'
-                    r = {'length': vlength, 'gbps': vgbps, 'backend': config['backend'],
-                         'radix': 'bluestein' not in config['radix'].lower(), 'gpu': gpu,
-                         'platform': config['platform']}
-                    if ndim not in res_all:
-                        res_all[ndim] = {k: r}
-                    else:
-                        res_all[ndim][k] = r
-        vgpu.sort()
-        vbackend.sort()
-        vopt.sort()
-        str_config = ",".join(vgpu) + f"-{','.join(vbackend)}"
-        if len(vopt):
-            str_opt = "-" + "_".join(vopt)
-        else:
-            str_opt = ""
-
-        # Plot style:
-        # * if multiple backends are used, one colour is used per backend
-        #   and the symbol changes with the parameters
-        # * If only one backend is used, the colour changes automatically with the parameters
-
-        # Symbols used
-        vsymb = ['.', 'v', '^', '<', '>', 's', 'p', '*', 'h', 'H', 'd', 'D', '+', 'x', '1', '2', '3', '4']
-        # Colour for each backend
-        vcol = {'cuda': '#FF8C00', 'opencl': '#FF00FF', 'skcuda': '#0000FF', 'cupy': '#0090FF', 'gpyfft': '#00FF00'}
-        for ndim, res in res_all.items():
-            plt.figure(figsize=(16, 8))
-
-            tmp = [v['backend'] for v in res.values()]
-            if tmp.count(tmp[0]) == len(tmp):
-                one_backend = True
-            else:
-                one_backend = False
-
-            # Counter of results per backend
-            vct = {'cuda': 0, 'opencl': 0, 'skcuda': 0, 'cupy': 0, 'gpyfft': 0}
-
-            vk = sorted(res.keys())
-            for k in vk:
-                v = res[k]
-                x, y = v['length'], v['gbps']
-                backend, radix = v['backend'], v['radix']
-                if one_backend:
-                    plt.plot(x, y, '.', label=k, alpha=1 if radix else 0.2)
-                else:
-                    i = vct[backend]
-                    plt.plot(x, y, vsymb[i % len(vsymb)], color=vcol[backend],
-                             label=k, alpha=1 if radix else 0.2)
-                    vct[backend] += 1
-
-            plt.xlabel("array length")
-            plt.ylabel("Theoretical throughput (GBytes/s)")
-            plt.ylim(0)
-            plt.title(f"{ndim}D FFT (batched)-" + str_config)
-
-            # Use powers of 2 for xticks
-            xmin, xmax = plt.xlim()
-            step = 2 ** (round(np.log2(xmax - xmin + 1) - 4))
-            xmin -= xmin % step
-            plt.xticks(np.arange(xmin, xmax, step))
-
-            plt.legend()
-            plt.grid(True)
-            plt.tight_layout()
-            n = f"pyvkfft-benchmark-{str_config.replace(' ', '_')}-{ndim}D{str_opt}.png"
-            plt.savefig(n)
-            print(f"Saving {ndim}D benchmark plot to: {n}")
+        plot_benchmark(*args.plot)
         return
     if args.systematic:
         config = []
@@ -412,19 +481,30 @@ def main():
             else:
                 size_min_max //= 8
             size_min_max = np.round(size_min_max ** (1 / ndim)).astype(int)
+
             if args.bluestein:
-                if args.radix != [2, 3, 5, 7, 11, 13]:
+                if args.radix is not None:
                     raise RuntimeError("--bluestein cannot be used with --radix")
-                elif args.backend in ['skcuda', 'cupy']:
+                if args.backend in ['skcuda', 'cupy']:
                     # for cufft, radix transforms only till 7 (and a few undocumented primes up to 127)
                     args.radix = [2, 3, 5, 7]
+                else:
+                    args.radix = [2, 3, 5, 7, 11, 13]
+            elif args.radix is not None:
+                if len(args.radix) == 0:  # only --radix was passed
+                    if args.backend in ['skcuda', 'cupy']:
+                        # for cufft, radix transforms only till 7 (and a few undocumented primes up to 127)
+                        args.radix = [2, 3, 5, 7]
+                    else:
+                        args.radix = [2, 3, 5, 7, 11, 13]
+
             vshape = np.array(radix_gen_n(nmax=args.range[1], max_size=size_min_max[1],
                                           radix=args.radix, ndim=1, even=False,
                                           nmin=args.range[0], max_pow=None,
                                           range_nd_narrow=None, min_size=size_min_max[0],
                                           inverted=args.bluestein),
                               dtype=int).flatten()
-            nbatch = 1e8 / (vshape ** ndim * (8 if args.precision == 'double' else 4))
+            nbatch = args.minsize_mb * 1024 ** 2 / (vshape ** ndim * (8 if args.precision == 'double' else 4))
             nbatch = np.maximum(1, nbatch).astype(int)
             config += [BenchConfig('c2c', [b] + [n] * ndim, ndim) for b, n in zip(nbatch, vshape)]
     else:

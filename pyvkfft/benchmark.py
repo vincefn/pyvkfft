@@ -216,7 +216,7 @@ def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_na
                 if k in ["disableReorderFourStep", "coalescedMemory", "numSharedBanks",
                          "aimThreads", "performBandwidthBoost", "registerBoost",
                          "registerBoostNonPow2", "registerBoost4Step", "warpSize", "useLUT",
-                         "groupedBatch"]:
+                         "groupedBatch", "tune_config"]:
                     kwargs[k] = v
         app = clVkFFTApp(d.shape, dtype=dtype, queue=cq, ndim=ndim, **kwargs)
         for i in range(nb_repeat):
@@ -283,7 +283,7 @@ def _bench_pyvkfft_cuda(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name
                 if k in ["disableReorderFourStep", "coalescedMemory", "numSharedBanks",
                          "aimThreads", "performBandwidthBoost", "registerBoost",
                          "registerBoostNonPow2", "registerBoost4Step", "warpSize", "useLUT",
-                         "groupedBatch"]:
+                         "groupedBatch", "tune_config"]:
                     kwargs[k] = v
         app = cuVkFFTApp(d.shape, dtype=dtype, ndim=ndim, **kwargs)
         start = cu_drv.Event()

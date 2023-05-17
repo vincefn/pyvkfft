@@ -12,6 +12,7 @@ import pyopencl as cl
 import pyopencl.array as cla
 from .base import load_library, primes, VkFFTApp as VkFFTAppBase, VkFFTResult, check_vkfft_result
 from . import config
+from .tune import tune_vkfft
 
 _vkfft_opencl = load_library("_vkfft_opencl")
 
@@ -56,7 +57,7 @@ class VkFFTApp(VkFFTAppBase):
     """
 
     def __init__(self, shape, dtype: type, queue: cl.CommandQueue, ndim=None, inplace=True, norm=1,
-                 r2c=False, dct=False, axes=None, strides=None, **kwargs):
+                 r2c=False, dct=False, axes=None, strides=None, tune_config=None, **kwargs):
         """
         Init function for the VkFFT application.
 
@@ -97,10 +98,34 @@ class VkFFTApp(VkFFTAppBase):
             if None, the transform is done along the ndim fastest axes, or all
             axes if ndim is None. Not allowed for R2C transforms
         :param strides: the array strides - needed if not C-ordered.
+        :param tune_config: this can be used to automatically generate an
+            optimised set of VkFFT parameters by testing various configurations
+            and measuring the FFT speed, in a manner similar to fftw's FFTW_MEASURE.
+            This should be a dictionary including the backend used and the parameter
+            values which will be tested.
+            This is EXPERIMENTAL, as wrong parameters may lead to crashes.
+            Note that this will allocate temporary GPU arrays, unless the arrays
+            to used have been passed as parameters ('dest' and 'src').
+            Examples:
+            tune={'backend':'cupy} - minimal example, will automatically test a small
+            set of parameters (4 to 9 tests), depending on the GPU type.
+            tune={'backend':'cupy, 'warpSize':[8,16,32,64,128]}: this will test
+            5 possible values for the warpSize.
+            tune={'backend':'cupy, 'groupedBatch':[[-1,-1,-1],[8,8,8], [4,16,16}:
+            this will test 3 possible values for groupedBatch. This one is more
+            tricky to use.
+            tune={'backend':'cupy, 'warpSize':[8,16,32,64,128], 'src':a}: this
+            will test 5 possible values for the warpSize, with a given source GPU
+            array. This would only be valid for an inplace transform as no
+            destination array is given.
         :raises RuntimeError: if the initialisation fails, e.g. if the GPU
             driver has not been properly initialised, or if the transform dimensions
             are not allowed by VkFFT.
         """
+        if tune_config is not None:
+            kwargs = tune_vkfft(tune_config, shape=shape, dtype=dtype, ndim=ndim, queue=queue, inplace=inplace,
+                                norm=norm, r2c=r2c, dct=dct, axes=axes, strides=strides, verbose=False,
+                                **kwargs)[0]
         super().__init__(shape, dtype, ndim=ndim, inplace=inplace, norm=norm, r2c=r2c,
                          dct=dct, axes=axes, strides=strides, **kwargs)
 
