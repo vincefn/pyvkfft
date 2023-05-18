@@ -228,7 +228,8 @@ def run_test(config, args):
 
     # Separate parameters for auto-tuning coalescedMemory, aimThreads and warpSize
     vargs = vars(args)
-    tune_config = {'backend': {'cuda': 'pycuda', 'opencl': 'pyopencl', 'cupy': 'cupy'}[backend]}
+    tune_config = {'backend': {'cuda': 'pycuda', 'opencl': 'pyopencl', 'cupy': 'cupy',
+                               'skcuda': 'skcuda', 'gpyfft': 'gpyfft'}[backend]}
     for k in ['coalescedMemory', 'aimThreads', 'warpSize']:
         if len(vargs[k]) > 1:
             tune_config[k] = vargs[k]

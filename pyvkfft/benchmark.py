@@ -206,7 +206,7 @@ def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_na
                 if cl_ctx is not None:
                     break
 
-    cq = cl.CommandQueue(cl_ctx)
+    cq = cl.CommandQueue(cl_ctx, properties=cl.command_queue_properties.PROFILING_ENABLE)
     dt = 0
     d = clrandom.rand(cq, shape=sh, dtype=np.float32).astype(dtype)
     try:
@@ -222,8 +222,13 @@ def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_na
         for i in range(nb_repeat):
             cq.finish()
             t0 = timeit.default_timer()
+            # Apparently OpenCL events don't always work. Need kernel events ?
+            # start = cl.enqueue_marker(cq)
             d = app.ifft(d)
             d = app.fft(d)
+            # end = cl.enqueue_marker(cq)
+            # end.wait()
+            # dt1 = 1e-9 * (start.profile.END - end.profile.END)
             cq.finish()
             dt1 = timeit.default_timer() - t0
             if dt == 0:
@@ -233,7 +238,9 @@ def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_na
         # print("%4d %4dx%4d 2D FFT+iFFT dt=%6.2f ms %7.2f Gbytes/s [pyvkfft.opencl]  [nb=%4d]" %
         #      (nz, n, n, dt / nb * 1000, gbps, nb))
         gbps = d.nbytes * ndim * 2 * 2 / dt / 1024 ** 3
-    except:
+    except Exception:
+        import traceback
+        print(traceback.format_exc())
         gbps = 0
     if q is None:
         return dt, gbps, gpu_name_real, platform_name_real

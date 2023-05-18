@@ -30,13 +30,13 @@ def tune_vkfft(tune, shape, dtype: type, ndim=None, inplace=True, stream=None, q
         Note that this will allocate temporary GPU arrays, unless the arrays
         to used have been passed as parameters ('dest' and 'src').
         Examples:
-         * tune={'backend':'cupy} - minimal example, will automatically test a small
+         * tune={'backend':'cupy'} - minimal example, will automatically test a small
            set of parameters (4 to 10 tests). Recommended !
-         * tune={'backend':'cupy, 'warpSize':[8,16,32,64,128]}: this will test
+         * tune={'backend':'pycuda', 'warpSize':[8,16,32,64,128]}: this will test
            5 possible values for the warpSize.
-         * tune={'backend':'cupy, 'aimThreads':[32,64,128,256]}: this will test
+         * tune={'backend':'pyopencl', 'aimThreads':[32,64,128,256]}: this will test
            5 possible values for the warpSize.
-         * tune={'backend':'cupy, 'groupedBatch':[[-1,-1,-1],[8,8,8], [4,16,16}:
+         * tune={'backend':'cupy', 'groupedBatch':[[-1,-1,-1],[8,8,8], [4,16,16}:
            this will test 3 possible values for groupedBatch. This one is more
            tricky to use.
          * tune={'backend':'cupy, 'warpSize':[8,16,32,64,128], 'src':a}: this
@@ -208,8 +208,8 @@ def tune_vkfft(tune, shape, dtype: type, ndim=None, inplace=True, stream=None, q
                 elif dt1 < dt:
                     dt = dt1
 
+            gbps = niter * src.nbytes * app.ndim * 2 * 2 / dt / 1024 ** 3
             del app
-            gbps = niter * src.nbytes * ndim * 2 * 2 / dt / 1024 ** 3
             res.append((kw, gbps, dt))
             if verbose:
                 s = f"VkFFT tune {shape}"
@@ -221,3 +221,6 @@ def tune_vkfft(tune, shape, dtype: type, ndim=None, inplace=True, stream=None, q
         return res[-1][0], res
     except Exception as ex:
         print(ex)
+        import traceback
+        print(traceback.format_exc())
+        return kwargs, []

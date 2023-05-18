@@ -130,7 +130,7 @@ def _prepare_transform(src, dest, cl_queue, cuda_stream, r2c=False):
             if cuda_stream is None:
                 cuda_stream = cp.cuda.get_current_stream()
             if isinstance(cuda_stream, cp.cuda.Stream):
-                    cuda_stream = cuda_stream.ptr
+                cuda_stream = cuda_stream.ptr
             devctx = cp.cuda.Device().id
 
     if backend == Backend.UNKNOWN:
@@ -149,41 +149,56 @@ def _prepare_transform(src, dest, cl_queue, cuda_stream, r2c=False):
 
 
 @lru_cache(maxsize=config.FFT_CACHE_NB)
-def _get_fft_app(backend, shape, dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue, devctx, strides=None):
+def _get_fft_app(backend, shape, dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue,
+                 devctx, strides=None, tune=False):
     del devctx  # Variable is just used for proper lru_cache
+    sback = {Backend.PYCUDA: 'pycuda', Backend.CUPY: 'cupy', Backend.PYOPENCL: 'pyopencl'}[backend]
+    tune_config = {'backend': sback} if tune else None
+    print("caching VkFFTApp with: ", tune_config)
     if backend in [Backend.PYCUDA, Backend.CUPY]:
         return VkFFTApp_cuda(shape, dtype, ndim=ndim, inplace=inplace,
-                             stream=cuda_stream, norm=norm, axes=axes, strides=strides)
+                             stream=cuda_stream, norm=norm, axes=axes, strides=strides,
+                             tune_config=tune_config)
     elif backend == Backend.PYOPENCL:
         return VkFFTApp_cl(shape, dtype, cl_queue, ndim=ndim, inplace=inplace,
-                           norm=norm, axes=axes, strides=strides)
+                           norm=norm, axes=axes, strides=strides,
+                           tune_config=tune_config)
 
 
 @lru_cache(maxsize=config.FFT_CACHE_NB)
-def _get_rfft_app(backend, shape, dtype, inplace, ndim, norm, cuda_stream, cl_queue, devctx, strides=None):
+def _get_rfft_app(backend, shape, dtype, inplace, ndim, norm, cuda_stream, cl_queue,
+                  devctx, strides=None, tune=False):
     del devctx  # Variable is just used for proper lru_cache
+    sback = {Backend.PYCUDA: 'pycuda', Backend.CUPY: 'cupy', Backend.PYOPENCL: 'pyopencl'}[backend]
+    tune_config = {'backend': sback} if tune else None
     if backend in [Backend.PYCUDA, Backend.CUPY]:
         return VkFFTApp_cuda(shape, dtype, ndim=ndim, inplace=inplace,
-                             stream=cuda_stream, norm=norm, r2c=True, strides=strides)
+                             stream=cuda_stream, norm=norm, r2c=True, strides=strides,
+                             tune_config=tune_config)
     elif backend == Backend.PYOPENCL:
         return VkFFTApp_cl(shape, dtype, cl_queue, ndim=ndim, inplace=inplace,
-                           norm=norm, r2c=True, strides=strides)
+                           norm=norm, r2c=True, strides=strides,
+                           tune_config=tune_config)
 
 
 @lru_cache(maxsize=config.FFT_CACHE_NB)
 def _get_dct_app(backend, shape, dtype, inplace, ndim, norm, dct_type,
-                 cuda_stream, cl_queue, devctx):
+                 cuda_stream, cl_queue, devctx, tune=False):
     del devctx  # Variable is just used for proper lru_cache
+    sback = {Backend.PYCUDA: 'pycuda', Backend.CUPY: 'cupy', Backend.PYOPENCL: 'pyopencl'}[backend]
+    tune_config = {'backend': sback} if tune else None
     if backend in [Backend.PYCUDA, Backend.CUPY]:
         return VkFFTApp_cuda(shape, dtype, ndim=ndim, inplace=inplace,
-                             stream=cuda_stream, norm=norm, dct=dct_type)
+                             stream=cuda_stream, norm=norm, dct=dct_type,
+                             tune_config=tune_config)
     elif backend == Backend.PYOPENCL:
         return VkFFTApp_cl(shape, dtype, cl_queue, ndim=ndim, inplace=inplace,
-                           norm=norm, dct=dct_type)
+                           norm=norm, dct=dct_type,
+                           tune_config=tune_config)
 
 
 def fftn(src, dest=None, ndim=None, norm=1, axes=None, cuda_stream=None, cl_queue=None,
-         return_scale=False):
+         return_scale=False, tune=False):
     """
     Perform a FFT on a GPU array, automatically creating the VkFFTApp
     and caching it for future re-use.
@@ -214,11 +229,15 @@ def fftn(src, dest=None, ndim=None, norm=1, axes=None, cuda_stream=None, cl_queu
         the source array default queue will be used
     :param return_scale: if True, return the scale factor by which the result
         must be multiplied to keep its L2 norm after the transform
+    :param tune: if True, will activate the automatic tuning of VkFFT
+        parameters to maximise the FT throughput. This uses a quick
+        approach testing a few transforms (about 4) before choosing the
+        optimal parameters. This is similar to FFTW's FFTW_MEASURE approach.
     :return: the destination array if return_scale is False, or (dest, scale)
     """
     backend, inplace, dest, cl_queue, cuda_stream, devctx = _prepare_transform(src, dest, cl_queue, cuda_stream, False)
     app = _get_fft_app(backend, src.shape, src.dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue, devctx,
-                       strides=src.strides)
+                       strides=src.strides, tune=tune)
     if backend == Backend.PYOPENCL:
         app.fft(src, dest, queue=cl_queue)
     else:
@@ -230,7 +249,7 @@ def fftn(src, dest=None, ndim=None, norm=1, axes=None, cuda_stream=None, cl_queu
 
 
 def ifftn(src, dest=None, ndim=None, norm=1, axes=None, cuda_stream=None, cl_queue=None,
-          return_scale=False):
+          return_scale=False, tune=False):
     """
     Perform an inverse FFT on a GPU array, automatically creating the VkFFTApp
     and caching it for future re-use.
@@ -261,11 +280,15 @@ def ifftn(src, dest=None, ndim=None, norm=1, axes=None, cuda_stream=None, cl_que
         the source array default queue will be used
     :param return_scale: if True, return the scale factor by which the result
         must be multiplied to keep its L2 norm after the transform
+    :param tune: if True, will activate the automatic tuning of VkFFT
+        parameters to maximise the FT throughput. This uses a quick
+        approach testing a few transforms (about 4) before choosing the
+        optimal parameters. This is similar to FFTW's FFTW_MEASURE approach.
     :return: the destination array if return_scale is False, or (dest, scale)
     """
     backend, inplace, dest, cl_queue, cuda_stream, devctx = _prepare_transform(src, dest, cl_queue, cuda_stream, False)
     app = _get_fft_app(backend, src.shape, src.dtype, inplace, ndim, axes, norm, cuda_stream, cl_queue, devctx,
-                       strides=src.strides)
+                       strides=src.strides, tune=tune)
     if backend == Backend.PYOPENCL:
         app.ifft(src, dest, queue=cl_queue)
     else:
@@ -277,7 +300,7 @@ def ifftn(src, dest=None, ndim=None, norm=1, axes=None, cuda_stream=None, cl_que
 
 
 def rfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
-          return_scale=False):
+          return_scale=False, tune=False):
     """
     Perform a real->complex transform on a GPU array, automatically creating
     the VkFFTApp and caching it for future re-use.
@@ -310,6 +333,10 @@ def rfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
         the source array default queue will be used
     :param return_scale: if True, return the scale factor by which the result
         must be multiplied to keep its L2 norm after the transform
+    :param tune: if True, will activate the automatic tuning of VkFFT
+        parameters to maximise the FT throughput. This uses a quick
+        approach testing a few transforms (about 4) before choosing the
+        optimal parameters. This is similar to FFTW's FFTW_MEASURE approach.
     :return: the destination array if return_scale is False, or (dest, scale).
         For an in-place transform, the returned value is a view of the array
         with the appropriate type.
@@ -317,7 +344,7 @@ def rfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
     backend, inplace, dest, cl_queue, cuda_stream, devctx, dtype = \
         _prepare_transform(src, dest, cl_queue, cuda_stream, True)
     app = _get_rfft_app(backend, src.shape, src.dtype, inplace, ndim, norm, cuda_stream, cl_queue, devctx,
-                        strides=src.strides)
+                        strides=src.strides, tune=tune)
     if backend == Backend.PYOPENCL:
         app.fft(src, dest, queue=cl_queue)
     else:
@@ -329,7 +356,7 @@ def rfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
 
 
 def irfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
-           return_scale=False):
+           return_scale=False, tune=False):
     """
     Perform a complex->real transform on a GPU array, automatically creating
     the VkFFTApp and caching it for future re-use.
@@ -362,6 +389,10 @@ def irfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
         the source array default queue will be used
     :param return_scale: if True, return the scale factor by which the result
         must be multiplied to keep its L2 norm after the transform
+    :param tune: if True, will activate the automatic tuning of VkFFT
+        parameters to maximise the FT throughput. This uses a quick
+        approach testing a few transforms (about 4) before choosing the
+        optimal parameters. This is similar to FFTW's FFTW_MEASURE approach.
     :return: the destination array if return_scale is False, or (dest, scale)
         For an in-place transform, the returned value is a view of the array
         with the appropriate type.
@@ -369,7 +400,7 @@ def irfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
     backend, inplace, dest, cl_queue, cuda_stream, devctx, dtype = \
         _prepare_transform(src, dest, cl_queue, cuda_stream, True)
     app = _get_rfft_app(backend, dest.shape, dest.dtype, inplace, ndim, norm, cuda_stream, cl_queue, devctx,
-                        strides=dest.strides)
+                        strides=dest.strides, tune=tune)
     if backend == Backend.PYOPENCL:
         app.ifft(src, dest, queue=cl_queue)
     else:
@@ -380,7 +411,7 @@ def irfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
     return dest.view(dtype=dtype)
 
 
-def dctn(src, dest=None, ndim=None, norm=1, dct_type=2, cuda_stream=None, cl_queue=None):
+def dctn(src, dest=None, ndim=None, norm=1, dct_type=2, cuda_stream=None, cl_queue=None, tune=False):
     """
     Perform a real->real Direct Cosine Transform on a GPU array, automatically
     creating the VkFFTApp and caching it for future re-use.
@@ -404,11 +435,15 @@ def dctn(src, dest=None, ndim=None, norm=1, dct_type=2, cuda_stream=None, cl_que
         for the transform. If None, the default one will be used
     :param cl_queue: the pyopencl.CommandQueue to be used. If None,
         the source array default queue will be used
+    :param tune: if True, will activate the automatic tuning of VkFFT
+        parameters to maximise the FT throughput. This uses a quick
+        approach testing a few transforms (about 4) before choosing the
+        optimal parameters. This is similar to FFTW's FFTW_MEASURE approach.
     :return: the destination array.
     """
     backend, inplace, dest, cl_queue, cuda_stream, devctx = _prepare_transform(src, dest, cl_queue, cuda_stream, False)
     app = _get_dct_app(backend, src.shape, src.dtype, inplace, ndim, norm,
-                       dct_type, cuda_stream, cl_queue, devctx)
+                       dct_type, cuda_stream, cl_queue, devctx, tune=tune)
     if backend == Backend.PYOPENCL:
         app.fft(src, dest, queue=cl_queue)
     else:
@@ -416,7 +451,7 @@ def dctn(src, dest=None, ndim=None, norm=1, dct_type=2, cuda_stream=None, cl_que
     return dest
 
 
-def idctn(src, dest=None, ndim=None, norm=1, dct_type=2, cuda_stream=None, cl_queue=None):
+def idctn(src, dest=None, ndim=None, norm=1, dct_type=2, cuda_stream=None, cl_queue=None, tune=False):
     """
     Perform a real->real inverse Direct Cosine Transform on a GPU array,
     automatically creating the VkFFTApp and caching it for future re-use.
@@ -440,11 +475,15 @@ def idctn(src, dest=None, ndim=None, norm=1, dct_type=2, cuda_stream=None, cl_qu
         for the transform. If None, the default one will be used
     :param cl_queue: the pyopencl.CommandQueue to be used. If None,
         the source array default queue will be used
+    :param tune: if True, will activate the automatic tuning of VkFFT
+        parameters to maximise the FT throughput. This uses a quick
+        approach testing a few transforms (about 4) before choosing the
+        optimal parameters. This is similar to FFTW's FFTW_MEASURE approach.
     :return: the destination array.
     """
     backend, inplace, dest, cl_queue, cuda_stream, devctx = _prepare_transform(src, dest, cl_queue, cuda_stream, False)
     app = _get_dct_app(backend, src.shape, src.dtype, inplace, ndim, norm,
-                       dct_type, cuda_stream, cl_queue, devctx)
+                       dct_type, cuda_stream, cl_queue, devctx, tune=tune)
     if backend == Backend.PYOPENCL:
         app.ifft(src, dest, queue=cl_queue)
     else:
