@@ -8,6 +8,7 @@
 #
 # pyvkfft unit tests.
 import sys
+import platform
 import unittest
 import multiprocessing
 import threading
@@ -374,7 +375,10 @@ class TestFFT(unittest.TestCase):
                     self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, n2=%8e ni=%8e>%8e" % (n2, nii, tol))
                     if not res['inplace']:
                         self.assertTrue(src1, "The source array was modified during the FFT")
-                        nmaxr2c1d = 3072 * (1 + int(res['dtype'] in (np.float32, np.complex64)))
+                        if platform.system() == 'Darwin':
+                            nmaxr2c1d = 2048 * (1 + int(res['dtype'] in (np.float32, np.complex64)))
+                        else:
+                            nmaxr2c1d = 3072 * (1 + int(res['dtype'] in (np.float32, np.complex64)))
                         if not res['r2c'] or (res['ndim'] == 1 and max(npr) <= 13) and n < nmaxr2c1d:
                             # Only 1D radix C2R do not alter the source array,
                             # if n<= 3072 or 6144 (assuming 48kb shared memory)
@@ -915,7 +919,10 @@ class TestFFTSystematic(unittest.TestCase):
                         self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, n2=%8e ni=%8e>%8e" % (n2, nii, tol))
                         if not self.inplace:
                             self.assertTrue(src1, "The source array was modified during the FFT")
-                            nmaxr2c1d = 3072 * (1 + int(self.dtype in (np.float32, np.complex64)))
+                            if platform.system() == 'Darwin':
+                                nmaxr2c1d = 2048 * (1 + int(self.dtype in (np.float32, np.complex64)))
+                            else:
+                                nmaxr2c1d = 3072 * (1 + int(self.dtype in (np.float32, np.complex64)))
                             if not self.r2c or (ndim == 1 and max(npr) <= 13) and n < nmaxr2c1d:
                                 # Only 1D radix C2R do not alter the source array, if n<=?
                                 self.assertTrue(src2,

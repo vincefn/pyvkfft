@@ -154,7 +154,6 @@ def _get_fft_app(backend, shape, dtype, inplace, ndim, axes, norm, cuda_stream, 
     del devctx  # Variable is just used for proper lru_cache
     sback = {Backend.PYCUDA: 'pycuda', Backend.CUPY: 'cupy', Backend.PYOPENCL: 'pyopencl'}[backend]
     tune_config = {'backend': sback} if tune else None
-    print("caching VkFFTApp with: ", tune_config)
     if backend in [Backend.PYCUDA, Backend.CUPY]:
         return VkFFTApp_cuda(shape, dtype, ndim=ndim, inplace=inplace,
                              stream=cuda_stream, norm=norm, axes=axes, strides=strides,

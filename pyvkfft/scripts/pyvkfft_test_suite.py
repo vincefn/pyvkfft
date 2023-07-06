@@ -9,6 +9,7 @@
 # script to run a long multi-test accuracy suite
 
 import os
+import platform
 import argparse
 import sys
 
@@ -125,12 +126,18 @@ def main():
                                 n1 = 3 if 'dct 4' in transform else 2
                                 if ndim == 1:
                                     if 'dct 1' in transform:
-                                        n2 = 760 if 'double' in prec else 1500  # cuda: 767, 1535
+                                        if platform.system() == 'Darwin':
+                                            n2 = 1024  # Apple M1
+                                        else:
+                                            n2 = 760 if 'double' in prec else 1500  # cuda: 767, 1535
                                     elif 'dct' in transform:
                                         if 'double' in prec:
                                             n2 = 1500 if 'bluestein' in radix else 3071  # cuda: 1536, 3071
                                         else:
-                                            n2 = 3000 if 'bluestein' in radix else 4096  # cuda: 3071, 4096
+                                            if platform.system() == 'Darwin':
+                                                n2 = 2048 if 'bluestein' in radix else 4096  # Apple M1
+                                            else:
+                                                n2 = 3000 if 'bluestein' in radix else 4096  # cuda: 3071, 4096
                                     else:
                                         n2 = 100000 if 'radix' in radix else 10000
                                 elif ndim == 2:
