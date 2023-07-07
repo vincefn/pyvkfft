@@ -9,6 +9,7 @@
 # script to run a long multi-test accuracy suite
 
 import os
+import glob
 import platform
 import argparse
 import sys
@@ -64,6 +65,9 @@ def make_parser():
                              "for faster results. A number (percentage) between 5 and 100 is required.")
     parser.add_argument('--dry-run', action='store_true',
                         help="Perform a dry-run, printing the commands for each sub-test.")
+    parser.add_argument('--skip', action='store_true',
+                        help="Use this option to skip tests which have already been performed (based"
+                             "on parsing the html files in the current directory).")
     return parser
 
 
@@ -83,17 +87,30 @@ def main():
     if args.fast_random is not None:
         assert 5 <= args.fast_random <= 100, "--fast-random must be between 5 and 100"
 
+    # Used for skipping already performed tests
+    nhtml = 0
+    ct_test = 0
+    if args.skip:
+        nhtml = len(glob.glob('pyvkfft-test1[0-8]*.html')) - 1
+
     # Basic test
-    com = "pyvkfft-test --nproc %d --html --range-mb 0 4100 --backend %s" % (nproc0, backend)
+    com = "pyvkfft-test --nproc %d --html --range-mb 0 4100 --backend %s --gpu %s" % (nproc0, backend, gpu)
     if opencl_platform is not None:
         com += ' --opencl_platform ' + opencl_platform
     if dry_run:
-        print(com)
+        if not (args.skip and nhtml >= 1):
+            print(com)
+        else:
+            print(f'Skipping already performed test: {com}')
     else:
-        if os.system(com) == 2:
-            # Keyboard interrupt (why 2 ?)
-            print("Aborting test suite")
-            sys.exit(1)
+        if args.skip and nhtml >= 1:
+            print(f'Skipping already performed test: {com}')
+        else:
+            if os.system(com) == 2:
+                # Keyboard interrupt (why 2 ?)
+                print("Aborting test suite")
+                sys.exit(1)
+    ct_test += 1
 
     # systematic tests
     vtransform = []
@@ -185,13 +202,20 @@ def main():
                                 if args.fast_random is not None:
                                     com += ' --fast-random %d' % args.fast_random
                                 if dry_run:
-                                    print(com)
-                                    # os.system(com + ' --dry-run')
+                                    if args.skip and nhtml > ct_test:
+                                        print(f'Skipping already performed test: {com}')
+                                    else:
+                                        print(com)
+                                        # os.system(com + ' --dry-run')
                                 else:
-                                    if os.system(com) == 2:
-                                        # Keyboard interrupt (why 2 ?)
-                                        print("Aborting test suite")
-                                        sys.exit(1)
+                                    if args.skip and nhtml > ct_test:
+                                        print(f'Skipping already performed test: {com}')
+                                    else:
+                                        if os.system(com) == 2:
+                                            # Keyboard interrupt (why 2 ?)
+                                            print("Aborting test suite")
+                                            sys.exit(1)
+                                ct_test += 1
 
     # Last, run a few 2D and 3D tests where the lengths can differ,
     # and radix and Bluestein transforms are mixed.
@@ -243,13 +267,20 @@ def main():
                 com += ' --fast-random %d' % args.fast_random
 
             if dry_run:
-                print(com)
-                # os.system(com + ' --dry-run')
+                if args.skip and nhtml > ct_test:
+                    print(f'Skipping already performed test: {com}')
+                else:
+                    print(com)
+                    # os.system(com + ' --dry-run')
             else:
-                if os.system(com) == 2:
-                    # Keyboard interrupt (why 2 ?)
-                    print("Aborting test suite")
-                    sys.exit(1)
+                if args.skip and nhtml > ct_test:
+                    print(f'Skipping already performed test: {com}')
+                else:
+                    if os.system(com) == 2:
+                        # Keyboard interrupt (why 2 ?)
+                        print("Aborting test suite")
+                        sys.exit(1)
+            ct_test += 1
 
 
 if __name__ == '__main__':
