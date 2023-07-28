@@ -368,6 +368,17 @@ def calc_transform_axes(shape, axes=None, ndim=None, strides=None):
     # Axes beyond ndim are marked skipped
     for i in range(ndim1, 3):
         skip_axis[i] = False
+
+    # For VkFFT > cc2b427, all dimensions beyond the
+    # transformed axes should be in n_batch
+    # TODO: allow more than 3 transform dimensions
+    if ndim1 < 3:
+        n_batch = 1
+        for i in range(ndim1, 3):
+            n_batch *= shape1[i]
+            shape1[i] = 1
+        shape1[3] = n_batch
+    # print(shape, axes, ndim, strides, "->", shape1, skip_axis)
     return shape1, skip_axis, ndim1
 
 
