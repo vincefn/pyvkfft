@@ -17,6 +17,9 @@ from . import config
 # np.complex32 does not exist yet https://github.com/numpy/numpy/issues/14753
 complex32 = np.dtype([('re', np.float16), ('im', np.float16)])
 
+# Type to pass array size, omit and batch as int arrays
+ctype_int_size_p = np.ctypeslib.ndpointer(dtype=np.int, ndim=1, flags='C_CONTIGUOUS')
+
 
 class VkFFTResult(Enum):
     """ VkFFT error codes from vkFFT.h """
@@ -281,24 +284,11 @@ def calc_transform_axes(shape, axes=None, ndim=None, strides=None):
     to VkFFT, and the axes for which the transform should
     be skipped.
     By collapsing non-transformed consecutive axes and using batch transforms,
-    it is possible to support dimensions>3. However after collapsing axes,
-    transforms are only possible along the first 3 remaining dimensions.
-    Example of possible transforms:
-    - 3D array with ndim=1, 2 or 3 or any set of axes
-    - n-D array with ndim=1, 2 or 3 with n arbitrary large (the dimensions
-      above ndim will be collapsed in a batch transform)
-    - shape=(4,5,6,7) and axes=(2,3): the first two axes will be collapsed
-      to a (20,6,7) axis
-    - shape=(4,5,6,7,8,9) and axes=(2,3): the first two axes will be collapsed
-      to a (20,6,7) axis (the first axis is skipped) and a batch size
-      of 8*9=81 will be used
-    Examples of impossible transforms:
-    - shape=(4,5,6,7) with ndim=4: only 3D transforms are allowed
-    - shape=(4,5,6,7) with axes=(1,2,3): the index of the last transformed
-        axis cannot be >2
+    it is possible to support larger dimensions (the limit is set at
+    compilation time).
 
     :param shape: the initial shape of the data array. Note that this shape
-        should be in th usual numpy order, i.e. the fastest axis is
+        should be in the usual numpy order, i.e. the fastest axis is
         listed last. e.g. (nz, ny, nx)
     :param axes: the axes to be transformed. if None, all axes
         are transformed, or up to ndim.
@@ -306,10 +296,11 @@ def calc_transform_axes(shape, axes=None, ndim=None, strides=None):
         the number of axes is used
     :param strides: the array strides. If None, a C-order is assumed
         with the fastest axes along the last dimensions (numpy default)
-    :return: (shape, skip_axis, ndim) with the 4D shape after collapsing
+    :return: (shape, n_batch, skip_axis, ndim) with the shape after collapsing
         consecutive non-transformed axes (padded with ones if necessary,
-        with the order adequate for VkFFT (nx, ny, nz, n_batch),
-        the list of 3 booleans indicating if the (x, y, z) axes should
+        with the order adequate for VkFFT i.e. (nx, ny, nz,...),
+        the batch size (e.g. 5 if shape=(5,16,16) and ndim=2),
+        the list of booleans indicating which axes should
         be skipped, and the number of transform axes.
     """
     # reverse order to have list as (nx, ny, nz,...)
@@ -338,7 +329,7 @@ def calc_transform_axes(shape, axes=None, ndim=None, strides=None):
             axes = [idxend[i] for i in axes]
 
     # Collapse non-transform axes when possible
-    skip_axis = [True for i in range(len(shape1))]
+    skip_axis = [True] * len(shape1)
     for i in axes:
         skip_axis[i] = False
     skip_axis = list(reversed(skip_axis))  # numpy (z,y,x) to vkfft (x,y,z) order
@@ -351,35 +342,23 @@ def calc_transform_axes(shape, axes=None, ndim=None, strides=None):
             skip_axis.pop(i + 1)
         else:
             i += 1
-    # We can pass 3 dimensions to VkFFT (plus a batch dimension)
-    if len(skip_axis) - list(reversed(skip_axis)).index(False) - 1 >= 3:
-        raise RuntimeError("Unsupported VkFFT transform:", shape, axes, ndim, shape1, skip_axis)
-
-    if len(shape1) < 4:
-        shape1 += [1] * (4 - len(shape1))
-
-    if len(skip_axis) < 3:
-        skip_axis += [True] * (3 - len(skip_axis))
-    skip_axis = skip_axis[:3]
 
     # Fix ndim so skipped axes are counted
-    ndim1 = 3 - list(reversed(skip_axis)).index(False)
+    ndim1 = len(shape1) - list(reversed(skip_axis)).index(False)
 
     # Axes beyond ndim are marked skipped
-    for i in range(ndim1, 3):
+    for i in range(ndim1, len(shape1)):
         skip_axis[i] = False
 
     # For VkFFT > cc2b427, all dimensions beyond the
     # transformed axes should be in n_batch
-    # TODO: allow more than 3 transform dimensions
-    if ndim1 < 3:
-        n_batch = 1
-        for i in range(ndim1, 3):
+    n_batch = 1
+    if len(shape1) > ndim1:
+        for i in range(ndim1, len(shape1)):
             n_batch *= shape1[i]
             shape1[i] = 1
-        shape1[3] = n_batch
     # print(shape, axes, ndim, strides, "->", shape1, skip_axis)
-    return shape1, skip_axis, ndim1
+    return shape1, n_batch, skip_axis, ndim1
 
 
 def check_vkfft_result(res, shape=None, dtype=None, ndim=None, inplace=None,
@@ -506,7 +485,7 @@ class VkFFTApp:
                 raise RuntimeError("A C-contiguous array is required for DCT transforms")
         # Get the final shape passed to VkFFT, collapsing non-transform axes
         # as necessary. The calculated shape has 4 dimensions (nx, ny, nz, n_batch).
-        self.shape, self.skip_axis, self.ndim = calc_transform_axes(shape, axes, ndim, strides)
+        self.shape, self.n_batch, self.skip_axis, self.ndim = calc_transform_axes(shape, axes, ndim, strides)
         self.inplace = inplace
         self.r2c = r2c
         if dct is False:

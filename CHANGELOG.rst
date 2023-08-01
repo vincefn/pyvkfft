@@ -1,5 +1,7 @@
 Version 2023.2 (2023-XX-XX)
 -----------------------------
+* Add support for more than 3 FFT dimensions (defaults to 8
+  in pyvkfft, can be changed when installing)
 * Add pyvkfft-benchmark script.
 * The VkFFT source is now included as a git subproject
 * Actually use cuda_stream parameter in the pyvkfft.fft interface

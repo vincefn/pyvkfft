@@ -24,7 +24,7 @@ except ImportError:
     if has_pycuda is False:
         raise ImportError("You need either PyCUDA or CuPy to use pyvkfft.cuda.")
 
-from .base import load_library, primes, VkFFTApp as VkFFTAppBase, VkFFTResult, check_vkfft_result
+from .base import load_library, VkFFTApp as VkFFTAppBase, check_vkfft_result, ctype_int_size_p
 
 _vkfft_cuda = load_library("_vkfft_cuda")
 
@@ -37,13 +37,13 @@ class _types:
 
 
 _vkfft_cuda.make_config.restype = ctypes.c_void_p
-_vkfft_cuda.make_config.argtypes = [ctypes.c_size_t, ctypes.c_size_t, ctypes.c_size_t, ctypes.c_size_t,
+_vkfft_cuda.make_config.argtypes = [ctype_int_size_p, ctypes.c_size_t,
                                     ctypes.c_void_p, ctypes.c_void_p, _types.stream, ctypes.c_int,
                                     ctypes.c_size_t, ctypes.c_int, ctypes.c_int, ctypes.c_int,
                                     ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_size_t,
-                                    ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                    ctype_int_size_p, ctypes.c_int,
                                     ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                                    ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+                                    ctypes.c_int, ctype_int_size_p]
 
 _vkfft_cuda.init_app.restype = ctypes.c_void_p
 _vkfft_cuda.init_app.argtypes = [_types.vkfft_config, ctypes.POINTER(ctypes.c_int)]
@@ -59,6 +59,9 @@ _vkfft_cuda.free_app.argtypes = [_types.vkfft_app]
 
 _vkfft_cuda.free_config.restype = None
 _vkfft_cuda.free_config.argtypes = [_types.vkfft_config]
+
+_vkfft_cuda.vkfft_max_fft_dimensions.restype = ctypes.c_uint32
+_vkfft_cuda.vkfft_max_fft_dimensions.argtypes = None
 
 
 class VkFFTApp(VkFFTAppBase):
@@ -171,13 +174,24 @@ class VkFFTApp(VkFFTAppBase):
 
     def _make_config(self):
         """ Create a vkfft configuration for a FFT transform"""
-        nx, ny, nz, n_batch = self.shape
-        skipx, skipy, skipz = self.skip_axis
-        batchx, batchy, batchz = self.groupedBatch
+        if len(self.shape) > vkfft_max_fft_dimensions():
+            raise RuntimeError(f"Too many FFT dimensions after collapsing non-transform axes: "
+                               f"{len(self.shape)}>{vkfft_max_fft_dimensions()}")
+
+        shape = np.ones(vkfft_max_fft_dimensions(), dtype=int)
+        shape[:len(self.shape)] = self.shape
+
+        skip = np.zeros(vkfft_max_fft_dimensions(), dtype=int)
+        skip[:len(self.skip_axis)] = self.skip_axis
+
+        grouped_batch = np.empty(vkfft_max_fft_dimensions(), dtype=int)
+        grouped_batch.fill(-1)
+        grouped_batch[:len(self.groupedBatch)] = self.groupedBatch
+
         if self.r2c and self.inplace:
             # the last two columns are ignored in the R array, and will be used
             # in the C array with a size nx//2+1
-            nx -= 2
+            shape[0] -= 2
 
         s = 0
         if self.stream is not None:
@@ -202,15 +216,15 @@ class VkFFTApp(VkFFTAppBase):
         if self.inplace:
             dest_gpudata = 0
 
-        return _vkfft_cuda.make_config(nx, ny, nz, self.ndim, 1, dest_gpudata, s,
+        return _vkfft_cuda.make_config(shape, self.ndim, 1, dest_gpudata, s,
                                        norm, self.precision, int(self.r2c), int(self.dct),
                                        int(self.disableReorderFourStep), int(self.registerBoost),
                                        int(self.use_lut), int(self.keepShaderCode),
-                                       n_batch, skipx, skipy, skipz,
+                                       self.n_batch, skip,
                                        int(self.coalescedMemory), int(self.numSharedBanks),
                                        int(self.aimThreads), int(self.performBandwidthBoost),
                                        int(self.registerBoostNonPow2), int(self.registerBoost4Step),
-                                       int(self.warpSize), int(batchx), int(batchy), int(batchz))
+                                       int(self.warpSize), grouped_batch)
 
     def fft(self, src, dest=None):
         """
@@ -333,6 +347,17 @@ def vkfft_version():
     """
     int_ver = _vkfft_cuda.vkfft_version()
     return "%d.%d.%d" % (int_ver // 10000, (int_ver % 10000) // 100, int_ver % 100)
+
+
+def vkfft_max_fft_dimensions():
+    """
+    Get the maximum number of dimensions VkFFT can handle. This is
+    set at compile time. VkFFT default is 4, pyvkfft sets this to 8.
+    Note that consecutive non-transformed are collapsed into a single
+    axis, reducing the effective number of dimensions.
+    :return: VKFFT_MAX_FFT_DIMENSIONS
+    """
+    return _vkfft_cuda.vkfft_max_fft_dimensions()
 
 
 def cuda_runtime_version(raw=False):
