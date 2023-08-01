@@ -51,13 +51,14 @@ import os
 import platform
 import gc
 from itertools import permutations
+from pyvkfft.base import primes
 
 try:
     import pycuda.driver as cu_drv
     import pycuda.gpuarray as cua
     from pycuda import curandom
     import pyvkfft.cuda
-    from pyvkfft.cuda import primes, VkFFTApp as cuVkFFTApp, vkfft_version
+    from pyvkfft.cuda import VkFFTApp as cuVkFFTApp, vkfft_version
 
     has_pyvkfft_cuda = True
 except ImportError:
@@ -68,7 +69,7 @@ try:
     import pyopencl.array as cla
     from pyopencl import clrandom
     import pyvkfft.opencl
-    from pyvkfft.opencl import primes, VkFFTApp as clVkFFTApp, vkfft_version
+    from pyvkfft.opencl import VkFFTApp as clVkFFTApp, vkfft_version
 
     has_pyvkfft_opencl = True
 except ImportError:

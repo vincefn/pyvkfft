@@ -36,7 +36,7 @@ def _test_pyvkfft_cuda(q):
         import pycuda.gpuarray as cua
         from pycuda import curandom
         import pyvkfft.cuda
-        from pyvkfft.cuda import primes, VkFFTApp as cuVkFFTApp, cuda_compile_version, \
+        from pyvkfft.cuda import VkFFTApp as cuVkFFTApp, cuda_compile_version, \
             cuda_driver_version, cuda_runtime_version
         q.put((True, cuda_compile_version(), cuda_driver_version(), cuda_runtime_version()))
     except:
@@ -62,7 +62,7 @@ def _test_pyvkfft_opencl(q):
         import pyopencl.array as cla
         from pyopencl import clrandom
         import pyvkfft.opencl
-        from pyvkfft.opencl import primes, VkFFTApp as clVkFFTApp
+        from pyvkfft.opencl import VkFFTApp as clVkFFTApp
         q.put(True)
     except:
         q.put(False)
@@ -159,7 +159,7 @@ def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_na
     import pyopencl.array as cla
     from pyopencl import clrandom
     import pyvkfft.opencl
-    from pyvkfft.opencl import primes, VkFFTApp as clVkFFTApp
+    from pyvkfft.opencl import VkFFTApp as clVkFFTApp
     dtype = np.complex128 if precision == 'double' else np.complex64
     gpu_name_real = gpu_name
     platform_name_real = opencl_platform
@@ -268,7 +268,7 @@ def _bench_pyvkfft_cuda(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name
     import pycuda.gpuarray as cua
     from pycuda import curandom
     import pyvkfft.cuda
-    from pyvkfft.cuda import primes, VkFFTApp as cuVkFFTApp
+    from pyvkfft.cuda import VkFFTApp as cuVkFFTApp
     dtype = np.complex128 if precision == 'double' else np.complex64
     if gpu_name is None:
         gpu_name_real = pycuda.autoprimaryctx.device.name()

@@ -398,7 +398,7 @@ class TestFFT(unittest.TestCase):
         return s
 
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
-    def _test_c2c(self):
+    def test_c2c(self):
         """Run C2C tests"""
         for backend in self.vbackend:
             init_ctx(backend, gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)

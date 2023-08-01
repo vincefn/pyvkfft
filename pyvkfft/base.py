@@ -18,7 +18,7 @@ from . import config
 complex32 = np.dtype([('re', np.float16), ('im', np.float16)])
 
 # Type to pass array size, omit and batch as int arrays
-ctype_int_size_p = np.ctypeslib.ndpointer(dtype=np.int, ndim=1, flags='C_CONTIGUOUS')
+ctype_int_size_p = np.ctypeslib.ndpointer(dtype=int, ndim=1, flags='C_CONTIGUOUS')
 
 
 class VkFFTResult(Enum):
