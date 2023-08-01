@@ -15,6 +15,14 @@ from setuptools.command.build_ext import build_ext as build_ext_orig
 from pyvkfft.version import __version__
 from setuptools.command.bdist_egg import bdist_egg
 
+# Maximum number of dimentsions VkFFT can handle. VkFFT sets this to 4,
+# pyvkfft uses a default of 8. Set an environment variable
+# VKFFT_MAX_FFT_DIMENSIONS to increase this
+if 'VKFFT_MAX_FFT_DIMENSIONS' in os.environ:
+    VKFFT_MAX_FFT_DIMENSIONS = os.environ['VKFFT_MAX_FFT_DIMENSIONS']
+else:
+    VKFFT_MAX_FFT_DIMENSIONS = 8
+
 
 def find_in_path(name, path):
     """Find a file in a search path"""
@@ -49,7 +57,8 @@ def locate_cuda():
                                        'or set $CUDA_PATH')
             home = os.path.dirname(os.path.dirname(nvcc))
         libdir = pjoin(home, 'lib', 'x64')
-        extra_compile_args = ['-O3', '--ptxas-options=-v', '-Xcompiler', '/MD']
+        extra_compile_args = ['-O3', '--ptxas-options=-v', '-Xcompiler', '/MD',
+                              f'/DVKFFT_MAX_FFT_DIMENSIONS={VKFFT_MAX_FFT_DIMENSIONS}']
         extra_link_args = ['-L%s' % libdir]
     else:
         # First check if the CUDAHOME env variable is in use
@@ -69,7 +78,8 @@ def locate_cuda():
         else:
             libdir = pjoin(home, 'lib')
         extra_compile_args = ['-O3', '--ptxas-options=-v', '-std=c++11',
-                              '--compiler-options=-fPIC']
+                              '--compiler-options=-fPIC',
+                              f'-DVKFFT_MAX_FFT_DIMENSIONS={VKFFT_MAX_FFT_DIMENSIONS}']
         extra_link_args = ['--shared', '-L%s' % libdir]
     cudaconfig = {'home': home, 'nvcc': nvcc,
                   'include_dirs': [pjoin(home, 'include'), 'src/VkFFT/vkFFT'],
@@ -89,7 +99,8 @@ def locate_opencl():
     """
     include_dirs = ['src/VkFFT/vkFFT']
     library_dirs = []
-    extra_compile_args = ['-std=c++11', '-Wno-format-security']
+    extra_compile_args = ['-std=c++11', '-Wno-format-security',
+                          f'-DVKFFT_MAX_FFT_DIMENSIONS={VKFFT_MAX_FFT_DIMENSIONS}']
     extra_link_args = None
     if platform.system() == 'Darwin':
         libraries = None

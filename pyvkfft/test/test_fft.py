@@ -16,6 +16,7 @@ import sqlite3
 import socket
 import time
 import timeit
+from itertools import permutations
 import numpy as np
 
 try:
@@ -245,12 +246,10 @@ class TestFFT(unittest.TestCase):
                                 # Setup use of either ndim or axes, also test skipping dimensions
                                 ndim_axes = [(ndim0, None)]
                                 if shuffle_axes and not (r2c or dct):
-                                    for i in range(1, 2 ** (ndim0 - 1)):
-                                        axes = []
-                                        for ii in range(ndim0):
-                                            if not (i & 2 ** ii):
-                                                axes.append(-ii - 1)
-                                        ndim_axes.append((None, axes))
+                                    for p in permutations([1] * ndim0 + [0] * (dims - ndim0)):
+                                        axes = (-dims + np.nonzero(p)[0]).tolist()
+                                        if (None, axes) not in ndim_axes:
+                                            ndim_axes.append((None, axes))
                                 for ndim, axes in ndim_axes:
                                     for dtype in vtype:
                                         if axes is None:
@@ -412,17 +411,18 @@ class TestFFT(unittest.TestCase):
                     vtype = (np.complex64,)
                 v = self.verbose and not dry_run
                 if dry_run or self.nproc == 1:
-                    tmp = self.run_fft([backend], [30, 34], vtype=vtype, verbose=v, dry_run=dry_run, shuffle_axes=True)
+                    tmp = self.run_fft([backend], [30, 34], dims_max=5, ndim_max=5,
+                                       vtype=vtype, verbose=v, dry_run=dry_run, shuffle_axes=True)
                     ct += tmp[0]
                     vkwargs += tmp[1]
                     # Test larger sizes (including multi-upload) for 1D and 2D transforms
                     # 2988 decomposes in a Sophie Germain safe prime, hence its inclusion..
-                    tmp = self.run_fft([backend], [808, 2988, 4200], vtype=vtype, dims_max=3, ndim_max=2, verbose=v,
+                    tmp = self.run_fft([backend], [808, 2988, 4200], vtype=vtype, dims_max=4, ndim_max=2, verbose=v,
                                        dry_run=dry_run, shuffle_axes=True)
                     ct += tmp[0]
                     vkwargs += tmp[1]
                     # Test even larger 1D transform sizes
-                    tmp = self.run_fft([backend], [13000, 13002], vtype=vtype, dims_max=2, ndim_max=1, verbose=v,
+                    tmp = self.run_fft([backend], [13000, 13002], vtype=vtype, dims_max=3, ndim_max=1, verbose=v,
                                        dry_run=dry_run, shuffle_axes=True)
                     ct += tmp[0]
                     vkwargs += tmp[1]
@@ -445,7 +445,8 @@ class TestFFT(unittest.TestCase):
                     vtype = (np.float32,)
                 v = self.verbose and not dry_run
                 if dry_run or self.nproc == 1:
-                    tmp = self.run_fft([backend], [30, 34], vtype=vtype, vr2c=(True,), verbose=v, dry_run=dry_run)
+                    tmp = self.run_fft([backend], [30, 34], dims_max=4, ndim_max=4,
+                                       vtype=vtype, vr2c=(True,), verbose=v, dry_run=dry_run)
                     ct += tmp[0]
                     vkwargs += tmp[1]
                     tmp = self.run_fft([backend], [808], vtype=vtype, dims_max=2, vr2c=(True,),
@@ -455,7 +456,7 @@ class TestFFT(unittest.TestCase):
                 else:
                     self.run_fft_parallel(vkwargs)
                 if dry_run and self.verbose:
-                    print(f"Running {ct} C2C tests (backend: {self.backend_info(backend)})")
+                    print(f"Running {ct} R2C tests (backend: {self.backend_info(backend)})")
 
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
     @unittest.skipIf(not has_dct_ref, "scipy and pyfftw are not available - cannot test DCT")
@@ -472,7 +473,8 @@ class TestFFT(unittest.TestCase):
                     vtype = (np.float32,)
                 v = self.verbose and not dry_run
                 if dry_run or self.nproc == 1:
-                    tmp = self.run_fft([backend], [30, 34], vtype=vtype, vnorm=[1], vdct=range(1, 5), verbose=v,
+                    tmp = self.run_fft([backend], [30, 34], dims_max=4, ndim_max=4,
+                                       vtype=vtype, vnorm=[1], vdct=range(1, 5), verbose=v,
                                        dry_run=dry_run)
                     ct += tmp[0]
                     vkwargs += tmp[1]

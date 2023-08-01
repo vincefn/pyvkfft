@@ -17,6 +17,7 @@ import atexit
 import psutil
 import numpy as np
 from numpy.fft import fftn, ifftn, rfftn, irfftn
+from pyvkfft.base import primes
 
 try:
     # We prefer scipy over numpy for fft, and we can also test dct
@@ -42,14 +43,14 @@ except ImportError:
 try:
     import pyopencl as cl
     import pyopencl.array as cla
-    from pyvkfft.opencl import VkFFTApp as clVkFFTApp, primes
+    from pyvkfft.opencl import VkFFTApp as clVkFFTApp
 
     has_opencl = True
 except ImportError:
     has_opencl = False
 
 try:
-    from pyvkfft.cuda import VkFFTApp as cuVkFFTApp, primes, has_pycuda, has_cupy
+    from pyvkfft.cuda import VkFFTApp as cuVkFFTApp, has_pycuda, has_cupy
 
     if has_pycuda:
         import pycuda.driver as cu_drv

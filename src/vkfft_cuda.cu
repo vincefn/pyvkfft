@@ -21,11 +21,11 @@ typedef float2 Complex;
 #endif
 
 
-LIBRARY_API VkFFTConfiguration* make_config(const size_t, const size_t, const size_t, const size_t, void*, void*, void*,
+LIBRARY_API VkFFTConfiguration* make_config(const long*, const size_t, void*, void*, void*,
                                 const int, const size_t, const int, const int, const int, const int,
-                                const int, const int, const size_t, const int, const int, const int,
+                                const int, const int, const size_t, const long*,
                                 const int, const int, const int, const int, const int, const int, const int,
-                                const int, const int, const int);
+                                const long*);
 
 LIBRARY_API VkFFTApplication* init_app(const VkFFTConfiguration*, int*);
 
@@ -38,6 +38,8 @@ LIBRARY_API void free_app(VkFFTApplication* app);
 LIBRARY_API void free_config(VkFFTConfiguration *config);
 
 LIBRARY_API uint32_t vkfft_version();
+
+LIBRARY_API uint32_t vkfft_max_fft_dimensions();
 
 LIBRARY_API int cuda_runtime_version();
 
@@ -76,27 +78,23 @@ class PyVkFFT
 * \param precision: number of bits per float, 16=half, 32=single, 64=double precision
 * \return: the pointer to the newly created VkFFTConfiguration, or 0 if an error occurred.
 */
-VkFFTConfiguration* make_config(const size_t nx, const size_t ny, const size_t nz, const size_t fftdim,
+VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
                                 void *buffer, void *buffer_out, void* hstream,
                                 const int norm, const size_t precision, const int r2c, const int dct,
                                 const int disableReorderFourStep, const int registerBoost,
                                 const int useLUT, const int keepShaderCode, const size_t n_batch,
-                                const int skipx, const int skipy, const int skipz,
+                                const long* skip,
                                 const int coalescedMemory, const int numSharedBanks,
                                 const int aimThreads, const int performBandwidthBoost,
                                 const int registerBoostNonPow2, const int registerBoost4Step,
-                                const int warpSize, const int batchx, const int batchy, const int batchz)
+                                const int warpSize, const long* grouped_batch)
 {
   VkFFTConfiguration *config = new VkFFTConfiguration({});
   config->FFTdim = fftdim;
-  config->size[0] = nx;
-  config->size[1] = ny;
-  config->size[2] = nz;
+  for(int i=0; i<VKFFT_MAX_FFT_DIMENSIONS; i++) config->size[i] = size[i];
   config->numberBatches = n_batch;
 
-  config->omitDimension[0] = skipx;
-  config->omitDimension[1] = skipy;
-  config->omitDimension[2] = skipz;
+  for(int i=0; i<VKFFT_MAX_FFT_DIMENSIONS; i++) config->omitDimension[i] = skip[i];
 
   config->normalize = norm;
   config->performR2C = r2c;
@@ -135,9 +133,8 @@ VkFFTConfiguration* make_config(const size_t nx, const size_t ny, const size_t n
   if(warpSize>=0)
     config->warpSize = warpSize;
 
-  if(batchx>0) config->groupedBatch[0] = batchx;
-  if(batchy>0) config->groupedBatch[1] = batchy;
-  if(batchz>0) config->groupedBatch[2] = batchz;
+  for(int i=0; i<VKFFT_MAX_FFT_DIMENSIONS; i++)
+     if(grouped_batch[i]>0) config->groupedBatch[i] = grouped_batch[i];
 
   switch(precision)
   {
@@ -186,23 +183,26 @@ VkFFTConfiguration* make_config(const size_t nx, const size_t ny, const size_t n
   uint64_t* psize = new uint64_t;
   uint64_t* psizein = psize;
 
+  int s =  size[0];
+  for(int i=1; i<VKFFT_MAX_FFT_DIMENSIONS; i++) s *= size[i];
+
   if(r2c)
   {
-    *psize = (uint64_t)((nx / 2 + 1) * ny * nz * precision * (size_t)2);
+    *psize = (uint64_t)((s / 2 +1) * precision * (size_t)2);
     if(buffer_out != NULL)
     {
       psizein = new uint64_t;
-      *psizein = (uint64_t)(nx * ny * nz * precision);
+      *psizein = (uint64_t)(s * precision);
       config->inverseReturnToInputBuffer = 1;
-			config->inputBufferStride[0] = nx;
-			config->inputBufferStride[1] = nx * ny;
-			config->inputBufferStride[2] = nx * ny * nz;
+			config->inputBufferStride[0] = size[0];
+      for(int i=1; i<VKFFT_MAX_FFT_DIMENSIONS; i++)
+        config->inputBufferStride[i] = size[i] * config->inputBufferStride[i-1];
     }
   }
   else
   {
-    if(dct) *psize = (uint64_t)(nx * ny * nz * precision);
-    else *psize = (uint64_t)(nx * ny * nz * precision * (size_t)2);
+    if(dct) *psize = (uint64_t)(s * precision);
+    else *psize = (uint64_t)(s * precision * (size_t)2);
   }
 
   config->bufferSize = psize;
@@ -327,6 +327,12 @@ void free_config(VkFFTConfiguration *config)
 uint32_t vkfft_version()
 {
   return VkFFTGetVersion();
+};
+
+/// Get VKFFT_MAX_FFT_DIMENSIONS
+uint32_t vkfft_max_fft_dimensions()
+{
+  return VKFFT_MAX_FFT_DIMENSIONS;
 };
 
 /// CUDA runtime version

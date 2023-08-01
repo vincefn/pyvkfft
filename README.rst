@@ -89,17 +89,15 @@ Features
 - Direct Cosine Transform (DCT) of type 1, 2, 3 and 4 (EXPERIMENTAL, comparison with
   scipy DCT transforms are OK, but there are limitations on the array dimensions)
 - single and double precision for all transforms (double precision requires device support)
-- 1D, 2D and 3D transforms.
+- Allows up to 8 FFT dimensions (can be increased by using
+  VKFFT_MAX_FFT_DIMENSIONS when installing).
 - array can be have more dimensions than the FFT (batch transforms).
 - arbitrary array size, using Bluestein algorithm for prime numbers>13 (note that in this case
   the performance can be significantly lower, up to ~4x, depending on the transform size,
   see example performance plot below). Now also uses Rader's FFT algorithm for primes from
   17 up to max shared memory length (~10000, see VkFFT's doc for details)
-- transform along a given list of axes - this requires that after collapsing
-  non-transformed axes, the last transformed axis is at most along the 3rd dimension,
-  e.g. the following axes are allowed: (-2,-3), (-1,-3), (-1,-4), (-4,-5),...
-  but not (-2, -4), (-1, -3, -4) or (-2, -3, -4).
-  This is not allowed for R2C transforms.
+- transform along a given list of axes, e.g. using a 4-dimensional array and
+  supplying `axes=(-3,-1)`. This is not allowed for R2C transforms.
 - normalisation=0 (array L2 norm * array size on each transform) and 1 (the backward
   transform divides the L2 norm by the array size, so FFT*iFFT restores the original array)
 - Support for C (default) and F-ordered arrays, for C2C and R2C transforms
