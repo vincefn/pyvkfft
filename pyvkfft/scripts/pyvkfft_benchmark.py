@@ -246,18 +246,20 @@ def run_test(config, args):
         gpu_name_real = ''
         platform_name_real = ''
         if backend == 'cuda':
-            dt, gbps, gpu_name_real = bench_pyvkfft_cuda(sh, precision, ndim, nb_repeat, gpu_name, args=vargs)
+            dt, gbps, gpu_name_real = bench_pyvkfft_cuda(sh, precision, ndim, nb_repeat, gpu_name, args=vargs,
+                                                         serial=args.serial)
         elif backend == 'opencl':
             dt, gbps, gpu_name_real, platform_name_real = bench_pyvkfft_opencl(sh, precision, ndim, nb_repeat, gpu_name,
                                                                                opencl_platform=opencl_platform,
-                                                                               args=vargs)
+                                                                               args=vargs, serial=args.serial)
         elif backend == 'skcuda':
-            dt, gbps, gpu_name_real = bench_skcuda(sh, precision, ndim, nb_repeat, gpu_name)
+            dt, gbps, gpu_name_real = bench_skcuda(sh, precision, ndim, nb_repeat, gpu_name, serial=args.serial)
         elif backend == 'gpyfft':
             dt, gbps, gpu_name_real, platform_name_real = bench_gpyfft(sh, precision, ndim, nb_repeat, gpu_name,
-                                                                       opencl_platform=opencl_platform)
+                                                                       opencl_platform=opencl_platform,
+                                                                       serial=args.serial)
         elif backend == 'cupy':
-            dt, gbps, gpu_name_real = bench_cupy(sh, precision, ndim, nb_repeat, gpu_name)
+            dt, gbps, gpu_name_real = bench_cupy(sh, precision, ndim, nb_repeat, gpu_name, serial=args.serial)
         if gpu_name_real is None or gbps == 0:
             # Something went wrong ? Possible timeout ?
             continue
@@ -369,8 +371,8 @@ def main():
                                      description=desc,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--backend', action='store', choices=['cuda', 'opencl', 'gpyfft', 'skcuda', 'cupy'],
-                        default='pyvkfft', help="FFT backend to use, 'cuda' and 'opencl' will "
-                                                "use pyvkfft with the corresponding language.")
+                        default='opencl', help="FFT backend to use, 'cuda' and 'opencl' will "
+                                               "use pyvkfft with the corresponding language.")
     parser.add_argument('--precision', action='store', choices=['single', 'double'],
                         default='single', help="Precision for the benchmark")
     parser.add_argument('--gpu', action='store', type=str, default=None, help="GPU name (or sub-string)")
@@ -380,6 +382,10 @@ def main():
                              "unless it is specifically requested or it is the only one available "
                              "(PoCL has some issues with VkFFT for some transforms)")
     parser.add_argument('--verbose', action='store_true', help="Verbose ?")
+    parser.add_argument('--serial', action='store_true',
+                        help="Use this to perform all tests in a single process. This is mostly "
+                             "useful for testing, and can lead to GPU memory issues, especially "
+                             "with skcuda.")
     parser.add_argument('--save', action='store_true', default=False, help="Save results to an sql file")
     parser.add_argument('--compare', action='store', type=str,
                         help="Name of database file to compare to.")
