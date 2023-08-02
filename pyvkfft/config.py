@@ -1,26 +1,36 @@
 # -*- coding: utf-8 -*-
 
-# Global configuration variables. The approach is adapted
-# from Numba's config.py
-
+""" Global configuration variables. The approach is adapted
+ from Numba's config.py
+"""
 import os
 
-# Number of VkFFTApp to cache through the pyvkfft.fft interface
-# This must be modified *before* importing pyvkfft.fft
 FFT_CACHE_NB = 32
+"""
+Number of VkFFTApp to cache through the pyvkfft.fft interface
+This must be modified *before* importing pyvkfft.fft.
+"""
 
-# Force using a LUT for single-precision transforms ?
-# If None, this will be activated automatically for some GPU (Intel)
-# Use only to improve the accuracy by a factor 3 or 4
-# If useLUT is passed directly to a VkFFTApp, this is ignored
-# Valid values: either None or 1
 USE_LUT = None
+"""
+Force using a LUT for single-precision transforms ?
+If None, this will be activated automatically for some GPU (Intel).
 
-# Emit warning it the queue is different in the application and the array
+Use only to improve the accuracy by a factor 3 or 4.
+
+If useLUT is passed directly to a VkFFTApp, this is ignored
+
+Valid values: either None or 1
+"""
+
 WARN_OPENCL_QUEUE_MISMATCH = True
+"""
+Emit warning it the queue is different in the application and the array
+"""
 
 
 def process_environ(environ):
+    """Process environment variables and load defaults as needed"""
     if "PYVKFFT_FFT_CACHE_NB" in environ:
         FFT_CACHE_NB = eval(environ["PYVKFFT_FFT_CACHE_NB"])
     else:

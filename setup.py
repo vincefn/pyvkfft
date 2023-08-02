@@ -332,6 +332,8 @@ setup(name="pyvkfft",
                 'bdist_egg': bdist_egg if 'bdist_egg' in sys.argv else bdist_egg_disabled
                 },
       install_requires=install_requires,
+      extras_require={'doc': ['sphinx', 'nbsphinx', 'nbsphinx-link', 'sphinx-argparse',
+                              'sphinx-rtd-theme']},
       test_suite="test",
       entry_points={'console_scripts': console_scripts},
       )

@@ -187,9 +187,7 @@ def name_next_file(pattern="pyvkfft-test%04d.html"):
     raise RuntimeError("name_next_file: '%s' files all used from 1001 to 1998. Maybe cleanup ?" % pattern)
 
 
-def main():
-    t0 = timeit.default_timer()
-    localt0 = time.localtime()
+def make_parser():
     epilog = "Examples:\n" \
              "   pyvkfft-test\n" \
              "      the regular test which tries the fft interface, using parallel\n" \
@@ -375,6 +373,13 @@ def main():
                         help="Change the timeout (in seconds) to raise a TimeOut error for "
                              "individual tests. After 4 have failed, give up.",
                         default=[120])
+    return parser
+
+
+def main():
+    t0 = timeit.default_timer()
+    localt0 = time.localtime()
+    parser = make_parser()
 
     # parser.print_help()
     args = parser.parse_args()

@@ -345,8 +345,7 @@ def run_test(config, args):
 
             print(s)
 
-
-def main():
+def make_parser():
     epilog = "Examples:\n" \
              "* Simple benchmark for radix transforms:\n" \
              "     pyvkfft-benchmark --backend cuda --gpu titan --verbose\n\n" \
@@ -474,7 +473,11 @@ def main():
                              "by a dedicated thread block, for each dimension.")
     sysgrp.add_argument('--useLUT', action='store', choices=[-1, 0, 1], type=int,
                         default=-1, help="Use a look-up table to bypass the native sincos functions.")
+    return parser
 
+
+def main():
+    parser = make_parser()
     args = parser.parse_args()
     if args.plot:
         plot_benchmark(*args.plot)

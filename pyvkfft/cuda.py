@@ -21,47 +21,57 @@ try:
     has_cupy = True
 except ImportError:
     has_cupy = False
-    if has_pycuda is False:
+    import sys
+    if has_pycuda is False and 'sphinx' not in sys.modules:
         raise ImportError("You need either PyCUDA or CuPy to use pyvkfft.cuda.")
 
 from .base import load_library, VkFFTApp as VkFFTAppBase, check_vkfft_result, ctype_int_size_p
 
-_vkfft_cuda = load_library("_vkfft_cuda")
+try:
+    _vkfft_cuda = load_library("_vkfft_cuda")
 
 
-class _types:
-    """Aliases"""
-    vkfft_config = ctypes.c_void_p
-    stream = ctypes.c_void_p
-    vkfft_app = ctypes.c_void_p
+    class _types:
+        """Aliases"""
+        vkfft_config = ctypes.c_void_p
+        stream = ctypes.c_void_p
+        vkfft_app = ctypes.c_void_p
 
 
-_vkfft_cuda.make_config.restype = ctypes.c_void_p
-_vkfft_cuda.make_config.argtypes = [ctype_int_size_p, ctypes.c_size_t,
-                                    ctypes.c_void_p, ctypes.c_void_p, _types.stream, ctypes.c_int,
-                                    ctypes.c_size_t, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                                    ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_size_t,
-                                    ctype_int_size_p, ctypes.c_int,
-                                    ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                                    ctypes.c_int, ctype_int_size_p]
+    _vkfft_cuda.make_config.restype = ctypes.c_void_p
+    _vkfft_cuda.make_config.argtypes = [ctype_int_size_p, ctypes.c_size_t,
+                                        ctypes.c_void_p, ctypes.c_void_p, _types.stream, ctypes.c_int,
+                                        ctypes.c_size_t, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                        ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_size_t,
+                                        ctype_int_size_p, ctypes.c_int,
+                                        ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                        ctypes.c_int, ctype_int_size_p]
 
-_vkfft_cuda.init_app.restype = ctypes.c_void_p
-_vkfft_cuda.init_app.argtypes = [_types.vkfft_config, ctypes.POINTER(ctypes.c_int)]
+    _vkfft_cuda.init_app.restype = ctypes.c_void_p
+    _vkfft_cuda.init_app.argtypes = [_types.vkfft_config, ctypes.POINTER(ctypes.c_int)]
 
-_vkfft_cuda.fft.restype = ctypes.c_int
-_vkfft_cuda.fft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p]
+    _vkfft_cuda.fft.restype = ctypes.c_int
+    _vkfft_cuda.fft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p]
 
-_vkfft_cuda.ifft.restype = ctypes.c_int
-_vkfft_cuda.ifft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p]
+    _vkfft_cuda.ifft.restype = ctypes.c_int
+    _vkfft_cuda.ifft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p]
 
-_vkfft_cuda.free_app.restype = None
-_vkfft_cuda.free_app.argtypes = [_types.vkfft_app]
+    _vkfft_cuda.free_app.restype = None
+    _vkfft_cuda.free_app.argtypes = [_types.vkfft_app]
 
-_vkfft_cuda.free_config.restype = None
-_vkfft_cuda.free_config.argtypes = [_types.vkfft_config]
+    _vkfft_cuda.free_config.restype = None
+    _vkfft_cuda.free_config.argtypes = [_types.vkfft_config]
 
-_vkfft_cuda.vkfft_max_fft_dimensions.restype = ctypes.c_uint32
-_vkfft_cuda.vkfft_max_fft_dimensions.argtypes = None
+    _vkfft_cuda.vkfft_max_fft_dimensions.restype = ctypes.c_uint32
+    _vkfft_cuda.vkfft_max_fft_dimensions.argtypes = None
+except OSError:
+    # This is used for doc generation
+    import sys
+
+    if 'sphinx' in sys.modules:
+        pass
+    else:
+        raise
 
 
 class VkFFTApp(VkFFTAppBase):
@@ -229,6 +239,7 @@ class VkFFTApp(VkFFTAppBase):
     def fft(self, src, dest=None):
         """
         Compute the forward FFT
+
         :param src: the source pycuda.gpuarray.GPUArray or cupy.ndarray
         :param dest: the destination GPU array. Should be None for an inplace transform
         :raises RuntimeError: in case of a GPU kernel launch error
@@ -283,6 +294,7 @@ class VkFFTApp(VkFFTAppBase):
     def ifft(self, src, dest=None):
         """
         Compute the backward FFT
+
         :param src: the source pycuda.gpuarray.GPUArray or cupy.ndarray
         :param dest: the destination GPU array. Should be None for an inplace transform
         :raises RuntimeError: in case of a GPU kernel launch error
@@ -355,6 +367,7 @@ def vkfft_max_fft_dimensions():
     set at compile time. VkFFT default is 4, pyvkfft sets this to 8.
     Note that consecutive non-transformed are collapsed into a single
     axis, reducing the effective number of dimensions.
+
     :return: VKFFT_MAX_FFT_DIMENSIONS
     """
     return _vkfft_cuda.vkfft_max_fft_dimensions()
@@ -363,6 +376,7 @@ def vkfft_max_fft_dimensions():
 def cuda_runtime_version(raw=False):
     """
     Get CUDA runtime version
+
     :param raw: if True, return the version as X*1000+Y*10+Z
     :return: version as X.Y.Z
     """
@@ -375,6 +389,7 @@ def cuda_runtime_version(raw=False):
 def cuda_driver_version(raw=False):
     """
     Get CUDA driver version
+
     :param raw: if True, return the version as X*1000+Y*10+Z
     :return: version as X.Y.Z
     """
@@ -387,6 +402,7 @@ def cuda_driver_version(raw=False):
 def cuda_compile_version(raw=False):
     """
     Get CUDA version against which pyvkfft was compiled
+
     :param raw: if True, return the version as X*1000+Y*10+Z
     :return: version as X.Y.Z
     """

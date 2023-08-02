@@ -11,16 +11,19 @@ Installation
 ------------
 
 Install using ``pip install pyvkfft`` (works on macOS, Linux and Windows).
+See below for an installation using conda-forge, or for an installation from source.
 
 Notes:
 
-- the PyPI package includes ``vkfft.h`` and will automatically install ``pyopencl``
+- the PyPI package includes the VkFFT headers and will automatically install ``pyopencl``
   if opencl is available. However you should manually install either ``cupy`` or ``pycuda``
   to use the cuda backend.
 - if you want to specify the backend to be installed (which can be necessary e.g.
   if you have ``nvcc`` installed but cuda is not actually available), you can do
   that using e.g. ``VKFFT_BACKEND=opencl pip install pyvkfft``. By default the opencl
   backend is always installed, and the cuda one if nvcc is found.
+- If you need to support more than 8 dimensions for the transforms, you can use
+  e.g. ``VKFFT_MAX_FFT_DIMENSIONS=10 pip install pyvkfft``.
 
 Requirements:
 
@@ -30,8 +33,6 @@ Requirements:
 - on Windows, this requires visual studio (c++ tools) and a cuda toolkit installation,
   with either CUDA_PATH or CUDA_HOME environment variable. However it should be
   simpler to install using ``conda``, as detailed below
-- *Only when installing from source*: ``vkfft.h`` installed in the usual include
-  directories, or in the 'src' directory
 
 This package can be installed from source using ``pip install .``.
 
@@ -50,6 +51,18 @@ platforms.
    conda config --add channels conda-forge
    conda install pyvkfft
 
+Installation from source (git)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. code-block:: shell
+
+   git clone --recursive https://github.com/vincefn/pyvkfft.git
+   cd pyvkfft
+   pip install .
+
+As indicated above, you can use environmental variables
+``VKFFT_BACKEND`` and ``VKFFT_MAX_FFT_DIMENSIONS`` during the pip
+install to select the backend or the maximum number of transformed
+dimensions.
 
 Examples
 --------
@@ -90,14 +103,14 @@ Features
   scipy DCT transforms are OK, but there are limitations on the array dimensions)
 - single and double precision for all transforms (double precision requires device support)
 - Allows up to 8 FFT dimensions (can be increased by using
-  VKFFT_MAX_FFT_DIMENSIONS when installing).
-- array can be have more dimensions than the FFT (batch transforms).
+  ``VKFFT_MAX_FFT_DIMENSIONS`` when installing).
+- arrays can be have more dimensions than the FFT (batch transforms).
 - arbitrary array size, using Bluestein algorithm for prime numbers>13 (note that in this case
   the performance can be significantly lower, up to ~4x, depending on the transform size,
   see example performance plot below). Now also uses Rader's FFT algorithm for primes from
   17 up to max shared memory length (~10000, see VkFFT's doc for details)
 - transform along a given list of axes, e.g. using a 4-dimensional array and
-  supplying `axes=(-3,-1)`. This is not allowed for R2C transforms.
+  supplying ``axes=(-3,-1)``. This is not allowed for R2C transforms.
 - normalisation=0 (array L2 norm * array size on each transform) and 1 (the backward
   transform divides the L2 norm by the array size, so FFT*iFFT restores the original array)
 - Support for C (default) and F-ordered arrays, for C2C and R2C transforms
@@ -135,7 +148,10 @@ Performance
 See the benchmark notebook, which allows to plot OpenCL and CUDA backend throughput, as well as compare
 with cuFFT (using scikit-cuda) and clFFT (using gpyfft).
 
-Example result for batched 2D, single precision FFT with array dimensions of batch x N x N using a V100:
+The ``pyvkfft-benchmark`` script is available to make simple or systematic testss,
+also allowing to compare with cuFFT and clFFT.
+
+Example results for batched 2D, single precision FFT with array dimensions of batch x N x N using a V100:
 
 .. image:: https://raw.githubusercontent.com/vincefn/pyvkfft/master/doc/benchmark-2DFFT-NVIDIA-Tesla_V100-Linux.png
 
@@ -169,6 +185,15 @@ Another example on an A40 card (only with radix<=13 transforms):
 
 On this card the cuFFT is significantly better, even if the 11 and 13 radix transforms
 supported by vkFFT give globally better results.
+
+Performance tuning
+^^^^^^^^^^^^^^^^^^
+Starting with VkFFT 1.3.0 and pyvkfft 2023.2, it is possible to tweak low-level
+parameters including coalesced memory or warp size, batch grouping, number of threads,
+etc...
+
+Optimising those is difficult, so only do it for fun when trying to get some
+extra performance. Generally, VkFFT default work quite well
 
 Accuracy
 --------

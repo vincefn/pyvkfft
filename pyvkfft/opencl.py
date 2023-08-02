@@ -14,44 +14,52 @@ from .base import load_library, VkFFTApp as VkFFTAppBase, check_vkfft_result, ct
 from . import config
 from .tune import tune_vkfft
 
-_vkfft_opencl = load_library("_vkfft_opencl")
+try:
+    _vkfft_opencl = load_library("_vkfft_opencl")
 
 
-class _types:
-    """Aliases"""
-    vkfft_config = ctypes.c_void_p
-    vkfft_app = ctypes.c_void_p
+    class _types:
+        """Aliases"""
+        vkfft_config = ctypes.c_void_p
+        vkfft_app = ctypes.c_void_p
 
 
-_vkfft_opencl.make_config.restype = ctypes.c_void_p
-_vkfft_opencl.make_config.argtypes = [ctype_int_size_p, ctypes.c_size_t,
-                                      ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
-                                      ctypes.c_void_p, ctypes.c_int, ctypes.c_size_t, ctypes.c_int,
-                                      ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                                      ctypes.c_size_t, ctype_int_size_p, ctypes.c_int,
-                                      ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                                      ctypes.c_int, ctype_int_size_p]
+    _vkfft_opencl.make_config.restype = ctypes.c_void_p
+    _vkfft_opencl.make_config.argtypes = [ctype_int_size_p, ctypes.c_size_t,
+                                          ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+                                          ctypes.c_void_p, ctypes.c_int, ctypes.c_size_t, ctypes.c_int,
+                                          ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                          ctypes.c_size_t, ctype_int_size_p, ctypes.c_int,
+                                          ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                          ctypes.c_int, ctype_int_size_p]
 
-_vkfft_opencl.init_app.restype = ctypes.c_void_p
-_vkfft_opencl.init_app.argtypes = [_types.vkfft_config, ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)]
+    _vkfft_opencl.init_app.restype = ctypes.c_void_p
+    _vkfft_opencl.init_app.argtypes = [_types.vkfft_config, ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)]
 
-_vkfft_opencl.fft.restype = ctypes.c_int
-_vkfft_opencl.fft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+    _vkfft_opencl.fft.restype = ctypes.c_int
+    _vkfft_opencl.fft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
 
-_vkfft_opencl.ifft.restype = ctypes.c_int
-_vkfft_opencl.ifft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+    _vkfft_opencl.ifft.restype = ctypes.c_int
+    _vkfft_opencl.ifft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
 
-_vkfft_opencl.free_app.restype = None
-_vkfft_opencl.free_app.argtypes = [_types.vkfft_app]
+    _vkfft_opencl.free_app.restype = None
+    _vkfft_opencl.free_app.argtypes = [_types.vkfft_app]
 
-_vkfft_opencl.free_config.restype = None
-_vkfft_opencl.free_config.argtypes = [_types.vkfft_config]
+    _vkfft_opencl.free_config.restype = None
+    _vkfft_opencl.free_config.argtypes = [_types.vkfft_config]
 
-_vkfft_opencl.vkfft_version.restype = ctypes.c_uint32
-_vkfft_opencl.vkfft_version.argtypes = None
+    _vkfft_opencl.vkfft_version.restype = ctypes.c_uint32
+    _vkfft_opencl.vkfft_version.argtypes = None
 
-_vkfft_opencl.vkfft_max_fft_dimensions.restype = ctypes.c_uint32
-_vkfft_opencl.vkfft_max_fft_dimensions.argtypes = None
+    _vkfft_opencl.vkfft_max_fft_dimensions.restype = ctypes.c_uint32
+    _vkfft_opencl.vkfft_max_fft_dimensions.argtypes = None
+except OSError:
+    # This is used for doc generation
+    import sys
+    if 'sphinx' in sys.modules:
+        pass
+    else:
+        raise
 
 
 class VkFFTApp(VkFFTAppBase):
@@ -208,6 +216,7 @@ class VkFFTApp(VkFFTAppBase):
     def fft(self, src: cla.Array, dest: cla.Array = None, queue: cl.CommandQueue = None):
         """
         Compute the forward FFT
+
         :param src: the source pyopencl Array
         :param dest: the destination pyopencl Array. Should be None for an inplace transform
         :param queue: the pyopencl CommandQueue to use for the transform. If not given,
@@ -287,6 +296,7 @@ class VkFFTApp(VkFFTAppBase):
     def ifft(self, src: cla.Array, dest: cla.Array = None, queue: cl.CommandQueue = None):
         """
         Compute the backward FFT
+
         :param src: the source pyopencl.Array
         :param dest: the destination pyopencl.Array. Can be None for an inplace transform
         :param queue: the pyopencl CommandQueue to use for the transform. If not given,
@@ -373,6 +383,7 @@ class VkFFTApp(VkFFTAppBase):
 def vkfft_version():
     """
     Get VkFFT version
+
     :return: version as X.Y.Z
     """
     int_ver = _vkfft_opencl.vkfft_version()
@@ -385,6 +396,7 @@ def vkfft_max_fft_dimensions():
     set at compile time. VkFFT default is 4, pyvkfft sets this to 8.
     Note that consecutive non-transformed are collapsed into a single
     axis, reducing the effective number of dimensions.
+
     :return: VKFFT_MAX_FFT_DIMENSIONS
     """
     return _vkfft_opencl.vkfft_max_fft_dimensions()

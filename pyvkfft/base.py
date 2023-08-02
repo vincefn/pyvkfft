@@ -143,6 +143,7 @@ def radix_gen(nmax, radix, even=False, exclude_one=True, inverted=False, nmin=No
     """
     Generate an array of integers which are only multiple of powers
     of base integers, e.g. 2**N1 * 3**N2 * 5**N3 etc...
+
     :param nmax: the maximum integer to return (included)
     :param radix: the list/tuple of base integers - which don't need
         to be primes
@@ -188,6 +189,7 @@ def radix_gen_n(nmax, max_size, radix, ndim=None, even=False, exclude_one=True, 
     of powers of base integers, e.g. 2**N1 * 3**N2 * 5**N3 etc...,
     for each of the dimensions, and with a maximum size.
     Note that this can generate a large number of sizes.
+
     :param nmax: the maximum value for the length of each dimension (included)
     :param max_size: the maximum size (number of elements) for the array
     :param radix: the list/tuple of base integers - which don't need

@@ -169,7 +169,8 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
                   gpu_name=None, opencl_platform=None, stream=None, queue=None, return_array=False,
                   init_array=None, verbose=False, colour_output=False, ref_long_double=True, order='C'):
     """
-    Measure the
+    Measure the FT accuracy by comparing to the result from scipy (if available), or numpy.
+
     :param backend: either 'pyopencl', 'pycuda' or 'cupy'
     :param shape: the shape of the array to test. If this is an inplace r2c, the
         fast-axis length must be even, and two extra values will be appended along x,

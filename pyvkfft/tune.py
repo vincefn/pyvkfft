@@ -18,8 +18,8 @@ def tune_vkfft(tune, shape, dtype: type, ndim=None, inplace=True, stream=None, q
     Automatically test different configurations for a VkFFTApp, returning
     the set of parameters which maximise the FT throughput.
     The three parameters which are recommended to optimise are aimThreads,
-     warpSize and coalescedMemory. Usually tuning a single one should suffice,
-     but the right one could depend on the backend and GPU brand.
+    warpSize and coalescedMemory. Usually tuning a single one should suffice,
+    but the right one could depend on the backend and GPU brand.
 
     Note that the GPU context must have been initialised before calling
     this function.
