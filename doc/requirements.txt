@@ -1,0 +1,6 @@
+numpy
+sphinx
+nbsphinx
+nbsphinx-link
+sphinx-argparse
+sphinx-rtd-theme
