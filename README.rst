@@ -7,6 +7,8 @@ for Vulkan/CUDA/HIP/OpenCL.
 pyvkfft offers a simple python interface to the **CUDA** and **OpenCL** backends of VkFFT,
 compatible with **pyCUDA**, **CuPy** and **pyOpenCL**.
 
+The documentation can be found at https://pyvkfft.readthedocs.io
+
 Installation
 ------------
 
@@ -193,7 +195,24 @@ parameters including coalesced memory or warp size, batch grouping, number of th
 etc...
 
 Optimising those is difficult, so only do it for fun when trying to get some
-extra performance. Generally, VkFFT default work quite well
+extra performance. Generally, VkFFT defaults work quite well. Using the
+simple FFT API, you can activate auto-tuning by passing `tuning=True` to the
+tranform functions (`fftn`, `rfftn`, etc..). **Only do this when using iterative
+process which really require fine-tuning !**
+
+Here is an example of the benchmark ran on a V100 GPU by tuning the
+`coalescedMemory` parameter (default value=32):
+
+.. image:: https://raw.githubusercontent.com/vincefn/pyvkfft/master/doc/benchmark-V100-cuda-2D-coalmem.png
+
+As you can see the optimal value varies with the 2D array size: below
+n=1536, using `coalescedMemory=64` gives the best results, `32` (default)
+is best between 1536 and 2048, and above that there is little difference
+between the values chosen.
+
+The same test on an A40 shows little difference. On an Apple M1 pro,
+it is the `aimThreads` parameter which is better tuned from 128 (default)
+to 64 to yield up to 50% faster transforms. YMMV !
 
 Accuracy
 --------

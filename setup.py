@@ -164,19 +164,6 @@ class build_ext_custom(build_ext_orig):
         return super().get_ext_filename(ext_name)
 
 
-class sdist_vkfft(sdist):
-    """
-    Sdist overloaded to get vkfft header, readme and license from VkFFT's git
-    """
-
-    def run(self):
-        # Get the latest vkFFT.h from github
-        os.system('curl -L https://raw.githubusercontent.com/DTolm/VkFFT/master/vkFFT/vkFFT.h -o src/vkFFT.h')
-        os.system('curl -L https://raw.githubusercontent.com/DTolm/VkFFT/master/LICENSE -o LICENSE_VkFFT')
-        os.system('curl -L https://raw.githubusercontent.com/DTolm/VkFFT/master/README.md -o README_VkFFT.md')
-        super(sdist_vkfft, self).run()
-
-
 ext_modules = []
 install_requires = ['numpy', 'psutil']
 exclude_packages = ['examples']
@@ -318,6 +305,8 @@ setup(name="pyvkfft",
       author_email="favre@esrf.fr",
       url="https://github.com/vincefn/pyvkfft",
       project_urls={
+          "Source": "https://github.com/vincefn/pyvkfft",
+          "Documentation": "https://pyvkfft.readthedocs.io/",
           "Bug Tracker": "https://github.com/vincefn/pyvkfft/issues",
           "VkFFT project": "https://github.com/DTolm/VkFFT",
       },
@@ -328,7 +317,7 @@ setup(name="pyvkfft",
           "Environment :: GPU",
       ],
       license='MIT License',
-      cmdclass={'build_ext': build_ext_custom, 'sdist_vkfft': sdist_vkfft,
+      cmdclass={'build_ext': build_ext_custom,
                 'bdist_egg': bdist_egg if 'bdist_egg' in sys.argv else bdist_egg_disabled
                 },
       install_requires=install_requires,

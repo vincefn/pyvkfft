@@ -2,9 +2,9 @@
 
 __authors__ = ["Vincent Favre-Nicolin (pyvkfft), Dmitrii Tolmachev (VkFFT)"]
 __license__ = "MIT"
-__date__ = "2023/01/22"
+__date__ = "2023/08/03"
 # Valid numbering includes 3.1, 3.1.0, 3.1.2, 3.1dev0, 3.1a0, 3.1b0
-__version__ = "2023.2b0"
+__version__ = "2023.2"
 
 
 def vkfft_version():

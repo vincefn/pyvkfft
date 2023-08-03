@@ -6,3 +6,4 @@ Example notebooks:
   * :doc:`OpenCL tests <pyvkfft-tests-OpenCL>`
   * :doc:`Accuracy notebook <accuracy>`
   * :doc:`cupy and pycuda <cupy-pycuda>`
+  * :doc:`Tuning VkFFT transform parameters <tuning>`
