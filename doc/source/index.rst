@@ -39,20 +39,14 @@ Example
    :start-after: Examples
    :end-before: See the scripts
 
-See :doc:`other notebook examples <examples/index>`
+:doc:`Notebook examples <examples/index>`
+=========================================
 
-API Documentation
-=================
-* :doc:`api/simple-fft`
-* :doc:`api/core-fft`
-* :doc:`api/testing`
+:doc:`API <api/index>`
+====================================
 
-Command-line scripts
-====================
-* :doc:`scripts/benchmark`
-* :doc:`scripts/test`
-* :doc:`scripts/test-suite`
-
+:doc:`Command-line scripts <scripts/index>`
+===========================================
 
 :doc:`changelog`
 ================
@@ -69,12 +63,9 @@ Indices and tables
    changelog
    features
    performance
-   api/core-fft
-   api/simple-fft
-   api/testing
-   scripts/benchmark
-   scripts/test
-   scripts/test-suite
+   examples/index
+   api/index
+   scripts/index
 
 * :ref:`genindex`
 * :ref:`modindex`
