@@ -57,9 +57,15 @@ def locate_cuda():
                                        'or set $CUDA_PATH')
             home = os.path.dirname(os.path.dirname(nvcc))
         libdir = pjoin(home, 'lib', 'x64')
-        extra_compile_args = ['-O3', '--ptxas-options=-v', '-Xcompiler', '/MD',
-                              f'/DVKFFT_MAX_FFT_DIMENSIONS={VKFFT_MAX_FFT_DIMENSIONS}']
-        extra_link_args = ['-L%s' % libdir]
+        extra_compile_args = ['-O3', '--ptxas-options=-v', '-Xcompiler', '-MD',
+                              f'-DVKFFT_MAX_FFT_DIMENSIONS={VKFFT_MAX_FFT_DIMENSIONS}',
+                              "--use-local-env", "-ccbin",
+                              os.path.dirname(find_in_path('cl.exe', os.environ['PATH']))]
+        tmp = pjoin(os.path.dirname(find_in_path('cl.exe', os.environ['PATH'])).split('bin')[0],
+                    'lib', 'x64')
+        extra_link_args = ['-L%s' % libdir, "--use-local-env", "-ccbin",
+                           os.path.dirname(find_in_path('cl.exe', os.environ['PATH'])),
+                           '-L%s' % tmp]
     else:
         # First check if the CUDAHOME env variable is in use
         if 'CUDAHOME' in os.environ:
@@ -111,6 +117,8 @@ def locate_opencl():
             if path in os.environ:
                 include_dirs.append(pjoin(os.environ[path], 'include'))
                 library_dirs.append(pjoin(os.environ[path], 'lib', 'x64'))
+        library_dirs.append(pjoin(os.path.dirname(find_in_path('cl.exe', os.environ['PATH'])).split('bin')[0],
+                                  'lib', 'x64'))
         libraries = ['OpenCL']
         extra_compile_args = None
     else:
@@ -140,7 +148,7 @@ class build_ext_custom(build_ext_orig):
             self.compiler.set_executable('compiler_so', [tmp])
             self.compiler.set_executable('linker_so', [tmp])
             if platform.system() == "Windows":
-                CUDA['extra_link_args'] += ['--shared', '-Xcompiler', '/MD']
+                CUDA['extra_link_args'] += ['--shared', '-Xcompiler', '-MD']
                 # pythonXX.lib must be in the linker paths
                 # Is using sys.prefix\libs always correct ?
                 CUDA['extra_link_args'].append('-L%s' % pjoin(sys.prefix, 'libs'))
