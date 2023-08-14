@@ -2,7 +2,7 @@
 
 __authors__ = ["Vincent Favre-Nicolin (pyvkfft), Dmitrii Tolmachev (VkFFT)"]
 __license__ = "MIT"
-__date__ = "2023/08/03"
+__date__ = "2023/08/14"
 # Valid numbering includes 3.1, 3.1.0, 3.1.2, 3.1dev0, 3.1a0, 3.1b0
 __version__ = "2023.2"
 

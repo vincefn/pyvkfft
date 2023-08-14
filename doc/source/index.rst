@@ -51,6 +51,12 @@ Example
 :doc:`changelog`
 ================
 
+Authors & acknowledgements
+==========================
+
+.. include:: ../../README.rst
+   :start-after: acknowledgements
+
 
 Indices and tables
 ==================

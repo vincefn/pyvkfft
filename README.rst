@@ -107,6 +107,8 @@ Features
 - Allows up to 8 FFT dimensions (can be increased by using
   ``VKFFT_MAX_FFT_DIMENSIONS`` when installing).
 - arrays can be have more dimensions than the FFT (batch transforms).
+- Options are available to tune (manually or automatically) the performance for
+  specific GPUs.
 - arbitrary array size, using Bluestein algorithm for prime numbers>13 (note that in this case
   the performance can be significantly lower, up to ~4x, depending on the transform size,
   see example performance plot below). Now also uses Rader's FFT algorithm for primes from
@@ -117,7 +119,7 @@ Features
   transform divides the L2 norm by the array size, so FFT*iFFT restores the original array)
 - Support for C (default) and F-ordered arrays, for C2C and R2C transforms
 - unit tests for all transforms: see test sub-directory. Note that these take a **long**
-  time to finish due to the exhaustive number of sub-tests.
+  time to finish due to the extensive number of sub-tests.
 - Note that out-of-place C2R transform currently destroys the complex array for FFT dimensions >=2
 - tested on macOS (10.13.6/x86, 12.6/M1), Linux (Debian/Ubuntu, x86-64 and power9),
   and Windows 10 (Anaconda python 3.8 with Visual Studio 2019 and the CUDA toolkit 11.2)
@@ -132,7 +134,7 @@ Features
   or by using the ``pyvkfft.fft`` interface with the ``fftn``, ``ifftn``, ``rfftn`` and ``irfftn``
   functions which automatically detect the type of GPU array and cache the
   corresponding VkFFTApp (see the example notebook pyvkfft-fft.ipynb).
-- the ``pyvkfft-test`` command-line script allows to test specifc transforms against
+- the ``pyvkfft-test`` command-line script allows to test specific transforms against
   expected accuracy values, for all types of transforms.
 - pyvkfft results are now evaluated before any release with a **comprehensive test
   suite**, comparing transform results for all types of transforms: single and double
@@ -258,3 +260,10 @@ TODO
 - zero-padding ?
 - access to tweaking parameters in VkFFTConfiguration ?
 - access to the code of the generated kernels ?
+
+Authors & acknowledgements
+--------------------------
+
+* Vincent Favre-Nicolin (@vincefn, ESRF-The European Synchrotron) - main pyvkfft author
+* Dmitrii Tolmachev, @DTolm - `VkFFT <https://github.com/DTolm/VkFFT>`_ author
+* Fernando Isuru (@isuruf) - conda package and other contributions
