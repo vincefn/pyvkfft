@@ -1,4 +1,4 @@
-Version 2023.2 (2023-XX-XX)
+Version 2023.2 (2023-08-14)
 -----------------------------
 * Based on VkFFT 1.3.1
 * Add support for more than 3 FFT dimensions (defaults to 8
