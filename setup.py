@@ -120,7 +120,7 @@ def locate_opencl():
         library_dirs.append(pjoin(os.path.dirname(find_in_path('cl.exe', os.environ['PATH'])).split('bin')[0],
                                   'lib', 'x64'))
         libraries = ['OpenCL']
-        extra_compile_args = None
+        extra_compile_args = [f'/DVKFFT_MAX_FFT_DIMENSIONS={VKFFT_MAX_FFT_DIMENSIONS}']
     else:
         # Linux
         libraries = ['OpenCL']
