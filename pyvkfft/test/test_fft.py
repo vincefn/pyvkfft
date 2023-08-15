@@ -103,7 +103,12 @@ try:
     from pyvkfft.opencl import VkFFTApp as clVkFFTApp
 
     has_pyopencl = True
-    v_gpu_pyopencl = find_gpu("pyopencl")
+    try:
+        v_gpu_pyopencl = find_gpu("pyopencl")
+    except cl.Error:
+        # Probably clGetPlatformIDs failed: PLATFORM_NOT_FOUND_KHR (no platform available)
+        has_pyopencl = False
+        v_gpu_pyopencl = []
 except ImportError:
     has_pyopencl = False
     v_gpu_pyopencl = []
