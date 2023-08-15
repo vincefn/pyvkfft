@@ -190,47 +190,6 @@ if "VKFFT_BACKEND" in os.environ:
     if 'cuda' not in v.lower():
         exclude_packages.append('cuda')
 
-# Download automatically a new version of the VkFFT header ?
-if "VKFFT_GIT_TAG" in os.environ:
-    tag = os.environ['VKFFT_GIT_TAG']
-    # Not all VkFFT versions are git-tagged
-    if tag == "v1.2.20":
-        tag = "e878d1bc"
-    elif tag == "v1.2.21":
-        tag = "84b86bab"
-    elif tag == "v1.2.22":
-        tag = "bde2a0c4"
-    elif tag == "v1.2.23":
-        tag = "3997679e"
-    elif tag == "v1.2.24":
-        tag = "b5de8194"
-    elif tag == "v1.2.25":
-        tag = "1677b4b8"
-    elif tag == "v1.2.26":
-        tag = "96408364"
-    elif tag == "v1.2.27":
-        tag = "bae7c4ae"
-    elif tag == "v1.2.28":
-        tag = "33109a00"
-    elif tag == "v1.2.29":
-        tag = "9fea863b"
-    elif tag == "v1.2.31":
-        tag = "e1c58868"
-    elif tag == "v1.2.32":
-        tag = "1310bfa9"
-    elif tag == "v1.2.33":
-        tag = "5c4a24e1"
-    print(f"Updating VkFFT submodule for git tag={os.environ['VKFFT_GIT_TAG']}")
-    if False:
-        # List existing tags ?
-        tags = ['master'] + [t.split('tags/')[-1] for t in subprocess.check_output(
-            "git ls-remote --tags https://github.com/DTolm/VkFFT", timeout=20, shell=True).decode().split('\n')[:-1]]
-        if tag not in tags:
-            raise RuntimeError("Given VkFFT git tag not available from https://github.com/DTolm/VkFFT")
-    os.system(f"git submodule foreach 'git checkout {tag}'")
-else:
-    print("VKFFT_GIT_TAG in os.environ ? no")
-
 if 'cuda' not in exclude_packages:
     try:
         CUDA = locate_cuda()
@@ -298,8 +257,6 @@ for s in scripts:
     s1 = os.path.splitext(os.path.split(s)[1])[0]
     s0 = os.path.splitext(s)[0]
     console_scripts.append("%s = %s:main" % (s1.replace('_', '-'), s0.replace('/', '.')))
-
-print(console_scripts)
 
 setup(name="pyvkfft",
       version=__version__,
