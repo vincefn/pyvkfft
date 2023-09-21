@@ -1,4 +1,4 @@
-Version 2023.2.1 (2023-09-21)
+Version 2023.2.post1 (2023-09-21)
 -----------------------------
 * Include doc in manifest
 
