@@ -1,7 +1,10 @@
 recursive-include src/VkFFT/vkFFT *.h
+recursive-include doc *.rst Makefile *.nblink *.py *.png
+recursive-include examples *.ipynb
 include src/VkFFT/README.md
 include src/VkFFT/LICENSE
 include src/*.cu
 include src/*.cpp
+include CHANGELOG.rst
 include LICENSE
-include README.md
+include README.rst
