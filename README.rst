@@ -1,3 +1,10 @@
+
+pyvkfft_bin - Binaries for PyVkFFT
+===========================================================================================================
+
+This fork of `PyVkFFT <https://github.com/vincefn/pyvkfft>`_ provides prebuilt binaries in .dll and .so format for the CUDA and Vulkan backends.
+
+
 pyvkfft - python interface to the CUDA and OpenCL backends of VkFFT (Vulkan Fast Fourier Transform library)
 ===========================================================================================================
 
