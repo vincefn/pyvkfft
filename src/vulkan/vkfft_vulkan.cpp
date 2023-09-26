@@ -21,7 +21,9 @@ using namespace std;
 #endif
 
 
-LIBRARY_API VkFFTConfiguration* make_config(const long*, const size_t, void*, void*, void*,
+LIBRARY_API VkFFTConfiguration* make_config(const long*, const size_t, VkBuffer, VkBuffer, 
+                                VkPhysicalDevice*, VkDevice*, VkQueue*,
+                                VkCommandPool*, VkFence*, uint64_t,
                                 const int, const size_t, const int, const int, const int, const int,
                                 const int, const int, const size_t, const long*,
                                 const int, const int, const int, const int, const int, const int, const int,
@@ -29,9 +31,9 @@ LIBRARY_API VkFFTConfiguration* make_config(const long*, const size_t, void*, vo
 
 LIBRARY_API VkFFTApplication* init_app(const VkFFTConfiguration*, int*);
 
-LIBRARY_API int fft(VkFFTApplication* app, void*, void*);
+LIBRARY_API int fft(VkFFTApplication* app, VkBuffer, VkBuffer);
 
-LIBRARY_API int ifft(VkFFTApplication* app, void*, void*);
+LIBRARY_API int ifft(VkFFTApplication* app, VkBuffer, VkBuffer);
 
 LIBRARY_API void free_app(VkFFTApplication* app);
 
@@ -79,7 +81,9 @@ class PyVkFFT
 * \return: the pointer to the newly created VkFFTConfiguration, or 0 if an error occurred.
 */
 VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
-                                VkBuffer buffer, VkBuffer buffer_out, void* hstream,
+                                VkBuffer buffer, VkBuffer buffer_out, 
+                                VkPhysicalDevice* physicalDevice, VkDevice* device, VkQueue* queue,
+                                VkCommandPool* commandPool, VkFence* fence, uint64_t isCompilerInitialized,
                                 const int norm, const size_t precision, const int r2c, const int dct,
                                 const int disableReorderFourStep, const int registerBoost,
                                 const int useLUT, const int keepShaderCode, const size_t n_batch,
@@ -192,6 +196,9 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
 	VkCommandPool* commandPool;//pointer to Vulkan command pool, created with vkCreateCommandPool
 	VkFence* fence;//pointer to Vulkan fence, created with vkCreateFence
 	uint64_t isCompilerInitialized;//specify if glslang compiler has been intialized before (0 - off, 1 - on). Default 0
+    
+    VkPipelineCache* pipelineCache;//pointer to Vulkan pipeline cache
+    
   */
 
   //void ** pbuf = new void*;
