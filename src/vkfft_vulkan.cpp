@@ -201,7 +201,14 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
     
   */
 
-  //void ** pbuf = new void*;
+
+  config->physicalDevice = physicalDevice;
+  config->device = device;
+  config->queue = queue;
+  config->commandPool = commandPool;
+  config->fence = fence;
+  config->isCompilerInitialized = isCompilerInitialized;
+  
   VkBuffer * pbuf = new VkBuffer;
   *pbuf = buffer;
 
