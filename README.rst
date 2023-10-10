@@ -57,7 +57,7 @@ platforms.
 **Note regarding CUDA support**: there are multiple package versions of
 ``pyvkfft`` available, with either only OpenCL support, or compiled also using
 the cuda toolkit versions 11.2 or 11.8. If you want cuda support, you should
-preferably *install ``pyvkfft`` at the same time as the cuda packages*, optionnally
+preferably install ``pyvkfft`` at the same time as the cuda packages, optionnally
 selecting the cuda/cuda-toolkit version
 e.g. ``conda install pyvkfft pycuda`` or ``conda install pyvkfft cupy cuda-version=11.2``
 or ``conda install pyvkfft cudatoolkit=11.8``. The only constraint is that the
