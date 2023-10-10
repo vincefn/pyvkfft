@@ -44,7 +44,8 @@ where both methods have been used.
 Installation using conda
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-You can use ``conda`` to install pre-compiled binaries with CUDA and OpenCL support
+You can use ``conda`` (or much faster `mamba <https://mamba.readthedocs.io>`_) 
+to install pre-compiled binaries with CUDA and OpenCL support
 on ``linux-x86_64, linux-aarch64, linux-ppc64le, win-amd64, macos-x86_64, macos-arm64``
 platforms.
 
@@ -52,6 +53,16 @@ platforms.
 
    conda config --add channels conda-forge
    conda install pyvkfft
+
+**Note regarding CUDA support**: there are multiple package versions of
+``pyvkfft`` available, with either only OpenCL support, or compiled also using
+the cuda toolkit versions 11.2 or 11.8. If you want cuda support, you should
+preferably *install ``pyvkfft`` at the same time as the cuda packages*, optionnally
+selecting the cuda/cuda-toolkit version
+e.g. ``conda install pyvkfft pycuda`` or ``conda install pyvkfft cupy cuda-version=11.2``
+or ``conda install pyvkfft cudatoolkit=11.8``. The only constraint is that the
+cuda driver should be more recent than the cuda toolkit installed (type
+``conda info`` or ``mamba info`` to see conda's detected `__cuda` variable).
 
 Installation from source (git)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
