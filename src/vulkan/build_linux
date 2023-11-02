@@ -1,0 +1,1 @@
+g++ -shared -I../VkFFT/vkFFT -I/mnt/c/VulkanSDK/1.3.268.0_linux/x86_64/include -I/mnt/c/VulkanSDK/1.3.268.0_linux/x86_64/include/glslang/Include -L/mnt/c/VulkanSDK/1.3.268.0_linux/x86_64/lib vkfft_vulkan.cpp -o vkfft_vulkan.so -lvulkan -lshaderc_combined

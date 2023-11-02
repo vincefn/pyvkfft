@@ -224,7 +224,10 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
   {
     config->buffer = pbuf;
   }
-
+  
+  //DvdB: Now we remove the padding size from the fast FT dimension:
+  if(r2c) config->size[0] -= 2;
+  
   /*
   cout << "make_config: "<<config<<" "<<endl<< config->buffer<<", "<< *(config->buffer)<<", "
        << config->size[0] << " " << config->size[1] << " " << config->size[2] << " "<< config->FFTdim

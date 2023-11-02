@@ -31,9 +31,19 @@ LIBRARY_API VkFFTConfiguration* make_config(const long*, const size_t, VkBuffer,
 
 LIBRARY_API VkFFTApplication* init_app(const VkFFTConfiguration*, int*);
 
-LIBRARY_API int fft(VkFFTApplication* app, VkBuffer, VkBuffer);
+LIBRARY_API int fft(VkFFTApplication* app, VkCommandBuffer* cmd_buffer, VkBuffer* in, VkBuffer* out);
 
-LIBRARY_API int ifft(VkFFTApplication* app, VkBuffer, VkBuffer);
+LIBRARY_API int ifft(VkFFTApplication* app, VkCommandBuffer* cmd_buffer, VkBuffer* in, VkBuffer* out);
+
+LIBRARY_API int copy_test(char *buf);
+
+LIBRARY_API int get_dev_props(VkPhysicalDevice* physicalDevice, char *buf);
+
+LIBRARY_API int get_dev_props2(const VkFFTConfiguration* config, char *buf);
+
+LIBRARY_API int get_buf_size(VkBuffer buffer, VkDevice* dev);
+
+LIBRARY_API int sync_app(VkFFTApplication* app);
 
 LIBRARY_API void free_app(VkFFTApplication* app);
 
@@ -80,6 +90,52 @@ class PyVkFFT
 * \param precision: number of bits per float, 16=half, 32=single, 64=double precision
 * \return: the pointer to the newly created VkFFTConfiguration, or 0 if an error occurred.
 */
+
+int copy_test(char *buf){
+    char buf2[256] = "Hello!!";
+    memmove((void*) buf, (void*) buf2, 256);
+    return 123;
+}    
+
+int get_dev_props(VkPhysicalDevice* physicalDevice, char *buf){
+	VkPhysicalDeviceProperties physicalDeviceProperties = { 0 };
+	vkGetPhysicalDeviceProperties(physicalDevice[0], &physicalDeviceProperties);
+    memmove((void*) buf, (void*) physicalDeviceProperties.deviceName, 256);
+    return 0;
+};
+
+
+int get_dev_props2(const VkFFTConfiguration* config, char *buf){
+    // same as above, but uses config
+	VkPhysicalDeviceProperties physicalDeviceProperties = { 0 };
+    
+    VkFFTApplication* app = new VkFFTApplication({});
+    VkFFTConfiguration inputLaunchConfiguration = *config;
+    app->configuration.physicalDevice = inputLaunchConfiguration.physicalDevice;
+    
+    
+	vkGetPhysicalDeviceProperties(app->configuration.physicalDevice[0], &physicalDeviceProperties);
+    memmove((void*) buf, (void*) physicalDeviceProperties.deviceName, 256);
+    return 0;
+};
+
+int sync_app(VkFFTApplication* app){
+  VkFFTResult resFFT;
+  resFFT = VkFFTSync(app);
+  return resFFT;
+    
+};
+
+int get_buf_size(VkBuffer buffer, VkDevice* dev){
+    
+    VkMemoryRequirements mem_req;
+    vkGetBufferMemoryRequirements(*dev, buffer, &mem_req);  
+    return mem_req.size;
+    
+};
+
+
+
 VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
                                 VkBuffer buffer, VkBuffer buffer_out, 
                                 VkPhysicalDevice* physicalDevice, VkDevice* device, VkQueue* queue,
@@ -99,7 +155,7 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
   config->numberBatches = n_batch;
 
   for(int i=0; i<VKFFT_MAX_FFT_DIMENSIONS; i++) config->omitDimension[i] = skip[i];
-
+  
   config->normalize = norm;
   config->performR2C = r2c;
   config->performDCT = dct;
@@ -146,68 +202,12 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
       case 8 : config->doublePrecision = 1;
   };
 
-    /*
-	CUdevice* device;//pointer to CUDA device, obtained from cuDeviceGet
-	//CUcontext* context;//pointer to CUDA context, obtained from cuDeviceGet
-	cudaStream_t* stream;//pointer to streams (can be more than 1), where to execute the kernels
-	uint64_t num_streams;//try to submit CUDA kernels in multiple streams for asynchronous execution. Default 0, set to >=1 if you pass values in the stream pointer.
-    */
-
-
-  // CUdevice *dev = new CUdevice;
-  // if(hstream != 0)
-  // {
-    // // Get context then device from current context
-    // CUcontext ctx = nullptr;
-    // CUresult res = cuStreamGetCtx ((CUstream)hstream, &ctx);
-    // if(res != CUDA_SUCCESS)
-    // {
-      // cout << "Could not get the current device from given stream"<<endl;
-      // return 0;
-    // }
-    // res = cuCtxPushCurrent (ctx);
-    // res = cuCtxGetDevice(dev);
-    // if(res != CUDA_SUCCESS)
-    // {
-      // cout << "Could not get the current device from supplied stream's context."<<endl;
-      // return 0;
-    // }
-    // res = cuCtxPopCurrent (&ctx);
-
-    // config->stream = new CUstream((CUstream) hstream);
-    // config->num_streams = 1;
-  // }
-  // else
-  // {
-    // // Get device from current context
-    // CUresult res = cuCtxGetDevice(dev);
-    // if(res != CUDA_SUCCESS)
-    // {
-      // cout << "Could not get the current device. Was a CUDA context created ?"<<endl;
-      // return 0;
-    // }
-  // }
-  //config->device = dev;
-  
-  /*
-  	VkPhysicalDevice* physicalDevice;//pointer to Vulkan physical device, obtained from vkEnumeratePhysicalDevices
-	VkDevice* device;//pointer to Vulkan device, created with vkCreateDevice
-	VkQueue* queue;//pointer to Vulkan queue, created with vkGetDeviceQueue
-	VkCommandPool* commandPool;//pointer to Vulkan command pool, created with vkCreateCommandPool
-	VkFence* fence;//pointer to Vulkan fence, created with vkCreateFence
-	uint64_t isCompilerInitialized;//specify if glslang compiler has been intialized before (0 - off, 1 - on). Default 0
-    
-    VkPipelineCache* pipelineCache;//pointer to Vulkan pipeline cache
-    
-  */
-
-
   config->physicalDevice = physicalDevice;
   config->device = device;
   config->queue = queue;
   config->commandPool = commandPool;
   config->fence = fence;
-  config->isCompilerInitialized = isCompilerInitialized;
+  //config->isCompilerInitialized = isCompilerInitialized;
   
   VkBuffer * pbuf = new VkBuffer;
   *pbuf = buffer;
@@ -226,7 +226,7 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
       psizein = new uint64_t;
       *psizein = (uint64_t)(s * precision);
       config->inverseReturnToInputBuffer = 1;
-			config->inputBufferStride[0] = size[0];
+	  config->inputBufferStride[0] = size[0];
       for(int i=1; i<VKFFT_MAX_FFT_DIMENSIONS; i++)
         config->inputBufferStride[i] = size[i] * config->inputBufferStride[i-1];
     }
@@ -238,10 +238,14 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
   }
 
   config->bufferSize = psize;
-
+  
+  //DvdB: Now we remove the padding size from the fast FT dimension:
+  //if(r2c) config->size[0] -= 2;
+  
+// Calculations are made in buffer, so with buffer != inputBuffer we keep the original data
   if(buffer_out != NULL)
   {
-    // Calculations are made in buffer, so with buffer != inputBuffer we keep the original data
+
     VkBuffer * pbufout = new VkBuffer;
     *pbufout = buffer_out;
 
@@ -272,6 +276,9 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
 */
 VkFFTApplication* init_app(const VkFFTConfiguration* config, int *res)
 {
+    
+  //cout << "Hello everyone! Please get yourself comfortable while the Config is being made!\n";
+
   VkFFTApplication* app = new VkFFTApplication({});
   *res = initializeVkFFT(app, *config);
   /*
@@ -288,34 +295,34 @@ VkFFTApplication* init_app(const VkFFTConfiguration* config, int *res)
   return app;
 }
 
-int fft(VkFFTApplication* app, VkBuffer in, VkBuffer out)
+int fft(VkFFTApplication* app, VkCommandBuffer* cmd_buffer, VkBuffer* in, VkBuffer* out)
 {
-  // Modify the original app only to avoid allocating
-  // new buffer pointers in memory
-  *(app->configuration.buffer) = out;
-  *(app->configuration.inputBuffer) = in;
-  *(app->configuration.outputBuffer) = out;
+
+  (app->configuration.buffer) = out;
+  (app->configuration.inputBuffer) = in;
+  //(app->configuration.outputBuffer) = out;
 
   VkFFTLaunchParams par = {};
   par.buffer =  app->configuration.buffer;
   par.inputBuffer = app->configuration.inputBuffer;
-  par.outputBuffer = app->configuration.outputBuffer;
-
+  //par.outputBuffer = app->configuration.outputBuffer;
+  par.commandBuffer = cmd_buffer;
+ 
   return VkFFTAppend(app, -1, &par);
 }
 
-int ifft(VkFFTApplication* app, VkBuffer in, VkBuffer out)
+int ifft(VkFFTApplication* app, VkCommandBuffer* cmd_buffer,  VkBuffer* in, VkBuffer* out)
 {
-  // Modify the original app only to avoid allocating
-  // new buffer pointers in memory
-  *(app->configuration.buffer) = out;
-  *(app->configuration.inputBuffer) = in;
-  *(app->configuration.outputBuffer) = out;
+
+  (app->configuration.buffer) = out;
+  (app->configuration.inputBuffer) = in;
+  //(app->configuration.outputBuffer) = out;
 
   VkFFTLaunchParams par = {};
   par.buffer =  app->configuration.buffer;
   par.inputBuffer = app->configuration.inputBuffer;
-  par.outputBuffer = app->configuration.outputBuffer;
+  //par.outputBuffer = app->configuration.outputBuffer;
+  par.commandBuffer = cmd_buffer;
 
   return VkFFTAppend(app, 1, &par);
 }
