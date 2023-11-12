@@ -18,7 +18,6 @@ using namespace std;
 #define LIBRARY_API extern "C" __declspec(dllexport)
 #else
 #define LIBRARY_API extern "C"
-#endif
 
 extern "C"{
 
@@ -33,8 +32,6 @@ asm(".symver __exp2_glibc_2_2_5, exp2@GLIBC_2.2.5");
 asm(".symver __log_glibc_2_2_5, log@GLIBC_2.2.5");
 asm(".symver __log2_glibc_2_2_5, log2@GLIBC_2.2.5");
 asm(".symver __pow_glibc_2_2_5, pow@GLIBC_2.2.5");
-
-//asm(".symver __pthread_key_create, __pthread_key_create@GLIBC_2.2.5");
 
 double __wrap_exp(double x)
 {
@@ -61,10 +58,8 @@ double __wrap_pow(double x, double y)
     return __pow_glibc_2_2_5(x, y); 
 }
 
-
-
 }
-
+#endif
 
 LIBRARY_API VkFFTConfiguration* make_config(const long*, const size_t, VkBuffer, VkBuffer, 
                                 VkPhysicalDevice*, VkDevice*, VkQueue*,
@@ -389,7 +384,6 @@ void free_app(VkFFTApplication* app)
 */
 void free_config(VkFFTConfiguration *config)
 {
-  free(config->device);
   // Only frees the pointer to the buffer pointer, not the buffer itself.
   free(config->buffer);
   free(config->bufferSize);
@@ -405,6 +399,12 @@ void free_config(VkFFTConfiguration *config)
 
   //****
   //if(config->stream != 0) free(config->stream);
+  
+  // if (config->physicalDevice) free(config->physicalDevice);
+  // if (config->device) free(config->device);
+  // if (config->queue) free(config->queue);
+  // if (config->commandPool) free(config->commandPool);
+  // if (config->fence) free(config->fence);
   free(config);
 }
 

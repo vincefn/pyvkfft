@@ -1,0 +1,18 @@
+building mesa
+
+I started on 20.04, but got stuck because llvm is 10.0.0, should be 11.0.0. Continue on 22.04...
+
+
+mesa 21.2.6 (that's what's on ubuntu20.04)
+pip3 install mako
+sudo apt-get install pkg-config libdrm-intel1 libdrm-amdgpu1 libdrm-common libdrm-dev llvm clang libelf-dev bison byacc flex  libwayland-egl-backend-dev libxcb-glx0 libxcb-glx0-dev libx11-xcb-dev libxcb-dri2-0-dev libxcb-dri3-dev libxcb-present-dev libxshmfence-dev libxxf86vm-dev
+
+Stopped by an error:
+
+../src/amd/llvm/ac_llvm_helper.cpp: In function ‘bool ac_is_sgpr_param(LLVMValueRef)’:
+../src/amd/llvm/ac_llvm_helper.cpp:63:14: error: ‘class llvm::AttributeList’ has no member named ‘hasAttribute’; did you mean ‘getAttributes’?
+   63 |    return AS.hasAttribute(ArgNo + 1, llvm::Attribute::InReg);
+      |              ^~~~~~~~~~~~
+      |              getAttributes
+[520/2354] Compiling C++ object src/amd/compiler/libaco.a.p/aco_instruction_selection.cpp.o
+ninja: build stopped: subcommand failed.

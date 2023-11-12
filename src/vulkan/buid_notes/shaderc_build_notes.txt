@@ -1,0 +1,27 @@
+/snap/bin/cmake -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREF
+IX=True -Wno-dev ..
+
+There were a couple warnings, mute them with -DCMAKE_INSTALL_PREF
+IX=True -Wno-dev 
+
+sudo apt-get install ninja-build asciidoctor
+
+gmock was not found, installing it from source:
+https://stackoverflow.com/questions/49736336/cmake-is-unable-to-find-packages-of-gmock
+
+compilation terminated due to "charconv" not found
+https://stackoverflow.com/questions/49639808/fatal-error-charconv-file-not-found-in-clang-6-0-with-std-c17
+Need GCC 8.1 for this :(
+
+Move to Ubunut20.04 and try to install GCC8.4.0
+https://gist.github.com/xiasenhai/918ab482e584ac1f5b48a8c2f78eab36
+
+sudo apt-get install gcc-8 g++8
+sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 8
+sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-8 8
+
+/snap/bin/cmake -GNinja Wno-dev -DCMAKE_BUILD_TYPE=Release -DCMAKE_BUILD_WITH_INSTALL_RPATH=True  ..
+ninja
+
+built in ~/shaderc/build/libshaderc(/libshaders_shared.so)
+sudo apt-get install libvulkan-dev

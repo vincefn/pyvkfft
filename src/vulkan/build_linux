@@ -1,2 +1,5 @@
-g++ -shared -nolibc "-Wl,--wrap=exp,--wrap=exp2,--wrap=log,--wrap=log2,--wrap=pow" -lgcc -fPIC -I/mnt/c/Users/dcmvd/Documents/GitHub/pyvkfft/src/VkFFT/vkFFT -I/mnt/c/VulkanSDK/1.3.268.0_linux/x86_64/include -I/mnt/c/VulkanSDK/1.3.268.0_linux/x86_64/include/glslang/Include -L/mnt/c/VulkanSDK/1.3.268.0_linux/x86_64/lib /mnt/c/Users/dcmvd/Documents/GitHub/pyvkfft/src/vulkan/vkfft_vulkan.cpp -o /mnt/c/Users/dcmvd/Documents/GitHub/pyvkfft/src/vulkan/vkfft_vulkan.so -lvulkan -lshaderc_combined;
-cp /mnt/c/Users/dcmvd/Documents/GitHub/pyvkfft/src/vulkan/vkfft_vulkan.so /mnt/c/Users/dcmvd/Documents/GitHub/radis/radis/gpu/vulkan/bin/vkfft_vulkan.so
+export SOURCE_PATH=/mnt/c/Users/dcmvd/Documents/GitHub/pyvkfft/src/vulkan
+export APP_PATH=/mnt/c/Users/dcmvd/Documents/GitHub/radis/radis/gpu/vulkan/bin
+export SHADERC_PATH=/home/dcmvdbekerom/shaderc
+g++ -shared "-Wl,--wrap=exp,--wrap=exp2,--wrap=log,--wrap=log2,--wrap=pow" -fPIC -I$SOURCE_PATH/../VkFFT/vkFFT -I/usr/include -I$SHADERC_PATH/third_party/glslang/glslang/Include -L/usr/lib/x86_64-linux-gnu -L$SHADERC_PATH/build/libshaderc $SOURCE_PATH/vkfft_vulkan.cpp -o $SOURCE_PATH/vkfft_vulkan.so -lvulkan -lshaderc_combined
+cp $SOURCE_PATH/vkfft_vulkan.so $APP_PATH/vkfft_vulkan.so
