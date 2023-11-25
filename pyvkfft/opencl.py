@@ -28,7 +28,8 @@ try:
     _vkfft_opencl.make_config.argtypes = [ctype_int_size_p, ctypes.c_size_t,
                                           ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
                                           ctypes.c_void_p, ctypes.c_int, ctypes.c_size_t, ctypes.c_int,
-                                          ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                          ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                          ctypes.c_int, ctypes.c_int, ctypes.c_int,
                                           ctypes.c_size_t, ctype_int_size_p, ctypes.c_int,
                                           ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
                                           ctypes.c_int, ctype_int_size_p]
@@ -68,7 +69,7 @@ class VkFFTApp(VkFFTAppBase):
     """
 
     def __init__(self, shape, dtype: type, queue: cl.CommandQueue, ndim=None, inplace=True, norm=1,
-                 r2c=False, dct=False, axes=None, strides=None, tune_config=None, **kwargs):
+                 r2c=False, dct=False, dst=False, axes=None, strides=None, tune_config=None, **kwargs):
         """
         Init function for the VkFFT application.
 
@@ -105,6 +106,9 @@ class VkFFTApp(VkFFTAppBase):
         :param dct: used to perform a Direct Cosine Transform (DCT) aka a R2R transform.
             An integer can be given to specify the type of DCT (1, 2, 3 or 4).
             if dct=True, the DCT type 2 will be performed, following scipy's convention.
+        :param dst: used to perform a Direct Sine Transform (DST) aka a R2R transform.
+            An integer can be given to specify the type of DST (1, 2, 3 or 4).
+            if dst=True, the DST type 2 will be performed, following scipy's convention.
         :param axes: a list or tuple of axes along which the transform should be made.
             if None, the transform is done along the ndim fastest axes, or all
             axes if ndim is None. Not allowed for R2C transforms
@@ -135,10 +139,10 @@ class VkFFTApp(VkFFTAppBase):
         """
         if tune_config is not None:
             kwargs = tune_vkfft(tune_config, shape=shape, dtype=dtype, ndim=ndim, queue=queue, inplace=inplace,
-                                norm=norm, r2c=r2c, dct=dct, axes=axes, strides=strides, verbose=False,
+                                norm=norm, r2c=r2c, dct=dct, dst=dst, axes=axes, strides=strides, verbose=False,
                                 **kwargs)[0]
         super().__init__(shape, dtype, ndim=ndim, inplace=inplace, norm=norm, r2c=r2c,
-                         dct=dct, axes=axes, strides=strides, **kwargs)
+                         dct=dct, dst=dst, axes=axes, strides=strides, **kwargs)
 
         self.queue = queue
 
@@ -153,7 +157,7 @@ class VkFFTApp(VkFFTAppBase):
             raise RuntimeError("Error creating VkFFTConfiguration. Was the OpenCL context properly initialised ?")
         res = ctypes.c_int(0)
         self.app = _vkfft_opencl.init_app(self.config, queue.int_ptr, ctypes.byref(res))
-        check_vkfft_result(res, shape, dtype, ndim, inplace, norm, r2c, dct, axes, "opencl:%s:%s" %
+        check_vkfft_result(res, shape, dtype, ndim, inplace, norm, r2c, dct, dst, axes, "opencl:%s:%s" %
                            (queue.device.platform.name, queue.device.name))
         if self.app is None:
             raise RuntimeError("Error creating VkFFTApplication. Was the OpenCL context properly initialised ?")
@@ -205,6 +209,7 @@ class VkFFTApp(VkFFTAppBase):
         return _vkfft_opencl.make_config(shape, self.ndim, 1, dest_gpudata, platform.int_ptr,
                                          device.int_ptr, ctx.int_ptr,
                                          norm, self.precision, int(self.r2c), int(self.dct),
+                                         int(self.dst),
                                          int(self.disableReorderFourStep), int(self.registerBoost),
                                          int(self.use_lut), int(self.keepShaderCode),
                                          self.n_batch, skip,
@@ -270,7 +275,7 @@ class VkFFTApp(VkFFTAppBase):
                     raise RuntimeError("VkFFTApp.fft: dest is not None but this is an inplace transform")
             res = _vkfft_opencl.fft(self.app, int(src.data.int_ptr), int(src.data.int_ptr), int(queue.int_ptr))
             check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
-                               self.dct, backend="opencl")
+                               self.dct, self.dst, backend="opencl")
             if self.norm == "ortho":
                 src *= self._get_fft_scale(norm=0)
             if self.r2c:
@@ -288,7 +293,7 @@ class VkFFTApp(VkFFTAppBase):
                 assert (dest.size == src.size // src.shape[-1] * (src.shape[-1] // 2 + 1))
             res = _vkfft_opencl.fft(self.app, int(src.data.int_ptr), int(dest.data.int_ptr), int(queue.int_ptr))
             check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
-                               self.dct, backend="opencl")
+                               self.dct, self.dst, backend="opencl")
             if self.norm == "ortho":
                 dest *= self._get_fft_scale(norm=0)
             return dest
@@ -350,7 +355,7 @@ class VkFFTApp(VkFFTAppBase):
                     raise RuntimeError("VkFFTApp.fft: dest!=src but this is an inplace transform")
             res = _vkfft_opencl.ifft(self.app, int(src.data.int_ptr), int(src.data.int_ptr), int(queue.int_ptr))
             check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
-                               self.dct, backend="opencl")
+                               self.dct, self.dst, backend="opencl")
             if self.norm == "ortho":
                 src *= self._get_ifft_scale(norm=0)
             if self.r2c:
@@ -374,7 +379,7 @@ class VkFFTApp(VkFFTAppBase):
                 res = _vkfft_opencl.ifft(self.app, int(src.data.int_ptr), int(dest.data.int_ptr),
                                          int(queue.int_ptr))
             check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
-                               self.dct, backend="opencl")
+                               self.dct, self.dst, backend="opencl")
             if self.norm == "ortho":
                 dest *= self._get_ifft_scale(norm=0)
             return dest

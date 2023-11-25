@@ -12,8 +12,8 @@ import numpy as np
 
 
 def tune_vkfft(tune, shape, dtype: type, ndim=None, inplace=True, stream=None, queue=None,
-               norm=1, r2c=False, dct=False, axes=None, strides=None, verbose=False,
-               **kwargs):
+               norm=1, r2c=False, dct=False, dst= False, axes=None, strides=None,
+               verbose=False, **kwargs):
     """
     Automatically test different configurations for a VkFFTApp, returning
     the set of parameters which maximise the FT throughput.
@@ -81,6 +81,9 @@ def tune_vkfft(tune, shape, dtype: type, ndim=None, inplace=True, stream=None, q
     :param dct: used to perform a Direct Cosine Transform (DCT) aka a R2R transform.
         An integer can be given to specify the type of DCT (1, 2, 3 or 4).
         if dct=True, the DCT type 2 will be performed, following scipy's convention.
+    :param dst: used to perform a Direct Cosine Transform (DST) aka a R2R transform.
+        An integer can be given to specify the type of DST (1, 2, 3 or 4).
+        if dst=True, the DST type 2 will be performed, following scipy's convention.
     :param axes: a list or tuple of axes along which the transform should be made.
         if None, the transform is done along the ndim fastest axes, or all
         axes if ndim is None. Not allowed for R2C transforms
@@ -174,10 +177,10 @@ def tune_vkfft(tune, shape, dtype: type, ndim=None, inplace=True, stream=None, q
                 kw[vk[i]] = v[i]
             if tune['backend'] == 'pyopencl':
                 app = VkFFTApp(shape, dtype=dtype, queue=queue, ndim=ndim, inplace=inplace,
-                               norm=norm, r2c=r2c, dct=dct, axes=axes, strides=strides, **kw)
+                               norm=norm, r2c=r2c, dct=dct, dst=dst, axes=axes, strides=strides, **kw)
             else:
                 app = VkFFTApp(shape, dtype=dtype, ndim=ndim, inplace=inplace, stream=stream,
-                               norm=norm, r2c=r2c, dct=dct, axes=axes, strides=strides, **kw)
+                               norm=norm, r2c=r2c, dct=dct, dst=dst, axes=axes, strides=strides, **kw)
                 start = Event()
                 stop = Event()
             dt = 0

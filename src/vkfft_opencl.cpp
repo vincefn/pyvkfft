@@ -22,7 +22,8 @@ using namespace std;
 
 LIBRARY_API VkFFTConfiguration* make_config(const long*,
                                             const size_t, void*, void*, void*, void*, void*,
-                                            const int, const size_t, const int, const int,
+                                            const int, const size_t, const int,
+                                            const int, const int,
                                             const int, const int, const int, const int,
                                             const size_t, const long*,
                                             const int, const int, const int, const int,
@@ -63,7 +64,8 @@ LIBRARY_API uint32_t vkfft_max_fft_dimensions();
 VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
                                 void *buffer, void *buffer_out,
                                 void* platform, void* device, void* ctx,
-                                const int norm, const size_t precision, const int r2c, const int dct,
+                                const int norm, const size_t precision, const int r2c,
+                                const int dct, const int dst,
                                 const int disableReorderFourStep, const int registerBoost,
                                 const int useLUT, const int keepShaderCode, const size_t n_batch,
                                 const long *skip,
@@ -82,6 +84,7 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
   config->normalize = norm;
   config->performR2C = r2c;
   config->performDCT = dct;
+  config->performDST = dst;
 
   if(disableReorderFourStep>=0)
     config->disableReorderFourStep = disableReorderFourStep;
@@ -161,7 +164,7 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
   }
   else
   {
-    if(dct) *psize = (uint64_t)(s * precision);
+    if(dct || dst) *psize = (uint64_t)(s * precision);
     else *psize = (uint64_t)(s * precision * (size_t)2);
   }
 

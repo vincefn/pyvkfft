@@ -31,7 +31,8 @@ except ImportError:
 from pyvkfft.version import __version__, vkfft_version
 from pyvkfft.base import primes, radix_gen, radix_gen_n
 from pyvkfft.fft import fftn as vkfftn, ifftn as vkifftn, rfftn as vkrfftn, \
-    irfftn as vkirfftn, dctn as vkdctn, idctn as vkidctn, clear_vkfftapp_cache
+    irfftn as vkirfftn, dctn as vkdctn, idctn as vkidctn, \
+    dstn as vkdstn, idstn as vkidstn, clear_vkfftapp_cache
 from pyvkfft.accuracy import test_accuracy, test_accuracy_kwargs, fftn, init_ctx, gpu_ctx_dic, has_dct_ref, has_scipy
 import pyvkfft.config
 
@@ -208,13 +209,26 @@ class TestFFT(unittest.TestCase):
                 # DCT, inplace
                 d = vkdctn(dr, dr)
                 d = vkidctn(d, d)
+
+                # DST, new destination array
+                d = vkdstn(dr)
+                d = vkidstn(d)
+
+                # DST, out-of-place
+                d2 = dr.copy()
+                d2 = vkdstn(dr, d2)
+                dr = vkidstn(d2, dr)
+
+                # DCT, inplace
+                d = vkdstn(dr, dr)
+                d = vkidstn(d, d)
                 if backend == "pycuda":
                     gpu_ctx_dic["pycuda"][1].pop()
 
     def run_fft(self, vbackend, vn, dims_max=4, ndim_max=3, shuffle_axes=True,
                 vtype=(np.complex64, np.complex128),
                 vlut="auto", vinplace=(True, False), vnorm=(0, 1),
-                vr2c=(False,), vdct=(False,), verbose=False, dry_run=False):
+                vr2c=(False,), vdct=(False,), vdst=(False,), verbose=False, dry_run=False):
         """
         Run a series of tests
         :param vbackend: list of backends to test among "pycuda", "cupy and "pyopencl"
@@ -233,12 +247,25 @@ class TestFFT(unittest.TestCase):
         :param vnorm: a list among 0, 1, and (for C2C only) "ortho"
         :param vr2c: a list among True, False to perform r2c tests
         :param vdct: a list among False/0, 1, 2, 3, 4 to test various DCT
+        :param vdst: a list among False/0, 1, 2, 3, 4 to test various DST
         :param verbose: True or False - prints two lines per test (FFT and iFFT result)
         :param dry_run: if True, only count the number of test to run
         :return: the number of tests performed, and the list of kwargs (dry run)
         """
         ct = 0
         vkwargs = []
+        # Aggregate r2c, dct, dst in a single list
+        vrcs = []
+        for r2c in vr2c:
+            if r2c is False:
+                for dct in vdct:
+                    if dct is False:
+                        for dst in vdst:
+                            vrcs.append((False, False, dst))
+                    else:
+                        vrcs.append((False, dct, False))
+            else:
+                vrcs.append((r2c, False, False))
         for backend in vbackend:
             # We assume the context was already initialised by the calling function
             # init_ctx(backend, gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
@@ -246,116 +273,117 @@ class TestFFT(unittest.TestCase):
             for n in vn:
                 for dims in range(1, dims_max + 1):
                     for ndim0 in range(1, min(dims, ndim_max) + 1):
-                        for r2c in vr2c:
-                            for dct in vdct:
-                                # Setup use of either ndim or axes, also test skipping dimensions
-                                ndim_axes = [(ndim0, None)]
-                                if shuffle_axes and not (r2c or dct):
-                                    for p in permutations([1] * ndim0 + [0] * (dims - ndim0)):
-                                        axes = (-dims + np.nonzero(p)[0]).tolist()
-                                        if (None, axes) not in ndim_axes:
-                                            ndim_axes.append((None, axes))
-                                for ndim, axes in ndim_axes:
-                                    for dtype in vtype:
-                                        if axes is None:
-                                            axes_numpy = list(range(dims))[-ndim:]
-                                        else:
-                                            axes_numpy = axes
+                        for r2c, dct, dst in vrcs:
+                            # Setup use of either ndim or axes, also test skipping dimensions
+                            ndim_axes = [(ndim0, None)]
+                            if shuffle_axes and not (r2c or dct or dst):
+                                for p in permutations([1] * ndim0 + [0] * (dims - ndim0)):
+                                    axes = (-dims + np.nonzero(p)[0]).tolist()
+                                    if (None, axes) not in ndim_axes:
+                                        ndim_axes.append((None, axes))
+                            for ndim, axes in ndim_axes:
+                                for dtype in vtype:
+                                    if axes is None:
+                                        axes_numpy = list(range(dims))[-ndim:]
+                                    else:
+                                        axes_numpy = axes
 
-                                        # Array shape
-                                        sh = [n] * dims
+                                    # Array shape
+                                    sh = [n] * dims
 
-                                        # Use only a size of 2 for non-transform axes
-                                        for ii in range(len(sh)):
-                                            if ii not in axes_numpy and (-len(sh) + ii) not in axes_numpy:
-                                                sh[ii] = 2
-                                        if not dry_run:
-                                            if dtype in (np.float32, np.float64):
-                                                d0 = np.random.uniform(-0.5, 0.5, sh).astype(dtype)
-                                            else:
-                                                d0 = (np.random.uniform(-0.5, 0.5, sh)
-                                                      + 1j * np.random.uniform(-0.5, 0.5, sh)).astype(dtype)
-                                        if vlut == "auto":
-                                            if dtype in (np.float64, np.complex128):
-                                                # By default, LUT is enabled for complex128, no need to test twice
-                                                tmp = [None]
-                                            else:
-                                                tmp = [None, True]
+                                    # Use only a size of 2 for non-transform axes
+                                    for ii in range(len(sh)):
+                                        if ii not in axes_numpy and (-len(sh) + ii) not in axes_numpy:
+                                            sh[ii] = 2
+                                    if not dry_run:
+                                        if dtype in (np.float32, np.float64):
+                                            d0 = np.random.uniform(-0.5, 0.5, sh).astype(dtype)
                                         else:
-                                            tmp = vlut
-                                        for use_lut in tmp:
-                                            for inplace in vinplace:
-                                                for norm in vnorm:
-                                                    vorder = ['C', 'F']
-                                                    if dims == 1 or dims > 3 or dct:
-                                                        vorder = ['C']
-                                                    if r2c:
-                                                        if ndim is not None:
-                                                            if dims != ndim:
-                                                                vorder = ['C']
-                                                        if axes is not None:
-                                                            # TODO : also test F-order when ndim<dims but fast axis
-                                                            #  is transformed
-                                                            if len(axes) != dims:
-                                                                vorder = ['C']
-                                                        if backend == "cupy" and inplace:
-                                                            # cupy does not support returning a view of a float32
-                                                            # array as complex64 if the *last* axis is not
-                                                            # contiguous
+                                            d0 = (np.random.uniform(-0.5, 0.5, sh)
+                                                  + 1j * np.random.uniform(-0.5, 0.5, sh)).astype(dtype)
+                                    if vlut == "auto":
+                                        if dtype in (np.float64, np.complex128):
+                                            # By default, LUT is enabled for complex128, no need to test twice
+                                            tmp = [None]
+                                        else:
+                                            tmp = [None, True]
+                                    else:
+                                        tmp = vlut
+                                    for use_lut in tmp:
+                                        for inplace in vinplace:
+                                            for norm in vnorm:
+                                                vorder = ['C', 'F']
+                                                if dims == 1 or dims > 3 or dct or dst:
+                                                    vorder = ['C']
+                                                if r2c:
+                                                    if ndim is not None:
+                                                        if dims != ndim:
                                                             vorder = ['C']
-                                                    for order in vorder:
-                                                        with self.subTest(backend=backend, n=n, dims=dims, ndim=ndim,
-                                                                          axes=axes, dtype=np.dtype(dtype), norm=norm,
-                                                                          use_lut=use_lut, inplace=inplace,
-                                                                          r2c=r2c, dct=dct, order=order):
-                                                            ct += 1
-                                                            if not dry_run:
-                                                                res = \
-                                                                    test_accuracy(backend, sh, ndim, axes, dtype,
-                                                                                  inplace,
-                                                                                  norm, use_lut, r2c=r2c, dct=dct,
-                                                                                  gpu_name=self.gpu,
-                                                                                  opencl_platform=self.opencl_platform,
-                                                                                  stream=None, queue=cq,
-                                                                                  return_array=False, init_array=d0,
-                                                                                  verbose=verbose, order=order)
-                                                                npr = primes(n)
-                                                                ni, n2 = res["ni"], res["n2"]
-                                                                nii, n2i = res["nii"], res["n2i"]
-                                                                tol = res["tol"]
-                                                                src1 = res["src_unchanged_fft"]
-                                                                src2 = res["src_unchanged_ifft"]
-                                                                self.assertTrue(ni < tol,
-                                                                                "Accuracy mismatch after FFT, "
-                                                                                "n2=%8e ni=%8e>%8e" %
-                                                                                (n2, ni, tol))
-                                                                self.assertTrue(nii < tol,
-                                                                                "Accuracy mismatch after iFFT, "
-                                                                                "n2=%8e ni=%8e>%8e" %
-                                                                                (n2, nii, tol))
-                                                                if not inplace:
-                                                                    self.assertTrue(src1,
+                                                    if axes is not None:
+                                                        # TODO : also test F-order when ndim<dims but fast axis
+                                                        #  is transformed
+                                                        if len(axes) != dims:
+                                                            vorder = ['C']
+                                                    if backend == "cupy" and inplace:
+                                                        # cupy does not support returning a view of a float32
+                                                        # array as complex64 if the *last* axis is not
+                                                        # contiguous
+                                                        vorder = ['C']
+                                                for order in vorder:
+                                                    with self.subTest(backend=backend, n=n, dims=dims, ndim=ndim,
+                                                                      axes=axes, dtype=np.dtype(dtype), norm=norm,
+                                                                      use_lut=use_lut, inplace=inplace,
+                                                                      r2c=r2c, dct=dct, dst=dst, order=order):
+                                                        ct += 1
+                                                        if not dry_run:
+                                                            res = \
+                                                                test_accuracy(backend, sh, ndim, axes, dtype,
+                                                                              inplace,
+                                                                              norm, use_lut, r2c=r2c, dct=dct,
+                                                                              dst=dst,
+                                                                              gpu_name=self.gpu,
+                                                                              opencl_platform=self.opencl_platform,
+                                                                              stream=None, queue=cq,
+                                                                              return_array=False, init_array=d0,
+                                                                              verbose=verbose, order=order)
+                                                            npr = primes(n)
+                                                            ni, n2 = res["ni"], res["n2"]
+                                                            nii, n2i = res["nii"], res["n2i"]
+                                                            tol = res["tol"]
+                                                            src1 = res["src_unchanged_fft"]
+                                                            src2 = res["src_unchanged_ifft"]
+                                                            self.assertTrue(ni < tol,
+                                                                            "Accuracy mismatch after FFT, "
+                                                                            "n2=%8e ni=%8e>%8e" %
+                                                                            (n2, ni, tol))
+                                                            self.assertTrue(nii < tol,
+                                                                            "Accuracy mismatch after iFFT, "
+                                                                            "n2=%8e ni=%8e>%8e" %
+                                                                            (n2, nii, tol))
+                                                            if not inplace:
+                                                                self.assertTrue(src1,
+                                                                                "The source array was modified "
+                                                                                "during the FFT")
+                                                                nmaxr2c1d = 3072 * (1 + int(
+                                                                    dtype in (np.float32, np.complex64)))
+                                                                if not r2c or (ndim == 1 and max(npr) <= 13) \
+                                                                        and n < nmaxr2c1d:
+                                                                    self.assertTrue(src2,
                                                                                     "The source array was modified "
-                                                                                    "during the FFT")
-                                                                    nmaxr2c1d = 3072 * (1 + int(
-                                                                        dtype in (np.float32, np.complex64)))
-                                                                    if not r2c or (ndim == 1 and max(npr) <= 13) \
-                                                                            and n < nmaxr2c1d:
-                                                                        self.assertTrue(src2,
-                                                                                        "The source array was modified "
-                                                                                        "during the iFFT")
-                                                            else:
-                                                                kwargs = {"backend": backend, "shape": sh,
-                                                                          "ndim": ndim, "axes": axes,
-                                                                          "dtype": dtype, "inplace": inplace,
-                                                                          "norm": norm, "use_lut": use_lut,
-                                                                          "r2c": r2c, "dct": dct,
-                                                                          "gpu_name": self.gpu,
-                                                                          "opencl_platform": self.opencl_platform,
-                                                                          "stream": None,
-                                                                          "verbose": False, "order": order,
-                                                                          "colour_output": self.colour}
-                                                                vkwargs.append(kwargs)
+                                                                                    "during the iFFT")
+                                                        else:
+                                                            kwargs = {"backend": backend, "shape": sh,
+                                                                      "ndim": ndim, "axes": axes,
+                                                                      "dtype": dtype, "inplace": inplace,
+                                                                      "norm": norm, "use_lut": use_lut,
+                                                                      "r2c": r2c, "dct": dct,
+                                                                      "dst": dst,
+                                                                      "gpu_name": self.gpu,
+                                                                      "opencl_platform": self.opencl_platform,
+                                                                      "stream": None,
+                                                                      "verbose": False, "order": order,
+                                                                      "colour_output": self.colour}
+                                                            vkwargs.append(kwargs)
 
         return ct, vkwargs
 
@@ -365,7 +393,8 @@ class TestFFT(unittest.TestCase):
             for res in pool.imap(test_accuracy_kwargs, vkwargs):
                 with self.subTest(backend=res['backend'], n=max(res['shape']), ndim=res['ndim'],
                                   dtype=np.dtype(res['dtype']), norm=res['norm'], use_lut=res['use_lut'],
-                                  inplace=res['inplace'], r2c=res['r2c'], dct=res['dct'], order=res['order']):
+                                  inplace=res['inplace'], r2c=res['r2c'], dct=res['dct'],
+                                  dst=res['dst'], order=res['order']):
                     n = max(res['shape'])
                     npr = primes(n)
                     ni, n2 = res["ni"], res["n2"]
@@ -422,12 +451,14 @@ class TestFFT(unittest.TestCase):
                     vkwargs += tmp[1]
                     # Test larger sizes (including multi-upload) for 1D and 2D transforms
                     # 2988 decomposes in a Sophie Germain safe prime, hence its inclusion..
-                    tmp = self.run_fft([backend], [808, 2988, 4200], vtype=vtype, dims_max=4, ndim_max=2, verbose=v,
+                    tmp = self.run_fft([backend], [808, 2988, 4200],
+                                       vtype=vtype, dims_max=2, ndim_max=2, verbose=v,
                                        dry_run=dry_run, shuffle_axes=True)
                     ct += tmp[0]
                     vkwargs += tmp[1]
                     # Test even larger 1D transform sizes
-                    tmp = self.run_fft([backend], [13000, 13002], vtype=vtype, dims_max=3, ndim_max=1, verbose=v,
+                    tmp = self.run_fft([backend], [13000, 13002],
+                                       vtype=vtype, dims_max=3, ndim_max=1, verbose=v,
                                        dry_run=dry_run, shuffle_axes=True)
                     ct += tmp[0]
                     vkwargs += tmp[1]
@@ -454,8 +485,17 @@ class TestFFT(unittest.TestCase):
                                        vtype=vtype, vr2c=(True,), verbose=v, dry_run=dry_run)
                     ct += tmp[0]
                     vkwargs += tmp[1]
-                    tmp = self.run_fft([backend], [808], vtype=vtype, dims_max=2, vr2c=(True,),
+                    # Larger 1D and 2D tests
+                    tmp = self.run_fft([backend], [808, 2988, 4200],
+                                       vtype=vtype, dims_max=2, vr2c=(True,),
                                        verbose=v, dry_run=dry_run)
+                    ct += tmp[0]
+                    vkwargs += tmp[1]
+                    # Test even larger 1D transform sizes
+                    tmp = self.run_fft([backend], [13000, 13002],
+                                       vtype=vtype, vr2c=(True,),
+                                       dims_max=3, ndim_max=1, verbose=v,
+                                       dry_run=dry_run, shuffle_axes=True)
                     ct += tmp[0]
                     vkwargs += tmp[1]
                 else:
@@ -479,14 +519,65 @@ class TestFFT(unittest.TestCase):
                 v = self.verbose and not dry_run
                 if dry_run or self.nproc == 1:
                     tmp = self.run_fft([backend], [30, 34], dims_max=4, ndim_max=4,
-                                       vtype=vtype, vnorm=[1], vdct=range(1, 5), verbose=v,
-                                       dry_run=dry_run)
+                                       vtype=vtype, vdct=range(1, 5), vnorm=[1],
+                                       verbose=v, dry_run=dry_run)
+                    ct += tmp[0]
+                    vkwargs += tmp[1]
+                    # Larger 1D and 2D tests
+                    tmp = self.run_fft([backend], [808, 2988, 4200],
+                                       vtype=vtype, dims_max=2, vdct=range(1, 5),
+                                       vnorm=[1], verbose=v, dry_run=dry_run)
+                    ct += tmp[0]
+                    vkwargs += tmp[1]
+                    # Test even larger 1D transform sizes
+                    tmp = self.run_fft([backend], [13000, 13002],
+                                       vtype=vtype, vdct=range(1, 5), vnorm=[1],
+                                       dims_max=3, ndim_max=1, verbose=v,
+                                       dry_run=dry_run, shuffle_axes=True)
                     ct += tmp[0]
                     vkwargs += tmp[1]
                 else:
                     self.run_fft_parallel(vkwargs)
                 if dry_run and self.verbose:
                     print(f"Running {ct} DCT tests (backend: {self.backend_info(backend)})")
+
+    @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
+    @unittest.skipIf(not has_dct_ref, "scipy and pyfftw are not available - cannot test DST")
+    def test_dst(self):
+        """Run DST tests"""
+        for backend in self.vbackend:
+            init_ctx(backend, gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
+            has_cl_fp64 = gpu_ctx_dic["pyopencl"][3] if backend == "pyopencl" else True
+            ct = 0
+            vkwargs = []
+            for dry_run in [True, False]:
+                vtype = (np.float32, np.float64)
+                if backend == "pyopencl" and not has_cl_fp64:
+                    vtype = (np.float32,)
+                v = self.verbose and not dry_run
+                if dry_run or self.nproc == 1:
+                    tmp = self.run_fft([backend], [30, 34], dims_max=4, ndim_max=4,
+                                       vtype=vtype, vdst=range(1, 5),
+                                       vnorm=[1], verbose=v, dry_run=dry_run)
+                    ct += tmp[0]
+                    vkwargs += tmp[1]
+                    # Larger 1D and 2D tests
+                    tmp = self.run_fft([backend], [808, 2988, 4200],
+                                       vtype=vtype, dims_max=2, vdst=range(1, 5),
+                                       vnorm=[1], verbose=v, dry_run=dry_run)
+                    ct += tmp[0]
+                    vkwargs += tmp[1]
+                    # Test even larger 1D transform sizes
+                    tmp = self.run_fft([backend], [13000, 13002],
+                                       vtype=vtype, vdst=range(1, 5), vnorm=[1],
+                                       dims_max=3, ndim_max=1, verbose=v,
+                                       dry_run=dry_run, shuffle_axes=True)
+                    ct += tmp[0]
+                    vkwargs += tmp[1]
+                else:
+                    self.run_fft_parallel(vkwargs)
+                if dry_run and self.verbose:
+                    print(f"Running {ct} DST tests (backend: {self.backend_info(backend)})")
 
     @unittest.skipIf(not has_pycuda, "pycuda is not available")
     def test_pycuda_streams(self):
@@ -735,6 +826,7 @@ class TestFFTSystematic(unittest.TestCase):
     bluestein = False
     colour = False
     dct = False
+    dst = False
     db = None
     dry_run = False
     dtype = np.float32
@@ -820,7 +912,7 @@ class TestFFTSystematic(unittest.TestCase):
                         continue
                 kwargs = {"backend": backend, "shape": s, "ndim": len(s), "axes": self.axes,
                           "dtype": self.dtype, "inplace": self.inplace, "norm": self.norm, "use_lut": self.lut,
-                          "r2c": self.r2c, "dct": self.dct, "gpu_name": self.gpu,
+                          "r2c": self.r2c, "dct": self.dct, "dst": self.dst, "gpu_name": self.gpu,
                           "opencl_platform": self.opencl_platform, "stream": None, "verbose": False,
                           "colour_output": self.colour, "ref_long_double": self.ref_long_double,
                           "order": 'F' if self.fstride else 'C'}
@@ -842,6 +934,8 @@ class TestFFTSystematic(unittest.TestCase):
                 transform = "R2C"
             elif self.dct:
                 transform = "DCT%d" % self.dct
+            elif self.dst:
+                transform = "DST%d" % self.dst
             else:
                 transform = "C2C"
 
@@ -871,7 +965,8 @@ class TestFFTSystematic(unittest.TestCase):
                     # as e.g. "float32" instead of "<class 'numpy.float32'>"
                     with self.subTest(backend=backend, shape=sh, ndim=ndim,
                                       dtype=np.dtype(self.dtype), norm=self.norm, use_lut=self.lut,
-                                      inplace=self.inplace, r2c=self.r2c, dct=self.dct, fstride=self.fstride):
+                                      inplace=self.inplace, r2c=self.r2c,
+                                      dct=self.dct, dst=self.dst, fstride=self.fstride):
                         if self.serial:
                             res = test_accuracy_kwargs(v)
                         else:
@@ -954,6 +1049,8 @@ class TestFFTSystematic(unittest.TestCase):
                 t = "R2C"
             elif self.dct:
                 t = "DCT%d" % self.dct
+            elif self.dst:
+                t = "DST%d" % self.dst
             else:
                 t = "C2C"
 

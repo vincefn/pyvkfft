@@ -5,7 +5,8 @@
 #       authors:
 #         Vincent Favre-Nicolin, favre@esrf.fr
 
-__all__ = ['fftn', 'ifftn', 'rfftn', 'irfftn', 'vkfft_version', 'clear_vkfftapp_cache',
+__all__ = ['fftn', 'ifftn', 'rfftn', 'irfftn', 'dctn', 'idctn', 'dstn', 'idstn',
+           'vkfft_version', 'clear_vkfftapp_cache',
            'has_pycuda', 'has_opencl', 'has_cupy']
 
 from enum import Enum
@@ -193,6 +194,22 @@ def _get_dct_app(backend, shape, dtype, inplace, ndim, norm, dct_type,
     elif backend == Backend.PYOPENCL:
         return VkFFTApp_cl(shape, dtype, cl_queue, ndim=ndim, inplace=inplace,
                            norm=norm, dct=dct_type,
+                           tune_config=tune_config)
+
+
+@lru_cache(maxsize=config.FFT_CACHE_NB)
+def _get_dst_app(backend, shape, dtype, inplace, ndim, norm, dst_type,
+                 cuda_stream, cl_queue, devctx, tune=False):
+    del devctx  # Variable is just used for proper lru_cache
+    sback = {Backend.PYCUDA: 'pycuda', Backend.CUPY: 'cupy', Backend.PYOPENCL: 'pyopencl'}[backend]
+    tune_config = {'backend': sback} if tune else None
+    if backend in [Backend.PYCUDA, Backend.CUPY]:
+        return VkFFTApp_cuda(shape, dtype, ndim=ndim, inplace=inplace,
+                             stream=cuda_stream, norm=norm, dst=dst_type,
+                             tune_config=tune_config)
+    elif backend == Backend.PYOPENCL:
+        return VkFFTApp_cl(shape, dtype, cl_queue, ndim=ndim, inplace=inplace,
+                           norm=norm, dst=dst_type,
                            tune_config=tune_config)
 
 
@@ -483,6 +500,86 @@ def idctn(src, dest=None, ndim=None, norm=1, dct_type=2, cuda_stream=None, cl_qu
     backend, inplace, dest, cl_queue, cuda_stream, devctx = _prepare_transform(src, dest, cl_queue, cuda_stream, False)
     app = _get_dct_app(backend, src.shape, src.dtype, inplace, ndim, norm,
                        dct_type, cuda_stream, cl_queue, devctx, tune=tune)
+    if backend == Backend.PYOPENCL:
+        app.ifft(src, dest, queue=cl_queue)
+    else:
+        app.ifft(src, dest)
+    return dest
+
+
+def dstn(src, dest=None, ndim=None, norm=1, dst_type=2, cuda_stream=None, cl_queue=None, tune=False):
+    """
+    Perform a real->real Direct Cosine Transform on a GPU array, automatically
+    creating the VkFFTApp and caching it for future re-use.
+
+    :param src: the source pycuda.gpuarray.GPUArray or cupy.ndarray
+    :param dest: the destination GPU array. If None, a new GPU array will
+        be created and returned (using the source array allocator
+        (pycuda, pyopencl) if available).
+        If dest is the same array as src, an inplace transform is done.
+    :param ndim: the number of dimensions (<=3) to use for the FFT. By default,
+        uses the array dimensions. Can be smaller, e.g. ndim=2 for a 3D
+        array to perform a batched 3D FFT on all the layers. The FFT
+        is always performed along the last axes if the array's number
+        of dimension is larger than ndim, i.e. on the x-axis for ndim=1,
+        on the x and y axes for ndim=2.
+    :param norm: normalisation mode, either 0 (un-normalised) or
+        1 (the default, also available as "backward) which will normalise
+        the inverse transform, so DST+iDST will keep the array norm.
+    :param dst_type: the type of dst desired: 1, 2 (default), 3 or 4
+    :param cuda_stream: the pycuda.driver.Stream or cupy.cuda.Stream to use
+        for the transform. If None, the default one will be used
+    :param cl_queue: the pyopencl.CommandQueue to be used. If None,
+        the source array default queue will be used
+    :param tune: if True, will activate the automatic tuning of VkFFT
+        parameters to maximise the FT throughput. This uses a quick
+        approach testing a few transforms (about 4) before choosing the
+        optimal parameters. This is similar to FFTW's FFTW_MEASURE approach.
+    :return: the destination array.
+    """
+    backend, inplace, dest, cl_queue, cuda_stream, devctx = _prepare_transform(src, dest, cl_queue, cuda_stream, False)
+    app = _get_dst_app(backend, src.shape, src.dtype, inplace, ndim, norm,
+                       dst_type, cuda_stream, cl_queue, devctx, tune=tune)
+    if backend == Backend.PYOPENCL:
+        app.fft(src, dest, queue=cl_queue)
+    else:
+        app.fft(src, dest)
+    return dest
+
+
+def idstn(src, dest=None, ndim=None, norm=1, dst_type=2, cuda_stream=None, cl_queue=None, tune=False):
+    """
+    Perform a real->real inverse Direct Cosine Transform on a GPU array,
+    automatically creating the VkFFTApp and caching it for future re-use.
+
+    :param src: the source pycuda.gpuarray.GPUArray or cupy.ndarray
+    :param dest: the destination GPU array. If None, a new GPU array will
+        be created and returned (using the source array allocator
+        (pycuda, pyopencl) if available).
+        If dest is the same array as src, an inplace transform is done.
+    :param ndim: the number of dimensions (<=3) to use for the FFT. By default,
+        uses the array dimensions. Can be smaller, e.g. ndim=2 for a 3D
+        array to perform a batched 3D FFT on all the layers. The FFT
+        is always performed along the last axes if the array's number
+        of dimension is larger than ndim, i.e. on the x-axis for ndim=1,
+        on the x and y axes for ndim=2.
+    :param norm: normalisation mode, either 0 (un-normalised) or
+        1 (the default, also available as "backward) which will normalise
+        the inverse transform, so DST+iDST will keep the array norm.
+    :param dst_type: the type of dst desired: 2 (default), 3 or 4
+    :param cuda_stream: the pycuda.driver.Stream or cupy.cuda.Stream to use
+        for the transform. If None, the default one will be used
+    :param cl_queue: the pyopencl.CommandQueue to be used. If None,
+        the source array default queue will be used
+    :param tune: if True, will activate the automatic tuning of VkFFT
+        parameters to maximise the FT throughput. This uses a quick
+        approach testing a few transforms (about 4) before choosing the
+        optimal parameters. This is similar to FFTW's FFTW_MEASURE approach.
+    :return: the destination array.
+    """
+    backend, inplace, dest, cl_queue, cuda_stream, devctx = _prepare_transform(src, dest, cl_queue, cuda_stream, False)
+    app = _get_dst_app(backend, src.shape, src.dtype, inplace, ndim, norm,
+                       dst_type, cuda_stream, cl_queue, devctx, tune=tune)
     if backend == Backend.PYOPENCL:
         app.ifft(src, dest, queue=cl_queue)
     else:

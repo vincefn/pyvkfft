@@ -21,7 +21,7 @@ from pyvkfft.base import primes
 
 try:
     # We prefer scipy over numpy for fft, and we can also test dct
-    from scipy.fft import dctn, idctn, fftn, ifftn, rfftn, irfftn
+    from scipy.fft import dctn, idctn, fftn, ifftn, rfftn, irfftn, dstn, idstn
 
     has_dct_ref = True
     has_scipy = True
@@ -165,7 +165,8 @@ def li(a, b):
     return abs(a - b).max() / abs(a).max()
 
 
-def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c=False, dct=False,
+def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
+                  r2c=False, dct=False, dst=False,
                   gpu_name=None, opencl_platform=None, stream=None, queue=None, return_array=False,
                   init_array=None, verbose=False, colour_output=False, ref_long_double=True, order='C'):
     """
@@ -186,6 +187,8 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
     :param r2c: if True, test an r2c transform. If inplace, the last dimension
         (x, fastest axis) must be even
     :param dct: either 1, 2, 3 or 4 to test different dct. Only norm=1 is can be
+        tested (native scipy normalisation).
+    :param dst: either 1, 2, 3 or 4 to test different dst. Only norm=1 is can be
         tested (native scipy normalisation).
     :param gpu_name: the name of the gpu to use. If None, the first available
         for the backend will be used.
@@ -244,9 +247,9 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         dtype = np.complex128
         dtypef = np.float64
 
-    if dct:
+    if dct or dst:
         if norm != 1:
-            raise RuntimeError("test_accuracy: only norm=1 can be used with dct")
+            raise RuntimeError("test_accuracy: only norm=1 can be used with dct or dst")
     if r2c:
         if inplace:
             # Add two extra columns in the source array
@@ -277,12 +280,12 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
                     d0[:-2] = init_array
             else:
                 d0 = init_array.astype(dtypef)
-        elif dct:
+        elif dct or dst:
             d0 = init_array.astype(dtypef)
         else:
             d0 = init_array.astype(dtype)
     else:
-        if r2c or dct:
+        if r2c or dct or dst:
             d0 = np.random.uniform(-0.5, 0.5, shape).astype(dtypef)
         else:
             d0 = (np.random.uniform(-0.5, 0.5, shape) + 1j * np.random.uniform(-0.5, 0.5, shape)).astype(dtype)
@@ -294,7 +297,8 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
 
     if 'opencl' in backend:
         app = clVkFFTApp(d0.shape, d0.dtype, queue, ndim=ndim, norm=norm,
-                         axes=axes, useLUT=use_lut, inplace=inplace, r2c=r2c, dct=dct, strides=d0.strides)
+                         axes=axes, useLUT=use_lut, inplace=inplace,
+                         r2c=r2c, dct=dct, dst=dst, strides=d0.strides)
         t2 = timeit.default_timer()
         d_gpu = cla.to_device(queue, d0)
         empty_like = cla.empty_like
@@ -307,7 +311,8 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
             empty_like = cp.empty_like
 
         app = cuVkFFTApp(d0.shape, d0.dtype, ndim=ndim, norm=norm, axes=axes,
-                         useLUT=use_lut, inplace=inplace, r2c=r2c, dct=dct, strides=d0.strides, stream=stream)
+                         useLUT=use_lut, inplace=inplace, r2c=r2c,
+                         dct=dct, dst=dst, strides=d0.strides, stream=stream)
         t2 = timeit.default_timer()
         d_gpu = to_gpu(d0)
 
@@ -332,7 +337,7 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         # if order != 'C':
         #     print("R2C", ndims, ndim, shape, axes, axes_numpy, fast_axis, inplace)
 
-    # base FFT scale for numpy (not used for DCT)
+    # base FFT scale for numpy (not used for DCT/DST)
     s = np.sqrt(np.prod([d0.shape[i] for i in axes_numpy]))
     if r2c and inplace:
         s = np.sqrt(s ** 2 / d0.shape[fast_axis] * (d0.shape[fast_axis] - 2))
@@ -365,7 +370,7 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
 
     if has_scipy and ref_long_double:
         # Use long double precision
-        if r2c or dct:
+        if r2c or dct or dst:
             d0n = d0.astype(np.longdouble)
         else:
             d0n = d0.astype(np.clongdouble)
@@ -373,7 +378,7 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         d0n = d0
 
     d1_gpu = app.fft(d_gpu, d1_gpu)
-    if not dct:
+    if not (dct or dst):
         d1_gpu *= app.get_fft_scale()
 
     if r2c:
@@ -384,6 +389,8 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
             d = rfftn(d0n, axes=axes_numpy) / s
     elif dct:
         d = dctn(d0n, axes=axes_numpy, type=dct)
+    elif dst:
+        d = dstn(d0n, axes=axes_numpy, type=dst)
     else:
         d = fftn(d0n, axes=axes_numpy) / s
 
@@ -399,6 +406,8 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
         t = "R2C"
     elif dct:
         t = "DCT%d" % dct
+    elif dst:
+        t = "DST%d" % dst
     else:
         t = "C2C"
     if r2c and inplace:
@@ -474,18 +483,20 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
             d1_gpu = empty_like(d_gpu)
 
     d1_gpu = app.ifft(d_gpu, d1_gpu)
-    if not dct:
+    if not (dct or dst):
         d1_gpu *= app.get_ifft_scale()
 
     if r2c:
         d = irfftn(d0n, axes=axes_numpy) * s
     elif dct:
         d = idctn(d0n, axes=axes_numpy, type=dct)
+    elif dst:
+        d = idstn(d0n, axes=axes_numpy, type=dst)
     else:
         d = ifftn(d0n, axes=axes_numpy) * s
 
     if inplace:
-        if dct or r2c:
+        if dct or dst or r2c:
             assert d1_gpu.dtype == dtypef, "The array type is incorrect after an inplace iFFT"
         else:
             assert d1_gpu.dtype == dtype, "The array type is incorrect after an inplace iFFT"
@@ -532,7 +543,8 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut, r2c
            "dt_fft": t3 - t2, "dt_ifft": t4 - t3, "src_unchanged_fft": src_unchanged_fft,
            "src_unchanged_ifft": src_unchanged_ifft, "tol_test": max(ni, nii) < tol, "str": verb_out,
            "backend": backend, "shape": shape0, "ndim": ndim, "axes": axes, "dtype": dtype0, "inplace": inplace,
-           "norm": norm, "use_lut": use_lut, "r2c": r2c, "dct": dct, "gpu_name": gpu_name, "order": order}
+           "norm": norm, "use_lut": use_lut, "r2c": r2c, "dct": dct, "dst": dst,
+           "gpu_name": gpu_name, "order": order}
 
     if return_array:
         res["d0"] = d0
@@ -555,7 +567,8 @@ def test_accuracy_kwargs(kwargs):
     return test_accuracy(**kwargs)
 
 
-def exhaustive_test(backend, vn, ndim, dtype, inplace, norm, use_lut, r2c=False, dct=False, nproc=None,
+def exhaustive_test(backend, vn, ndim, dtype, inplace, norm, use_lut, r2c=False,
+                    dct=False, dst=False, nproc=None,
                     verbose=True, return_res=False):
     """
     Run tests on a large range of sizes using multiprocessing. Manual function.
@@ -563,7 +576,7 @@ def exhaustive_test(backend, vn, ndim, dtype, inplace, norm, use_lut, r2c=False,
     :param backend: either 'pyopencl', 'pycuda' or 'cupy'
     :param vn: the list/iterable of sizes n.
     :param ndim: the number of dimensions. The array shape will be [n]*ndim
-    :param dtype: either np.complex64 or np.complex128, or np.float32/np.float64 for r2c & dct
+    :param dtype: either np.complex64 or np.complex128, or np.float32/np.float64 for r2c/dct/dst
     :param inplace: True or False
     :param norm: either 0, 1 or "ortho"
     :param use_lut: if True,1, False or 0, will trigger useLUT=1 or 0 for VkFFT.
@@ -572,6 +585,8 @@ def exhaustive_test(backend, vn, ndim, dtype, inplace, norm, use_lut, r2c=False,
     :param r2c: if True, test an r2c transform. If inplace, the last dimension
         (x, fastest axis) must be even
     :param dct: either 1, 2, 3 or 4 to test different dct. Only norm=1 is can be
+        tested (native scipy normalisation).
+    :param dst: either 1, 2, 3 or 4 to test different dst. Only norm=1 is can be
         tested (native scipy normalisation).
     :param nproc: the maximum number of parallel process to use. If None, the
         number of detected cores will be used (this may use too much memory !)
@@ -594,7 +609,8 @@ def exhaustive_test(backend, vn, ndim, dtype, inplace, norm, use_lut, r2c=False,
     vkwargs = []
     for n in vn:
         kwargs = {"backend": backend, "shape": [n] * ndim, "ndim": ndim, "axes": None, "dtype": dtype,
-                  "inplace": inplace, "norm": norm, "use_lut": use_lut, "r2c": r2c, "dct": dct, "stream": None,
+                  "inplace": inplace, "norm": norm, "use_lut": use_lut,
+                  "r2c": r2c, "dct": dct, "dst": dst, "stream": None,
                   "verbose": False}
         vkwargs.append(kwargs)
     vok = []

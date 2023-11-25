@@ -51,7 +51,7 @@ def make_parser():
                         help="Name (or sub-string) of the opencl platform to use (case-insensitive)")
     parser.add_argument('--transform', action='store', nargs='+',
                         help="Transforms to test (defaults to all)",
-                        default=['c2c', 'r2c', 'dct'], choices=['c2c', 'r2c', 'dct'])
+                        default=['c2c', 'r2c', 'dct', 'dst'], choices=['c2c', 'r2c', 'dct', 'dst'])
     parser.add_argument('--radix', action='store_true',
                         help="Use this option to only test radix transforms")
     parser.add_argument('--single', action='store_true',
@@ -121,6 +121,9 @@ def main():
     if 'dct' in args.transform:
         for i in range(1, 4 + 1):
             vtransform.append(' --dct %d' % i)
+    if 'dst' in args.transform:
+        for i in range(1, 4 + 1):
+            vtransform.append(' --dst %d' % i)
     vnorm = [' --norm 1', ' --norm 0']
     vlut = ['', ' --lut']
     if args.single:
@@ -137,38 +140,16 @@ def main():
                         if ' --lut' in lut and 'double' in prec:
                             continue
                         for transform in vtransform:
-                            if 'dct' in transform and '0' in norm:
+                            if ('dct' in transform or 'dst' in transform) and '0' in norm:
                                 continue
                             for ndim in vdim:
-                                n1 = 3 if 'dct 4' in transform else 2
+                                n1 = 3 if ('dct 4' in transform or 'dst 4' in transform) else 2
                                 if ndim == 1:
-                                    if 'dct 1' in transform:
-                                        if platform.system() == 'Darwin':
-                                            n2 = 1024  # Apple M1
-                                        else:
-                                            n2 = 760 if 'double' in prec else 1500  # cuda: 767, 1535
-                                    elif 'dct' in transform:
-                                        if 'double' in prec:
-                                            n2 = 1500 if 'bluestein' in radix else 3071  # cuda: 1536, 3071
-                                        else:
-                                            if platform.system() == 'Darwin':
-                                                n2 = 2048 if 'bluestein' in radix else 4096  # Apple M1
-                                            else:
-                                                n2 = 3000 if 'bluestein' in radix else 4096  # cuda: 3071, 4096
-                                    else:
-                                        n2 = 100000 if 'radix' in radix else 10000
+                                    n2 = 100000 if 'radix' in radix else 10000
                                 elif ndim == 2:
-                                    if 'dct 1' in transform:
-                                        n2 = 512 if 'double' in prec else 1024
-                                    elif 'dct' in transform:
-                                        n2 = 1024 if 'bluestein' in radix and 'double' in prec else 2047
-                                    else:
-                                        n2 = 4500
+                                    n2 = 4500
                                 else:  # ndim==3
-                                    if 'dct' in transform:
-                                        n2 = 500
-                                    else:
-                                        n2 = 550
+                                    n2 = 550
                                 # Estimate maximum memory usage
                                 mem = n2 ** ndim * 8
                                 # Assume 48 or 64 KB of shared memory to see if Vkfft needs a temp buffer.
@@ -186,7 +167,7 @@ def main():
 
                                 if 'inplace' not in inplace:
                                     mem *= 2
-                                if 'dct' in transform or 'r2c' in transform:
+                                if 'dct' in transform or 'r2c' in transform or 'dst' in transform:
                                     mem /= 2
                                 mem += 200 * 1024 ** 2  # context memory
                                 nproc1 = gpumem // (mem / 1024 ** 3 * 1.5)
@@ -242,8 +223,6 @@ def main():
                   ]
 
     for transform in vtransform:
-        if 'dct' in transform:
-            continue
         norm = ' --norm 1'
         for radix, lut, inplace, prec, ndim, n1, n2, rn in v:
             mem = n2 ** ndim * 8
@@ -251,7 +230,7 @@ def main():
                 mem *= 2
             if 'inplace' not in inplace:
                 mem *= 2
-            if 'dct' in transform or 'r2c' in transform:
+            if 'dct' in transform or 'r2c' in transform or 'dst' in transform:
                 mem /= 2
             nproc1 = gpumem // (mem / 1024 ** 3 * 1.5)
             nproc = max(1, min(nproc1, nproc0))

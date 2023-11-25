@@ -278,13 +278,17 @@ def make_parser():
                              "given, pyvkfft-test.sql will be used. If the file already"
                              "exists, the results are added to the file. Fields stored"
                              "include HOSTNAME, EPOCH, BACKEND, LANGUAGE, TRANSFORM (c2c, r2c or "
-                             "dct1/2/3/4, AXES, ARRAY_SHAPE, NDIMS, NDIM, PRECISION, INPLACE,"
+                             "dct/dst1/2/3/4, AXES, ARRAY_SHAPE, NDIMS, NDIM, PRECISION, INPLACE,"
                              "NORM, LUT, N, N2_FFT, N2_IFFT, NI_FFT, NI_IFFT, TOLERANCE,"
                              "DT_APP, DT_FFT, DT_IFFT, SRC_UNCHANGED_FFT, SRC_UNCHANGED_IFFT, "
                              "GPU_NAME, SUCCESS, ERROR, VKFFT_ERROR_CODE")
     sysgrp.add_argument('--dct', nargs='*', action='store', type=int,
                         help="Test direct cosine transforms (default is c2c):"
                              " '--dct' (defaults to dct 2), '--dct 1'",
+                        choices=[1, 2, 3, 4])
+    sysgrp.add_argument('--dst', nargs='*', action='store', type=int,
+                        help="Test direct sine transforms (default is c2c):"
+                             " '--dst' (defaults to dst 2), '--dst 1'",
                         choices=[1, 2, 3, 4])
     sysgrp.add_argument('--double', action='store_true',
                         help="Use double precision (float64/complex128) instead of single")
@@ -321,7 +325,7 @@ def make_parser():
     #                          "as the transform (ndim)",
     #                     type=int, choices=[1, 2, 3, 4])
     sysgrp.add_argument('--norm', action='store', nargs=1, type=int,
-                        help="Normalisation to test (must be 1 for dct)",
+                        help="Normalisation to test (must be 1 for dct or dst)",
                         default=[1], choices=[0, 1])
     sysgrp.add_argument('--ref-long-double', action='store_true',
                         help="Use long double precision for the reference calculation, "
@@ -330,7 +334,7 @@ def make_parser():
     sysgrp.add_argument('--r2c', action='store_true', help="Test real-to-complex transform "
                                                            "(default is c2c)")
     sysgrp.add_argument('--fstride', action='store_true',
-                        help="Test F-ordered arrays (default is C-ordered). Not supported for DCT")
+                        help="Test F-ordered arrays (default is C-ordered). Not supported for DCT/DST")
     sysgrp.add_argument('--radix', action='store', nargs='*', type=int,
                         help="Perform only radix transforms. If no value is given, all available "
                              "radix transforms are allowed. Alternatively a list can be given: "
@@ -396,6 +400,7 @@ def main():
         t.bluestein = args.bluestein
         t.colour = args.colour
         t.dct = False if args.dct is None else args.dct[0] if len(args.dct) else 2
+        t.dst = False if args.dst is None else args.dst[0] if len(args.dst) else 2
         t.db = args.db[0] if args.db is not None else None
         t.dry_run = args.dry_run
         t.dtype = np.float64 if args.double else np.float32
@@ -420,7 +425,7 @@ def main():
         t.max_pow = None if args.radix_max_pow is None else args.radix_max_pow[0]
         t.range = args.range
         size_min_max = np.array(args.range_mb) * 1024 ** 2 // 8
-        if args.r2c or args.dct:
+        if args.r2c or args.dct or args.dst:
             size_min_max = size_min_max * 2
         if args.double:
             size_min_max = size_min_max / 2
@@ -501,8 +506,8 @@ def main():
                 tmp = '<td>%s</td>'
             if args.r2c:
                 html += tmp % 'R2C'
-            elif t.dct:
-                html += tmp % ('DCT%d' % t.dct)
+            elif t.dct or t.dst:
+                html += tmp % ('DCT%d' % t.dct) if t.dct else tmp % ('DST%d' % t.dst)
             else:
                 html += tmp % 'C2C'
             if t.ndim == 12:
@@ -537,7 +542,7 @@ def main():
             nbts = '[%5d tests]' % t.nb_test
         else:
             html += ''
-            html += '<td colspan="8">Regular multi-dimensional C2C/R2C/DCT test</td>'
+            html += '<td colspan="8">Regular multi-dimensional C2C/R2C/R2R test</td>'
             nbts = ''
 
         html += '<td>%s +%s %s</td>' % (time.strftime("%Y-%m-%d %Hh%M:%S", localt0),
