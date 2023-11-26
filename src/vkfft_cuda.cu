@@ -101,7 +101,7 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
   config->normalize = norm;
   config->performR2C = r2c;
   config->performDCT = dct;
-  config->performDCT = dst;
+  config->performDST = dst;
 
   if(disableReorderFourStep>=0)
     config->disableReorderFourStep = disableReorderFourStep;
