@@ -192,7 +192,7 @@ def make_parser():
              "   pyvkfft-test\n" \
              "      the regular test which tries the fft interface, using parallel\n" \
              "      streams (for pycuda), and C2C/R2C/DCT/DST transforms for sizes N=15,17,30,34\n" \
-             "      with 1, 2 and 3D transforms, also N=808,2988,4200 for 1D and 2D transforms\n"\
+             "      with 1, 2 and 3D transforms, also N=808,2988,4200 for 1D and 2D transforms\n" \
              "      and finally N=13000,13001,13002 just for 1D transforms.\n" \
              "      All tests are done with single and double precision, in and\n" \
              "      out-of-place, norm=0 and 1, and all available backends (pyopencl,\n" \
@@ -285,14 +285,14 @@ def make_parser():
                              "NORM, LUT, N, N2_FFT, N2_IFFT, NI_FFT, NI_IFFT, TOLERANCE,"
                              "DT_APP, DT_FFT, DT_IFFT, SRC_UNCHANGED_FFT, SRC_UNCHANGED_IFFT, "
                              "GPU_NAME, SUCCESS, ERROR, VKFFT_ERROR_CODE")
-    sysgrp.add_argument('--dct', nargs='*', action='store', type=int,
+    sysgrp.add_argument('--dct', nargs='?', action='store', type=int,
                         help="Test direct cosine transforms (default is c2c):"
                              " '--dct' (defaults to dct 2), '--dct 1'",
-                        choices=[1, 2, 3, 4])
-    sysgrp.add_argument('--dst', nargs='*', action='store', type=int,
+                        const=2, default=False, choices=[1, 2, 3, 4])
+    sysgrp.add_argument('--dst', nargs='?', action='store', type=int,
                         help="Test direct sine transforms (default is c2c):"
                              " '--dst' (defaults to dst 2), '--dst 1'",
-                        choices=[1, 2, 3, 4])
+                        const=2, default=False, choices=[1, 2, 3, 4])
     sysgrp.add_argument('--double', action='store_true',
                         help="Use double precision (float64/complex128) instead of single")
     sysgrp.add_argument('--dry-run', action='store_true',
@@ -401,8 +401,8 @@ def main():
         t.axes = args.axes
         t.bluestein = args.bluestein
         t.colour = args.colour
-        t.dct = False if args.dct is None else args.dct[0] if len(args.dct) else 2
-        t.dst = False if args.dst is None else args.dst[0] if len(args.dst) else 2
+        t.dct = args.dct
+        t.dst = args.dst
         t.db = args.db[0] if args.db is not None else None
         t.dry_run = args.dry_run
         t.dtype = np.float64 if args.double else np.float32
