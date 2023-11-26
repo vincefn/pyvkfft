@@ -251,14 +251,16 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
         if norm != 1:
             raise RuntimeError("test_accuracy: only norm=1 can be used with dct or dst")
     if r2c:
+        r2c_odd = shape[-1] % 2 == 1 if order == 'C' else shape[0] % 2 == 1
+        r2c_inplace_pad = 1 if r2c_odd else 2
         if inplace:
-            # Add two extra columns in the source array
+            # Add two (or one for an odd-sized fast axis) extra columns in the source array
             # so the transform has the desired shape
             shape = list(shape)
             if order == 'C':
-                shape[-1] += 2
+                shape[-1] += r2c_inplace_pad
             else:
-                shape[0] += 2
+                shape[0] += r2c_inplace_pad
         else:
             shapec = list(shape)
             if order == 'C':
@@ -267,6 +269,8 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
                 shapec[0] = shapec[-1] // 2 + 1
             shapec = tuple(shapec)
     else:
+        r2c_odd = None
+        r2c_inplace_pad = None
         shapec = tuple(shape)
     shape = tuple(shape)
 
@@ -275,9 +279,9 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
             if inplace:
                 d0 = np.empty(shape, dtype=dtypef)
                 if order == 'C':
-                    d0[..., :-2] = init_array
+                    d0[..., :-r2c_inplace_pad] = init_array
                 else:
-                    d0[:-2] = init_array
+                    d0[:-r2c_inplace_pad] = init_array
             else:
                 d0 = init_array.astype(dtypef)
         elif dct or dst:
@@ -298,7 +302,8 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
     if 'opencl' in backend:
         app = clVkFFTApp(d0.shape, d0.dtype, queue, ndim=ndim, norm=norm,
                          axes=axes, useLUT=use_lut, inplace=inplace,
-                         r2c=r2c, dct=dct, dst=dst, strides=d0.strides)
+                         r2c=r2c, dct=dct, dst=dst, strides=d0.strides,
+                         r2c_odd=r2c_odd)
         t2 = timeit.default_timer()
         d_gpu = cla.to_device(queue, d0)
         empty_like = cla.empty_like
@@ -312,7 +317,8 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
 
         app = cuVkFFTApp(d0.shape, d0.dtype, ndim=ndim, norm=norm, axes=axes,
                          useLUT=use_lut, inplace=inplace, r2c=r2c,
-                         dct=dct, dst=dst, strides=d0.strides, stream=stream)
+                         dct=dct, dst=dst, strides=d0.strides,
+                         r2c_odd=r2c_odd, stream=stream)
         t2 = timeit.default_timer()
         d_gpu = to_gpu(d0)
 
@@ -340,7 +346,7 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
     # base FFT scale for numpy (not used for DCT/DST)
     s = np.sqrt(np.prod([d0.shape[i] for i in axes_numpy]))
     if r2c and inplace:
-        s = np.sqrt(s ** 2 / d0.shape[fast_axis] * (d0.shape[fast_axis] - 2))
+        s = np.sqrt(s ** 2 / d0.shape[fast_axis] * (d0.shape[fast_axis] - r2c_inplace_pad))
 
     # Tolerance estimated from accuracy notebook
     if dtype in (np.complex64, np.float32):
@@ -352,8 +358,9 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
     bluestein = max(primes(n)) > 13
     if bluestein:
         tol *= 2
-
+    ############################################################
     # FFT
+    ############################################################
     if inplace:
         d1_gpu = d_gpu
     else:
@@ -383,8 +390,9 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
 
     if r2c:
         if inplace:
-            # Need to cut the fastest axis by 2
-            d = rfftn(np.take(d0n, range(d0n.shape[fast_axis] - 2), axis=fast_axis), axes=axes_numpy) / s
+            # Need to cut the fastest axis by 1 or 2
+            d = rfftn(np.take(d0n, range(d0n.shape[fast_axis] - r2c_inplace_pad),
+                              axis=fast_axis), axes=axes_numpy) / s
         else:
             d = rfftn(d0n, axes=axes_numpy) / s
     elif dct:
@@ -413,18 +421,18 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
     if r2c and inplace:
         tmp = list(d0.shape)
         if order == 'C':
-            tmp[-1] -= 2
+            tmp[-1] -= r2c_inplace_pad
             shstr = str(tuple(tmp)).replace(" ", "")
             if ",)" in shstr:
-                shstr = shstr.replace(",)", "+2)")
+                shstr = shstr.replace(",)", f"+{r2c_inplace_pad})")
             else:
-                shstr = shstr.replace(")", "+2)")
+                shstr = shstr.replace(")", f"+{r2c_inplace_pad})")
         else:
-            tmp[0] -= 2
+            tmp[0] -= r2c_inplace_pad
             if len(tmp) == 1:
-                shstr = "(%d+2)," % tmp[0]
+                shstr = f"({tmp[0]}+{r2c_inplace_pad}),"
             else:
-                shstr = "(%d+2," % tmp[0]
+                shstr = f"({tmp[0]}+{r2c_inplace_pad},"
                 shstr += str(tuple(tmp[1:])).replace(" ", "").replace(",)", ")")[1:]
     else:
         shstr = str(d0.shape).replace(" ", "")
@@ -451,7 +459,9 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
             # N parallel process so memory management  must be done manually
             mempool.free_all_blocks()
 
+    ############################################################
     # IFFT - from original array to avoid error propagation
+    ############################################################
     if r2c:
         # Exception: we need a proper half-Hermitian array
         d0 = d.astype(dtype)
@@ -487,7 +497,9 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
         d1_gpu *= app.get_ifft_scale()
 
     if r2c:
-        d = irfftn(d0n, axes=axes_numpy) * s
+        # We need to specify the destination shape, in the case
+        # we want an odd-sized fast axis
+        d = irfftn(d0n, s=[shape0[i] for i in axes_numpy], axes=axes_numpy) * s
     elif dct:
         d = idctn(d0n, axes=axes_numpy, type=dct)
     elif dst:
@@ -502,7 +514,7 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
             assert d1_gpu.dtype == dtype, "The array type is incorrect after an inplace iFFT"
 
     if r2c and inplace:
-        tmp = np.take(d1_gpu.get(), range(d1_gpu.shape[fast_axis] - 2), axis=fast_axis)
+        tmp = np.take(d1_gpu.get(), range(d1_gpu.shape[fast_axis] - r2c_inplace_pad), axis=fast_axis)
         n2i, nii = l2(d, tmp), li(d, tmp)
     else:
         n2i, nii = l2(d, d1_gpu.get()), li(d, d1_gpu.get())

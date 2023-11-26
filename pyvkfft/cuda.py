@@ -82,7 +82,8 @@ class VkFFTApp(VkFFTAppBase):
     """
 
     def __init__(self, shape, dtype: type, ndim=None, inplace=True, stream=None, norm=1,
-                 r2c=False, dct=False, dst=False, axes=None, strides=None, tune_config=None, **kwargs):
+                 r2c=False, dct=False, dst=False, axes=None, strides=None, tune_config=None,
+                 r2c_odd=False, **kwargs):
         """
 
         :param shape: the shape of the array to be transformed. The number
@@ -111,7 +112,8 @@ class VkFFTApp(VkFFTAppBase):
         :param r2c: if True, will perform a real->complex transform, where the
             complex destination is a half-hermitian array.
             For an inplace transform, if the input data shape is (...,nx), the input
-            float array should have a shape of (..., nx+2), the last two columns
+            float array should have a shape of (..., nx+2) if nx is even
+            or (..., nx+1) if nx is odd, the last one or two columns
             being ignored in the input data, and the resulting
             complex array (using pycuda's GPUArray.view(dtype=np.complex64) to
             reinterpret the type) will have a shape (..., nx//2 + 1).
@@ -119,6 +121,8 @@ class VkFFTApp(VkFFTAppBase):
             the output (complex) shape should be (..., nx//2+1).
             Note that for C2R transforms with ndim>=2, the source (complex) array
             is modified.
+            For an inplace transform with an odd-sized x-axis, see the r2c_odd
+            parameter.
         :param dct: used to perform a Direct Cosine Transform (DCT) aka a R2R transform.
             An integer can be given to specify the type of DCT (1, 2, 3 or 4).
             if dct=True, the DCT type 2 will be performed, following scipy's convention.
@@ -149,6 +153,14 @@ class VkFFTApp(VkFFTAppBase):
             will test 5 possible values for the warpSize, with a given source GPU
             array. This would only be valid for an inplace transform as no
             destination array is given.
+        :param r2c_odd: this should be set to True to perform an inplace r2c/c2r
+            transform with an odd-sized fast (x) axis.
+            Explanation: to perform a 1D inplace transform of an array with 100
+                elements, the input array should have a 100+2 size, resulting in
+                a half-Hermitian array of size 51. If the input data has a size
+                of 101, the input array should also be padded to 102 (101+1), and
+                the resulting half-Hermitian array also has a size of 51. A
+                flag is thus needed to differentiate the cases of 100+2 or 101+1.
 
         :raises RuntimeError: if the initialisation fails, e.g. if the CUDA
             driver has not been properly initialised, or if the transform dimensions
@@ -157,9 +169,9 @@ class VkFFTApp(VkFFTAppBase):
         if tune_config is not None:
             kwargs = tune_vkfft(tune_config, shape=shape, dtype=dtype, ndim=ndim, inplace=inplace, stream=stream,
                                 norm=norm, r2c=r2c, dct=dct, dst=dst, axes=axes, strides=strides, verbose=False,
-                                **kwargs)[0]
+                                r2c_odd=r2c_odd, **kwargs)[0]
         super().__init__(shape, dtype, ndim=ndim, inplace=inplace, norm=norm, r2c=r2c,
-                         dct=dct, dst=dst, axes=axes, strides=strides, **kwargs)
+                         dct=dct, dst=dst, axes=axes, strides=strides, r2c_odd=r2c_odd, **kwargs)
 
         self.stream = stream
 
@@ -204,9 +216,12 @@ class VkFFTApp(VkFFTAppBase):
         grouped_batch[:len(self.groupedBatch)] = self.groupedBatch
 
         if self.r2c and self.inplace:
-            # the last two columns are ignored in the R array, and will be used
+            # the last one or two columns are ignored in the R array, and will be used
             # in the C array with a size nx//2+1
-            shape[0] -= 2
+            if self.r2c_odd:
+                shape[0] -= 1
+            else:
+                shape[0] -= 2
 
         s = 0
         if self.stream is not None:
@@ -339,7 +354,7 @@ class VkFFTApp(VkFFTAppBase):
                 elif src.dtype == np.complex128:
                     return src.view(dtype=np.float64)
             return src
-        if not self.inplace:
+        else:
             if dest is None:
                 raise RuntimeError("VkFFTApp.ifft: dest is None but this is an out-of-place transform")
             if src_ptr == dest_ptr:

@@ -191,13 +191,13 @@ def make_parser():
     epilog = "Examples:\n" \
              "   pyvkfft-test\n" \
              "      the regular test which tries the fft interface, using parallel\n" \
-             "      streams (for pycuda), and C2C/R2C transforms for sizes N=30, 34\n" \
-             "      with 1, 2 and 3D transforms, and N=808 for 1D and 2D transforms.\n" \
+             "      streams (for pycuda), and C2C/R2C/DCT/DST transforms for sizes N=15,17,30,34\n" \
+             "      with 1, 2 and 3D transforms, also N=808,2988,4200 for 1D and 2D transforms\n"\
+             "      and finally N=13000,13001,13002 just for 1D transforms.\n" \
              "      All tests are done with single and double precision, in and\n" \
              "      out-of-place, norm=0 and 1, and all available backends (pyopencl,\n" \
-             "      pycuda and cupy). For C2C arrays up to dimension 4 are tested,\n" \
+             "      pycuda and cupy). For C2C arrays up to dimension 5 are tested,\n" \
              "      with all possible combination of transform axes.\n" \
-             "      DCT transforms of type 1,2,3 and 4 are also tested for N=30,34.\n" \
              "      That's for a total of a few thousands transforms, which are tested\n" \
              "      against the result of numpy, scipy or pyfftw (when available) for\n" \
              "      accuracy.\n" \
@@ -220,8 +220,7 @@ def make_parser():
              "  pyvkfft-test --systematic --backend cupy --nproc 8 --bluestein --range 2 10000 --ndim 2 " \
              "--lut --inplace\n" \
              "      test with cupy backend, only non-radix 2D inplace R2C transforms\n," \
-             "      using a lookup table( lut) for higher single precision accuracy.\n" \
-             "      (this automatically limits the x-sizes to even values for the inplace R2C\n"
+             "      using a lookup table( lut) for higher single precision accuracy.\n"
     parser = argparse.ArgumentParser(prog='pyvkfft-test', epilog=epilog,
                                      description='Run pyvkfft unit tests, regular or systematic',
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -298,8 +297,7 @@ def make_parser():
                         help="Use this option to run a random percentage of the full test suite, "
                              "for faster results. A number between 5 and 100 is required.", type=int)
     sysgrp.add_argument('--inplace', action='store_true',
-                        help="Use inplace transforms (NB: for R2C with ndim>=2, the x-axis "
-                             "must be even-sized)")
+                        help="Use inplace transforms")
     sysgrp.add_argument('--graph', action='store', nargs="?", const="",
                         help="Save the graph of the accuracy as a function of the size"
                              "to the given filename (if no name is given, it will be "

@@ -111,9 +111,10 @@ Features
 --------
 
 - CUDA (using PyCUDA or CuPy) and OpenCL (using PyOpenCL) backends
-- C2C, R2C/C2R transforms
+- complex (C2C) transforms
+- R2C/C2R, now fully supporting odd sizes for the fast axis with inplace transforms
 - Direct Cosine or Sine transforms (DCT/DST) of type 1, 2, 3 and 4
-- out-of-place and inplace (for R2C, the fast axis of the real array must have an N+2 size)
+- out-of-place and inplace
 - single and double precision for all transforms (double precision requires device support)
 - Allows up to 8 FFT dimensions (can be increased by using
   ``VKFFT_MAX_FFT_DIMENSIONS`` when installing).

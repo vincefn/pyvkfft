@@ -42,7 +42,7 @@ class Backend(Enum):
     CUPY = 3
 
 
-def _prepare_transform(src, dest, cl_queue, cuda_stream, r2c=False):
+def _prepare_transform(src, dest, cl_queue, cuda_stream, r2c=False, r2c_odd=False):
     """
     Determine the backend from the input data.
     Create the destination array if necessary.
@@ -53,6 +53,9 @@ def _prepare_transform(src, dest, cl_queue, cuda_stream, r2c=False):
     :param cuda_stream: the cuda stream to use (from cupy or pycuda), or None
     :param r2c: if True, this is for an R2C transform, so adapt the destination
         array accordingly.
+    :param r2c_odd: True if the r2c transform has an odd size (for the real
+        array) along the x-axis. This is only needed for a c2r out-of-place
+        transform to determine the destination x-axis size.
     :return: a tuple (backend, inplace, dest, cl_queue, cuda_stream, devctx),
         also appending the destination dtype for a r2c transform.
         devctx is either the device or context unique ptr or id - this
@@ -78,6 +81,10 @@ def _prepare_transform(src, dest, cl_queue, cuda_stream, r2c=False):
         else:
             sh = list(src.shape)
             sh[fastidx] = (sh[fastidx] - 1) * 2
+            if r2c_odd:
+                # This is only true for an out-of-place transform,
+                # but sh is only used if dest is None
+                sh[fastidx] += 1
             dtype = np.float32
             if src.dtype == complex32:
                 dtype = np.float16
@@ -167,18 +174,18 @@ def _get_fft_app(backend, shape, dtype, inplace, ndim, axes, norm, cuda_stream, 
 
 @lru_cache(maxsize=config.FFT_CACHE_NB)
 def _get_rfft_app(backend, shape, dtype, inplace, ndim, norm, cuda_stream, cl_queue,
-                  devctx, strides=None, tune=False):
+                  devctx, strides=None, tune=False, r2c_odd=False):
     del devctx  # Variable is just used for proper lru_cache
     sback = {Backend.PYCUDA: 'pycuda', Backend.CUPY: 'cupy', Backend.PYOPENCL: 'pyopencl'}[backend]
     tune_config = {'backend': sback} if tune else None
     if backend in [Backend.PYCUDA, Backend.CUPY]:
         return VkFFTApp_cuda(shape, dtype, ndim=ndim, inplace=inplace,
                              stream=cuda_stream, norm=norm, r2c=True, strides=strides,
-                             tune_config=tune_config)
+                             tune_config=tune_config, r2c_odd=r2c_odd)
     elif backend == Backend.PYOPENCL:
         return VkFFTApp_cl(shape, dtype, cl_queue, ndim=ndim, inplace=inplace,
                            norm=norm, r2c=True, strides=strides,
-                           tune_config=tune_config)
+                           tune_config=tune_config, r2c_odd=r2c_odd)
 
 
 @lru_cache(maxsize=config.FFT_CACHE_NB)
@@ -316,15 +323,18 @@ def ifftn(src, dest=None, ndim=None, norm=1, axes=None, cuda_stream=None, cl_que
 
 
 def rfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
-          return_scale=False, tune=False):
+          return_scale=False, tune=False, r2c_odd=False):
     """
     Perform a real->complex transform on a GPU array, automatically creating
     the VkFFTApp and caching it for future re-use.
     For an out-of-place transform, the length of the destination last axis will
     be src.shape[-1]//2+1.
-    For an in-place transform, if the src array has a shape (..., nx+2), the
-    last two values along the last (X) axis are ignored, and the destination
+    For an in-place transform with an even [respectively odd]-sized
+    fast (x) axis, the src array should have a shape (..., nx+2)
+    [respectively (..., nx+1)], the last one or two values along the
+    fast (x) axis are ignored, and the destination
     array will have a shape of (..., nx//2+1).
+    An in-place transform with an odd-sized x-axis requires r2c_odd=True
 
     :param src: the source pycuda.gpuarray.GPUArray or cupy.ndarray
     :param dest: the destination GPU array. If None, a new GPU array will
@@ -353,6 +363,9 @@ def rfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
         parameters to maximise the FT throughput. This uses a quick
         approach testing a few transforms (about 4) before choosing the
         optimal parameters. This is similar to FFTW's FFTW_MEASURE approach.
+    :param r2c_odd: should be set to True for an in-place r2c transform
+        where the actual data length is odd along the fast axis. This
+        parameter is ignored otherwise.
     :return: the destination array if return_scale is False, or (dest, scale).
         For an in-place transform, the returned value is a view of the array
         with the appropriate type.
@@ -360,7 +373,7 @@ def rfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
     backend, inplace, dest, cl_queue, cuda_stream, devctx, dtype = \
         _prepare_transform(src, dest, cl_queue, cuda_stream, True)
     app = _get_rfft_app(backend, src.shape, src.dtype, inplace, ndim, norm, cuda_stream, cl_queue, devctx,
-                        strides=src.strides, tune=tune)
+                        strides=src.strides, tune=tune, r2c_odd=r2c_odd)
     if backend == Backend.PYOPENCL:
         app.fft(src, dest, queue=cl_queue)
     else:
@@ -372,15 +385,16 @@ def rfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
 
 
 def irfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
-           return_scale=False, tune=False):
+           return_scale=False, tune=False, r2c_odd=False):
     """
     Perform a complex->real transform on a GPU array, automatically creating
     the VkFFTApp and caching it for future re-use.
     For an out-of-place transform, the length of the destination last axis will
     be (src.shape[-1]-1)*2.
-    For an in-place transform, if the src array has a shape (..., nx), the
-    destination array will have a shape of (..., nx*2) but the last
-    two vales along the last axis are used as buffer.
+    For an in-place transform, if the src complex array has a shape (..., nx),
+    the destination (real) array will have a shape of (..., nx*2), but the last
+    one (if r2c_odd=True) or two values along the x-axis are used as buffer:
+    the size of the transform is thus either nx*2 or nx*2+1.
 
     :param src: the source pycuda.gpuarray.GPUArray or cupy.ndarray
     :param dest: the destination GPU array. If None, a new GPU array will
@@ -409,14 +423,17 @@ def irfftn(src, dest=None, ndim=None, norm=1, cuda_stream=None, cl_queue=None,
         parameters to maximise the FT throughput. This uses a quick
         approach testing a few transforms (about 4) before choosing the
         optimal parameters. This is similar to FFTW's FFTW_MEASURE approach.
+    :param r2c_odd: should be set to True for an in-place r2c transform
+        where the actual data length (in the real array) is odd along the
+        fast axis. This parameter is ignored otherwise.
     :return: the destination array if return_scale is False, or (dest, scale)
         For an in-place transform, the returned value is a view of the array
         with the appropriate type.
     """
     backend, inplace, dest, cl_queue, cuda_stream, devctx, dtype = \
-        _prepare_transform(src, dest, cl_queue, cuda_stream, True)
+        _prepare_transform(src, dest, cl_queue, cuda_stream, True, r2c_odd=r2c_odd)
     app = _get_rfft_app(backend, dest.shape, dest.dtype, inplace, ndim, norm, cuda_stream, cl_queue, devctx,
-                        strides=dest.strides, tune=tune)
+                        strides=dest.strides, tune=tune, r2c_odd=r2c_odd)
     if backend == Backend.PYOPENCL:
         app.ifft(src, dest, queue=cl_queue)
     else:

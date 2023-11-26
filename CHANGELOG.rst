@@ -1,3 +1,13 @@
+Version 2023.3 (2023-XX-XX)
+-----------------------------
+* Based on VkFFT 1.3.X
+* Add support for direct sine transforms (DST)
+* R2C, DST and DCT now support arbitrary sizes (up to ~2^32,
+  same as C2C)
+* Odd lengths for the fast axis is now supported for all R2C
+  transforms. Inplace transforms require using
+  the r2c_odd=True parameter
+
 Version 2023.2.post1 (2023-09-21)
 -----------------------------
 * Include doc in manifest

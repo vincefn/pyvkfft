@@ -12,8 +12,8 @@ import numpy as np
 
 
 def tune_vkfft(tune, shape, dtype: type, ndim=None, inplace=True, stream=None, queue=None,
-               norm=1, r2c=False, dct=False, dst= False, axes=None, strides=None,
-               verbose=False, **kwargs):
+               norm=1, r2c=False, dct=False, dst=False, axes=None, strides=None,
+               verbose=False, r2c_odd=False, **kwargs):
     """
     Automatically test different configurations for a VkFFTApp, returning
     the set of parameters which maximise the FT throughput.
@@ -89,6 +89,14 @@ def tune_vkfft(tune, shape, dtype: type, ndim=None, inplace=True, stream=None, q
         axes if ndim is None. Not allowed for R2C transforms
     :param strides: the array strides - needed if not C-ordered.
     :param verbose: if True, print speed for each configuration
+    :param r2c_odd: this should be set to True to perform an inplace r2c/c2r
+        transform with an odd-sized fast (x) axis.
+        Explanation: to perform a 1D inplace transform of an array with 100
+            elements, the input array should have a 100+2 size, resulting in
+            a half-Hermitian array of size 51. If the input data has a size
+            of 101, the input array should also be padded to 102 (101+1), and
+            the resulting half-Hermitian array also has a size of 51. A
+            flag is thus needed to differentiate the cases of 100+2 or 101+1.
     :param: extra parameters passed on to VkFFT
 
     :raises RuntimeError: if the optimisation fails
@@ -177,10 +185,12 @@ def tune_vkfft(tune, shape, dtype: type, ndim=None, inplace=True, stream=None, q
                 kw[vk[i]] = v[i]
             if tune['backend'] == 'pyopencl':
                 app = VkFFTApp(shape, dtype=dtype, queue=queue, ndim=ndim, inplace=inplace,
-                               norm=norm, r2c=r2c, dct=dct, dst=dst, axes=axes, strides=strides, **kw)
+                               norm=norm, r2c=r2c, dct=dct, dst=dst, axes=axes,
+                               strides=strides, r2c_odd=r2c_odd, **kw)
             else:
                 app = VkFFTApp(shape, dtype=dtype, ndim=ndim, inplace=inplace, stream=stream,
-                               norm=norm, r2c=r2c, dct=dct, dst=dst, axes=axes, strides=strides, **kw)
+                               norm=norm, r2c=r2c, dct=dct, dst=dst, axes=axes,
+                               strides=strides, r2c_odd=r2c_odd, **kw)
                 start = Event()
                 stop = Event()
             dt = 0

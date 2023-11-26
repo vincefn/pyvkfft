@@ -29,7 +29,7 @@ except ImportError:
             return np.random.randint(0, 255, (512, 512))
 
 from pyvkfft.version import __version__, vkfft_version
-from pyvkfft.base import primes, radix_gen, radix_gen_n
+from pyvkfft.base import primes, radix_gen_n
 from pyvkfft.fft import fftn as vkfftn, ifftn as vkifftn, rfftn as vkrfftn, \
     irfftn as vkirfftn, dctn as vkdctn, idctn as vkidctn, \
     dstn as vkdstn, idstn as vkidstn, clear_vkfftapp_cache
@@ -445,7 +445,7 @@ class TestFFT(unittest.TestCase):
                     vtype = (np.complex64,)
                 v = self.verbose and not dry_run
                 if dry_run or self.nproc == 1:
-                    tmp = self.run_fft([backend], [30, 34], dims_max=5, ndim_max=5,
+                    tmp = self.run_fft([backend], [15, 17, 30, 34], dims_max=5, ndim_max=5,
                                        vtype=vtype, verbose=v, dry_run=dry_run, shuffle_axes=True)
                     ct += tmp[0]
                     vkwargs += tmp[1]
@@ -457,7 +457,7 @@ class TestFFT(unittest.TestCase):
                     ct += tmp[0]
                     vkwargs += tmp[1]
                     # Test even larger 1D transform sizes
-                    tmp = self.run_fft([backend], [13000, 13002],
+                    tmp = self.run_fft([backend], [13000, 13001, 13002],
                                        vtype=vtype, dims_max=3, ndim_max=1, verbose=v,
                                        dry_run=dry_run, shuffle_axes=True)
                     ct += tmp[0]
@@ -481,7 +481,7 @@ class TestFFT(unittest.TestCase):
                     vtype = (np.float32,)
                 v = self.verbose and not dry_run
                 if dry_run or self.nproc == 1:
-                    tmp = self.run_fft([backend], [30, 34], dims_max=4, ndim_max=4,
+                    tmp = self.run_fft([backend], [15, 17, 30, 34], dims_max=4, ndim_max=4,
                                        vtype=vtype, vr2c=(True,), verbose=v, dry_run=dry_run)
                     ct += tmp[0]
                     vkwargs += tmp[1]
@@ -492,7 +492,7 @@ class TestFFT(unittest.TestCase):
                     ct += tmp[0]
                     vkwargs += tmp[1]
                     # Test even larger 1D transform sizes
-                    tmp = self.run_fft([backend], [13000, 13002],
+                    tmp = self.run_fft([backend], [13000, 13001, 13002],
                                        vtype=vtype, vr2c=(True,),
                                        dims_max=3, ndim_max=1, verbose=v,
                                        dry_run=dry_run, shuffle_axes=True)
@@ -518,7 +518,7 @@ class TestFFT(unittest.TestCase):
                     vtype = (np.float32,)
                 v = self.verbose and not dry_run
                 if dry_run or self.nproc == 1:
-                    tmp = self.run_fft([backend], [30, 34], dims_max=4, ndim_max=4,
+                    tmp = self.run_fft([backend], [15, 17, 30, 34], dims_max=4, ndim_max=4,
                                        vtype=vtype, vdct=range(1, 5), vnorm=[1],
                                        verbose=v, dry_run=dry_run)
                     ct += tmp[0]
@@ -530,7 +530,7 @@ class TestFFT(unittest.TestCase):
                     ct += tmp[0]
                     vkwargs += tmp[1]
                     # Test even larger 1D transform sizes
-                    tmp = self.run_fft([backend], [13000, 13002],
+                    tmp = self.run_fft([backend], [13000, 13001, 13002],
                                        vtype=vtype, vdct=range(1, 5), vnorm=[1],
                                        dims_max=3, ndim_max=1, verbose=v,
                                        dry_run=dry_run, shuffle_axes=True)
@@ -556,7 +556,7 @@ class TestFFT(unittest.TestCase):
                     vtype = (np.float32,)
                 v = self.verbose and not dry_run
                 if dry_run or self.nproc == 1:
-                    tmp = self.run_fft([backend], [30, 34], dims_max=4, ndim_max=4,
+                    tmp = self.run_fft([backend], [15, 17, 30, 34], dims_max=4, ndim_max=4,
                                        vtype=vtype, vdst=range(1, 5),
                                        vnorm=[1], verbose=v, dry_run=dry_run)
                     ct += tmp[0]
@@ -568,7 +568,7 @@ class TestFFT(unittest.TestCase):
                     ct += tmp[0]
                     vkwargs += tmp[1]
                     # Test even larger 1D transform sizes
-                    tmp = self.run_fft([backend], [13000, 13002],
+                    tmp = self.run_fft([backend], [13000, 13001, 13002],
                                        vtype=vtype, vdst=range(1, 5), vnorm=[1],
                                        dims_max=3, ndim_max=1, verbose=v,
                                        dry_run=dry_run, shuffle_axes=True)
@@ -871,11 +871,11 @@ class TestFFTSystematic(unittest.TestCase):
         self.assertTrue(not self.bluestein or self.radix is None, "Cannot select both Bluestein and radix")
         if not self.bluestein and self.radix is None:
             self.vshape = radix_gen_n(nmax=self.range[1], max_size=self.range_size[1], radix=None,
-                                      ndim=self.ndim, even=self.r2c, nmin=self.range[0], max_pow=self.max_pow,
+                                      ndim=self.ndim, nmin=self.range[0], max_pow=self.max_pow,
                                       range_nd_narrow=self.range_nd_narrow, min_size=self.range_size[0])
         elif self.bluestein:
             self.vshape = radix_gen_n(nmax=self.range[1], max_size=self.range_size[1],
-                                      radix=(2, 3, 5, 7, 11, 13), ndim=self.ndim, even=self.r2c,
+                                      radix=(2, 3, 5, 7, 11, 13), ndim=self.ndim,
                                       inverted=True, nmin=self.range[0], max_pow=self.max_pow,
                                       range_nd_narrow=self.range_nd_narrow, min_size=self.range_size[0])
         else:
@@ -884,7 +884,7 @@ class TestFFTSystematic(unittest.TestCase):
             if self.r2c and 2 not in self.radix:  # and inplace ?
                 raise RuntimeError("For r2c, the x/fastest axis must be even (requires radix-2)")
             self.vshape = radix_gen_n(nmax=self.range[1], max_size=self.range_size[1],
-                                      radix=self.radix, ndim=self.ndim, even=self.r2c,
+                                      radix=self.radix, ndim=self.ndim,
                                       nmin=self.range[0], max_pow=self.max_pow,
                                       range_nd_narrow=self.range_nd_narrow, min_size=self.range_size[0])
         if not self.dry_run:

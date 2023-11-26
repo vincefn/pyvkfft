@@ -191,6 +191,7 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
 
   if(r2c)
   {
+    if(s % 2) config->forceCallbackVersionRealTransforms = 1;
     *psize = (uint64_t)((s / 2 +1) * precision * (size_t)2);
     if(buffer_out != NULL)
     {

@@ -429,7 +429,8 @@ class VkFFTApp:
     """
 
     def __init__(self, shape, dtype: type, ndim=None, inplace=True, norm=1,
-                 r2c=False, dct=False, dst=False, axes=None, strides=None, **kwargs):
+                 r2c=False, dct=False, dst=False, axes=None, strides=None,
+                 r2c_odd=False, **kwargs):
         """
         Init function for the VkFFT application.
 
@@ -453,9 +454,9 @@ class VkFFTApp:
             involve an extra read & write operation.
         :param r2c: if True, will perform a real->complex transform, where the
             complex destination is a half-hermitian array.
-            For an inplace transform, if the input data shape is (...,nx), the input
-            float array should have a shape of (..., nx+2), the last two columns
-            being ignored in the input data, and the resulting
+            For an inplace transform, if the transformed data shape is (...,nx),
+            the input float array should have a shape of (..., nx+2), the last
+            two columns being ignored in the input data, and the resulting
             complex array (using pycuda's GPUArray.view(dtype=np.complex64) to
             reinterpret the type) will have a shape (..., nx//2 + 1).
             For an out-of-place transform, if the input (real) shape is (..., nx),
@@ -476,7 +477,17 @@ class VkFFTApp:
             if None, the transform is done along the ndim fastest axes, or all
             axes if ndim is None. Not allowed for R2C transforms
         :param strides: the array strides - needed if not C-ordered.
-        :raises RuntimeError:  if the transform dimensions are not allowed by VkFFT.
+        :param r2c_odd: this should be set to True to perform an inplace r2c/c2r
+            transform with an odd-sized fast (x) axis.
+            Explanation: to perform a 1D inplace transform of an array with 100
+            elements, the input array should have a 100+2 size, resulting in
+            a half-Hermitian array of size 51. If the input data has a size
+            of 101, the input array should also be padded to 102 (101+1), and
+            the resulting half-Hermitian array also has a size of 51. A
+            flag is thus needed to differentiate the cases of 100+2 or 101+1.
+
+        :raises RuntimeError:  if the transform dimensions or data type
+            are not allowed by VkFFT.
         """
         self.app = None
         self.config = None
@@ -491,11 +502,18 @@ class VkFFTApp:
             s = np.array(strides)
             if not np.alltrue((s[:-1] - s[1:]) > 0):
                 raise RuntimeError("A C-contiguous array is required for DST and DCT transforms")
+        if r2c and inplace and shape[-1] % 2:
+            raise RuntimeError(f"For an inplace R2C/C2R transform, the supplied array shape must "
+                               f"be even along the fast (x) axis. If the transform size nx is "
+                               f"even, two buffer elements should be added to the end of the axis."
+                               f"If it is even, only one element should be added. In both cases, "
+                               f"the complex half-Hermitian array size will be nx//2+1.")
         # Get the final shape passed to VkFFT, collapsing non-transform axes
         # as necessary. The calculated shape has 4 dimensions (nx, ny, nz, n_batch).
         self.shape, self.n_batch, self.skip_axis, self.ndim = calc_transform_axes(shape, axes, ndim, strides)
         self.inplace = inplace
         self.r2c = r2c
+        self.r2c_odd = r2c_odd
         if dct is False:
             self.dct = 0
         elif dct is True:
@@ -696,7 +714,10 @@ class VkFFTApp:
         if self.r2c and self.inplace:
             # Note: this is still correct for non-C-ordered arrays since
             # self.shape has been re-ordered
-            s *= np.sqrt((self.shape[0] - 2) / self.shape[0])
+            if self.r2c_odd:
+                s *= np.sqrt((self.shape[0] - 1) / self.shape[0])
+            else:
+                s *= np.sqrt((self.shape[0] - 2) / self.shape[0])
         if self.dct or self.dst:
             s *= 2 ** (0.5 * ndim_real)
             if max(self.dct, self.dst) != 4:  # if dct is used, dst=0 and inversely
@@ -734,7 +755,10 @@ class VkFFTApp:
                     s_dct *= np.sqrt(2)
         s = np.sqrt(s)
         if self.r2c and self.inplace:
-            s *= np.sqrt((self.shape[0] - 2) / self.shape[0])
+            if self.r2c_odd:
+                s *= np.sqrt((self.shape[0] - 1) / self.shape[0])
+            else:
+                s *= np.sqrt((self.shape[0] - 2) / self.shape[0])
         r2r_type = max(self.dct, self.dst)
         if (self.dct or self.dst) and r2r_type != 4:
             warnings.warn("A DST or DCT type 2 or 3 cannot be strictly normalised, using approximation,"

@@ -57,6 +57,7 @@ try:
 except OSError:
     # This is used for doc generation
     import sys
+
     if 'sphinx' in sys.modules:
         pass
     else:
@@ -69,7 +70,8 @@ class VkFFTApp(VkFFTAppBase):
     """
 
     def __init__(self, shape, dtype: type, queue: cl.CommandQueue, ndim=None, inplace=True, norm=1,
-                 r2c=False, dct=False, dst=False, axes=None, strides=None, tune_config=None, **kwargs):
+                 r2c=False, dct=False, dst=False, axes=None, strides=None, tune_config=None,
+                 r2c_odd=False, **kwargs):
         """
         Init function for the VkFFT application.
 
@@ -94,15 +96,17 @@ class VkFFTApp(VkFFTAppBase):
             involve an extra read & write operation.
         :param r2c: if True, will perform a real->complex transform, where the
             complex destination is a half-hermitian array.
-            For an inplace transform, if the input data shape is (...,nx), the input
-            float array should have a shape of (..., nx+2), the last two columns
-            being ignored in the input data, and the resulting
+            For an inplace transform, if the transformed data shape is (...,nx),
+            the input float array should have a shape of (..., nx+2), the last
+            two columns being ignored in the input data, and the resulting
             complex array (using pycuda's GPUArray.view(dtype=np.complex64) to
             reinterpret the type) will have a shape (..., nx//2 + 1).
             For an out-of-place transform, if the input (real) shape is (..., nx),
             the output (complex) shape should be (..., nx//2+1).
             Note that for C2R transforms with ndim>=2, the source (complex) array
             is modified.
+            For an inplace transform with an odd-sized x-axis, see the r2c_odd
+            parameter.
         :param dct: used to perform a Direct Cosine Transform (DCT) aka a R2R transform.
             An integer can be given to specify the type of DCT (1, 2, 3 or 4).
             if dct=True, the DCT type 2 will be performed, following scipy's convention.
@@ -133,17 +137,25 @@ class VkFFTApp(VkFFTAppBase):
             will test 5 possible values for the warpSize, with a given source GPU
             array. This would only be valid for an inplace transform as no
             destination array is given.
+        :param r2c_odd: this should be set to True to perform an inplace r2c/c2r
+            transform with an odd-sized fast (x) axis.
+            Explanation: to perform a 1D inplace transform of an array with 100
+            elements, the input array should have a 100+2 size, resulting in
+            a half-Hermitian array of size 51. If the input data has a size
+            of 101, the input array should also be padded to 102 (101+1), and
+            the resulting half-Hermitian array also has a size of 51. A
+            flag is thus needed to differentiate the cases of 100+2 or 101+1.
+
         :raises RuntimeError: if the initialisation fails, e.g. if the GPU
             driver has not been properly initialised, or if the transform dimensions
-            are not allowed by VkFFT.
+            or data type are not allowed by VkFFT.
         """
         if tune_config is not None:
             kwargs = tune_vkfft(tune_config, shape=shape, dtype=dtype, ndim=ndim, queue=queue, inplace=inplace,
                                 norm=norm, r2c=r2c, dct=dct, dst=dst, axes=axes, strides=strides, verbose=False,
-                                **kwargs)[0]
+                                r2c_odd=r2c_odd, **kwargs)[0]
         super().__init__(shape, dtype, ndim=ndim, inplace=inplace, norm=norm, r2c=r2c,
-                         dct=dct, dst=dst, axes=axes, strides=strides, **kwargs)
-
+                         dct=dct, dst=dst, axes=axes, strides=strides, r2c_odd=r2c_odd, **kwargs)
         self.queue = queue
 
         if self.precision == 2 and 'cl_khr_fp16' not in self.queue.device.extensions:
@@ -188,9 +200,12 @@ class VkFFTApp(VkFFTAppBase):
         grouped_batch[:len(self.groupedBatch)] = self.groupedBatch
 
         if self.r2c and self.inplace:
-            # the last two columns are ignored in the R array, and will be used
+            # the last one or two columns are ignored in the R array, and will be used
             # in the C array with a size nx//2+1
-            shape[0] -= 2
+            if self.r2c_odd:
+                shape[0] -= 1
+            else:
+                shape[0] -= 2
 
         if self.norm == "ortho":
             norm = 0
@@ -364,7 +379,7 @@ class VkFFTApp(VkFFTAppBase):
                 elif src.dtype == np.complex128:
                     return src.view(dtype=np.float64)
             return src
-        if not self.inplace:
+        else:
             if dest is None:
                 raise RuntimeError("VkFFTApp.ifft: dest is None but this is an out-of-place transform")
             elif src.data.int_ptr == dest.data.int_ptr:
