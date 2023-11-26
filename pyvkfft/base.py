@@ -502,12 +502,15 @@ class VkFFTApp:
             s = np.array(strides)
             if not np.alltrue((s[:-1] - s[1:]) > 0):
                 raise RuntimeError("A C-contiguous array is required for DST and DCT transforms")
-        if r2c and inplace and shape[-1] % 2:
-            raise RuntimeError(f"For an inplace R2C/C2R transform, the supplied array shape must "
-                               f"be even along the fast (x) axis. If the transform size nx is "
-                               f"even, two buffer elements should be added to the end of the axis."
-                               f"If it is even, only one element should be added. In both cases, "
-                               f"the complex half-Hermitian array size will be nx//2+1.")
+        if r2c and inplace:
+            fast_axis = -1 if strides is None else np.argmin(strides)
+            if shape[fast_axis] % 2:
+                print(shape, inplace, axes, r2c, ndim, strides, r2c_odd)
+                raise RuntimeError(f"For an inplace R2C/C2R transform, the supplied array shape {shape} "
+                                   f"must be even along the fast (x) axis. If the transform size nx is "
+                                   f"even, two buffer elements should be added to the end of the axis."
+                                   f"If it is even, only one element should be added. In both cases, "
+                                   f"the complex half-Hermitian array size will be nx//2+1.")
         # Get the final shape passed to VkFFT, collapsing non-transform axes
         # as necessary. The calculated shape has 4 dimensions (nx, ny, nz, n_batch).
         self.shape, self.n_batch, self.skip_axis, self.ndim = calc_transform_axes(shape, axes, ndim, strides)

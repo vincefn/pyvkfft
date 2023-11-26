@@ -254,6 +254,10 @@ def make_parser():
     parser.add_argument('--silent', action='store_true',
                         help="Use this to minimise the written output "
                              "(note that tests can take a long time be patient")
+    parser.add_argument('--c2c', action='store_true',
+                        help="When used without --systematic, perform only "
+                             "c2c quick tests and skip the long r2c/dct/dst "
+                             "unless they were also requested.")
     parser.add_argument('--systematic', action='store_true',
                         help="Perform a systematic accuracy test over a range of array sizes.\n"
                              "Without this argument a faster test (a few minutes) will be "
@@ -268,7 +272,7 @@ def make_parser():
                         help="Choose single or multiple GPU backends,"
                              "by default all available backends are selected.",
                         choices=['pycuda', 'cupy', 'pyopencl'])
-    sysgrp.add_argument('--bluestein', action='store_true',
+    sysgrp.add_argument('--bluestein', '--nonradix', action='store_true',
                         help="Only perform transform with non-radix dimensions, i.e. the "
                              "largest number in the prime decomposition of each array dimension "
                              "must be larger than 13")
@@ -462,6 +466,16 @@ def main():
                 del t.test_pycuda_streams
             if 'pyopencl' not in args.backend:
                 del t.test_pyopencl_queues
+        if args.r2c or args.dct or args.dst or args.c2c:
+            # A selection of subtests was made - remove the other long ones
+            if not args.r2c:
+                del t.test_r2c
+            if not args.dct:
+                del t.test_dct
+            if not args.dst:
+                del t.test_dst
+            if not args.c2c:
+                del t.test_c2c
         suite = unittest.defaultTestLoader.loadTestsFromTestCase(t)
         if t.verbose:
             res = unittest.TextTestRunner(verbosity=2).run(suite)
