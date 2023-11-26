@@ -475,7 +475,8 @@ class VkFFTApp:
             if dst=True, the DST type 2 will be performed, following scipy's convention.
         :param axes: a list or tuple of axes along which the transform should be made.
             if None, the transform is done along the ndim fastest axes, or all
-            axes if ndim is None. Not allowed for R2C transforms
+            axes if ndim is None. For R2C transforms, the fast axis must be
+            transformed.
         :param strides: the array strides - needed if not C-ordered.
         :param r2c_odd: this should be set to True to perform an inplace r2c/c2r
             transform with an odd-sized fast (x) axis.
@@ -496,16 +497,14 @@ class VkFFTApp:
         if (r2c or dct or dst) and dtype not in [np.float16, np.float32, np.float64]:
             raise RuntimeError("R2C, DST or DCT selected but input type is not real")
         if r2c and axes is not None:
-            raise RuntimeError("axes=... is not allowed for R2C transforms")
-        if strides is not None and (dct or dst) and len(shape) > 1:
-            # TODO: update support status for non-C-contiguous DCT transforms
-            s = np.array(strides)
-            if not np.alltrue((s[:-1] - s[1:]) > 0):
-                raise RuntimeError("A C-contiguous array is required for DST and DCT transforms")
+            fast_axis = len(shape) - 1 if strides is None else np.argmin(strides)
+            if fast_axis not in axes and -len(shape) + fast_axis not in axes:
+                raise RuntimeError(f"the fast axis must be transformed for R2C"
+                                   f" [axes={axes}, strides={strides}], "
+                                   f"fast axis={fast_axis}/{-len(shape) + fast_axis}]")
         if r2c and inplace:
             fast_axis = -1 if strides is None else np.argmin(strides)
             if shape[fast_axis] % 2:
-                print(shape, inplace, axes, r2c, ndim, strides, r2c_odd)
                 raise RuntimeError(f"For an inplace R2C/C2R transform, the supplied array shape {shape} "
                                    f"must be even along the fast (x) axis. If the transform size nx is "
                                    f"even, two buffer elements should be added to the end of the axis."

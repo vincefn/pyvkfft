@@ -7,6 +7,9 @@ Version 2023.3 (2023-XX-XX)
 * Odd lengths for the fast axis is now supported for all R2C
   transforms. Inplace transforms require using
   the r2c_odd=True parameter
+* Custom transform axes (strided) are now allowed also for R2C,
+  as long as the fast axis is transformed.
+* DCT and DST now support F-ordered arrays
 
 Version 2023.2.post1 (2023-09-21)
 -----------------------------

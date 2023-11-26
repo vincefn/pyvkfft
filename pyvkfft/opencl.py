@@ -115,7 +115,8 @@ class VkFFTApp(VkFFTAppBase):
             if dst=True, the DST type 2 will be performed, following scipy's convention.
         :param axes: a list or tuple of axes along which the transform should be made.
             if None, the transform is done along the ndim fastest axes, or all
-            axes if ndim is None. Not allowed for R2C transforms
+            axes if ndim is None. For R2C transforms, the fast axis must be
+            transformed.
         :param strides: the array strides - needed if not C-ordered.
         :param tune_config: this can be used to automatically generate an
             optimised set of VkFFT parameters by testing various configurations

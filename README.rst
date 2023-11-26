@@ -126,7 +126,7 @@ Features
   see example performance plot below). Now also uses Rader's FFT algorithm for primes from
   17 up to max shared memory length (~10000, see VkFFT's doc for details)
 - transform along a given list of axes, e.g. using a 4-dimensional array and
-  supplying ``axes=(-3,-1)``. This is not allowed for R2C transforms.
+  supplying ``axes=(-3,-1)``. For R2C transforms, the fast axis must be transformed.
 - normalisation=0 (array L2 norm * array size on each transform) and 1 (the backward
   transform divides the L2 norm by the array size, so FFT*iFFT restores the original array)
 - Support for C (default) and F-ordered arrays, for C2C and R2C transforms
@@ -211,7 +211,7 @@ etc...
 Optimising those is difficult, so only do it for fun when trying to get some
 extra performance. Generally, VkFFT defaults work quite well. Using the
 simple FFT API, you can activate auto-tuning by passing `tuning=True` to the
-tranform functions (`fftn`, `rfftn`, etc..). **Only do this when using iterative
+transform functions (`fftn`, `rfftn`, etc..). **Only do this when using iterative
 process which really require fine-tuning !**
 
 Here is an example of the benchmark ran on a V100 GPU by tuning the

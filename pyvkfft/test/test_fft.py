@@ -276,11 +276,13 @@ class TestFFT(unittest.TestCase):
                         for r2c, dct, dst in vrcs:
                             # Setup use of either ndim or axes, also test skipping dimensions
                             ndim_axes = [(ndim0, None)]
-                            if shuffle_axes and not (r2c or dct or dst):
+                            if shuffle_axes:
                                 for p in permutations([1] * ndim0 + [0] * (dims - ndim0)):
                                     axes = (-dims + np.nonzero(p)[0]).tolist()
                                     if (None, axes) not in ndim_axes:
-                                        ndim_axes.append((None, axes))
+                                        # Fast axis must be transformed for r2c
+                                        if not r2c or -1 in axes:
+                                            ndim_axes.append((None, axes))
                             for ndim, axes in ndim_axes:
                                 for dtype in vtype:
                                     if axes is None:
@@ -313,7 +315,7 @@ class TestFFT(unittest.TestCase):
                                         for inplace in vinplace:
                                             for norm in vnorm:
                                                 vorder = ['C', 'F']
-                                                if dims == 1 or dims > 3 or dct or dst:
+                                                if dims == 1 or dims > 3:
                                                     vorder = ['C']
                                                 if r2c:
                                                     if ndim is not None:
@@ -482,13 +484,14 @@ class TestFFT(unittest.TestCase):
                 v = self.verbose and not dry_run
                 if dry_run or self.nproc == 1:
                     tmp = self.run_fft([backend], [15, 17, 30, 34], dims_max=4, ndim_max=4,
-                                       vtype=vtype, vr2c=(True,), verbose=v, dry_run=dry_run)
+                                       vtype=vtype, vr2c=(True,), verbose=v, dry_run=dry_run,
+                                       shuffle_axes=True)
                     ct += tmp[0]
                     vkwargs += tmp[1]
                     # Larger 1D and 2D tests
                     tmp = self.run_fft([backend], [808, 2988, 4200],
                                        vtype=vtype, dims_max=2, vr2c=(True,),
-                                       verbose=v, dry_run=dry_run)
+                                       verbose=v, dry_run=dry_run, shuffle_axes=True)
                     ct += tmp[0]
                     vkwargs += tmp[1]
                     # Test even larger 1D transform sizes
@@ -520,13 +523,13 @@ class TestFFT(unittest.TestCase):
                 if dry_run or self.nproc == 1:
                     tmp = self.run_fft([backend], [15, 17, 30, 34], dims_max=4, ndim_max=4,
                                        vtype=vtype, vdct=range(1, 5), vnorm=[1],
-                                       verbose=v, dry_run=dry_run)
+                                       verbose=v, dry_run=dry_run, shuffle_axes=True)
                     ct += tmp[0]
                     vkwargs += tmp[1]
                     # Larger 1D and 2D tests
                     tmp = self.run_fft([backend], [808, 2988, 4200],
                                        vtype=vtype, dims_max=2, vdct=range(1, 5),
-                                       vnorm=[1], verbose=v, dry_run=dry_run)
+                                       vnorm=[1], verbose=v, dry_run=dry_run, shuffle_axes=True)
                     ct += tmp[0]
                     vkwargs += tmp[1]
                     # Test even larger 1D transform sizes
@@ -558,13 +561,13 @@ class TestFFT(unittest.TestCase):
                 if dry_run or self.nproc == 1:
                     tmp = self.run_fft([backend], [15, 17, 30, 34], dims_max=4, ndim_max=4,
                                        vtype=vtype, vdst=range(1, 5),
-                                       vnorm=[1], verbose=v, dry_run=dry_run)
+                                       vnorm=[1], verbose=v, dry_run=dry_run, shuffle_axes=True)
                     ct += tmp[0]
                     vkwargs += tmp[1]
                     # Larger 1D and 2D tests
                     tmp = self.run_fft([backend], [808, 2988, 4200],
                                        vtype=vtype, dims_max=2, vdst=range(1, 5),
-                                       vnorm=[1], verbose=v, dry_run=dry_run)
+                                       vnorm=[1], verbose=v, dry_run=dry_run, shuffle_axes=True)
                     ct += tmp[0]
                     vkwargs += tmp[1]
                     # Test even larger 1D transform sizes

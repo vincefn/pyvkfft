@@ -526,8 +526,9 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
         nmaxr2c1d = 2048 * (1 + int(dtype in (np.float32, np.complex64)))
     else:
         nmaxr2c1d = 3072 * (1 + int(dtype in (np.float32, np.complex64)))
+    ndimtmp = ndim if ndim is not None else len(axes)
     if max(ni, nii) <= tol and (inplace or src_unchanged_fft) and \
-            (inplace or src_unchanged_ifft or (r2c and ndim > 1 or n >= nmaxr2c1d or bluestein)):
+            (inplace or src_unchanged_ifft or (r2c and ndimtmp > 1 or n >= nmaxr2c1d or bluestein)):
         success = 'OK'
     else:
         success = 'FAIL'

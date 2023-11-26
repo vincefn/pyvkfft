@@ -86,7 +86,8 @@ def tune_vkfft(tune, shape, dtype: type, ndim=None, inplace=True, stream=None, q
         if dst=True, the DST type 2 will be performed, following scipy's convention.
     :param axes: a list or tuple of axes along which the transform should be made.
         if None, the transform is done along the ndim fastest axes, or all
-        axes if ndim is None. Not allowed for R2C transforms
+        axes if ndim is None. For R2C transforms, the fast axis must be
+        transformed.
     :param strides: the array strides - needed if not C-ordered.
     :param verbose: if True, print speed for each configuration
     :param r2c_odd: this should be set to True to perform an inplace r2c/c2r
