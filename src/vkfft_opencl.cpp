@@ -45,10 +45,11 @@ LIBRARY_API uint32_t vkfft_max_fft_dimensions();
 
 /** Create the VkFFTConfiguration from the array parameters
 *
-* \param nx, ny, nz: dimensions of the array. The fast axis is x. In the corresponding numpy array,
-* this corresponds to a shape of (nz, ny, nx)
-* \param fftdim: the dimension of the transform. If nz>1 and fftdim=2, the transform is only made
-* on the x and y axes
+* \param size: pointer to the size of the data array along each dimension - this should hold
+*    VKFFT_MAX_FFT_DIMENSIONS values, starting from the fastest - e.g. if a numpy array has a shape
+*    (nz, ny, nx), then this would hold [nx, ny, nz, 1, 1..]
+*    Note that if r2c is True
+* \param fftdim: number of dimensions of the transform.
 * \param buffer, buffer_out: pointer to the GPU data source and destination arrays. These
 *  can be fake and the actual buffers supplied in fft() and ifft. However buffer should be non-zero,
 *  and buffer_out should be non-zero only for an out-of-place transform.
@@ -151,7 +152,6 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
 
   if(r2c)
   {
-    if(s % 2) config->forceCallbackVersionRealTransforms = 1;
     *psize = (uint64_t)((s / 2 +1) * precision * (size_t)2);
     if(buffer_out != NULL)
     {
