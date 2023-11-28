@@ -1084,6 +1084,8 @@ class TestFFTSystematic(unittest.TestCase):
                 suptit += " [long double ref]"
             suptit += " [%d tests]" % self.nb_test
 
+            import matplotlib as mpl
+            mpl.use('Agg')
             import matplotlib.pyplot as plt
             from scipy import stats
             plt.figure(figsize=(8, 5))
