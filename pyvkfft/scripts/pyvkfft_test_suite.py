@@ -167,7 +167,8 @@ def main():
 
                                 if 'inplace' not in inplace:
                                     mem *= 2
-                                if 'dct' in transform or 'r2c' in transform or 'dst' in transform:
+                                if 'r2c' in transform:
+                                    # DCT/DST can be solved as 2N-1 systems, so no benefit from real arrays
                                     mem /= 2
                                 mem += 200 * 1024 ** 2  # context memory
                                 nproc1 = gpumem // (mem / 1024 ** 3 * 1.5)
