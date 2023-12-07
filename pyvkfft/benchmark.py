@@ -22,7 +22,7 @@ from itertools import permutations
 from time import localtime, strftime
 import numpy as np
 import matplotlib.pyplot as plt
-from pyvkfft.version import vkfft_version
+from pyvkfft.version import vkfft_version, vkfft_git_version
 from pyvkfft.base import primes
 
 
@@ -588,8 +588,9 @@ def plot_benchmark(results, ndim, gpu_name_real, radix_max, legend_loc="lower le
         cu_version = ", CUDA driver %s runtime %s" % (cu_version_driver, cu_version_runtime)
     else:
         cu_version = ""
-    plt.suptitle("%dD FFT speed [%s, VkFFT %s%s%s]" % (ndim, gpu_name_real, vkfft_version(), cu_version,
-                                                       cufft_version),
+    vkfft_git_v = '' if 'unknown' in vkfft_git_version() else f'[{vkfft_git_version()}]'
+    plt.suptitle("%dD FFT speed [%s, VkFFT %s%s%s%s]" % (ndim, gpu_name_real, vkfft_version(),
+                                                         vkfft_git_v, cu_version, cufft_version),
                  fontsize=12)
     plt.title("Batched FFTs, 'Ideal' throughput assumes one r+w operation per FFT axis [%s, %s]" %
               (platform.platform(), platform.node()), fontsize=10)

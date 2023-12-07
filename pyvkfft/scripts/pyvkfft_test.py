@@ -18,7 +18,7 @@ import socket
 import psutil
 import numpy as np
 from pyvkfft.test import TestFFT, TestFFTSystematic
-from pyvkfft.version import __version__, vkfft_version
+from pyvkfft.version import __version__, vkfft_version, vkfft_git_version
 
 
 def cuda_info_str():
@@ -58,6 +58,8 @@ def make_html_pre_post(overwrite=False):
         else:
             com = ''
         # Need the html header, styles and the results' table beginning
+        vkfft_ver = f'{vkfft_version()}' if 'unknown' in vkfft_git_version() \
+            else f'{vkfft_version()}[{vkfft_git_version()}]'
         tmp = '<!DOCTYPE html>\n <html>\n <head> <style>\n' \
               'th, td { border: 1px solid grey;}\n' \
               '.center {margin-left: auto;  margin-right: auto; text-align:center;' \
@@ -140,7 +142,7 @@ def make_html_pre_post(overwrite=False):
               '           <th>ERROR</th>' \
               '       </tr>\n' \
               '   </thead>\n' \
-              '<tbody class="center">\n' % (__version__, vkfft_version(), cuda_info_str(),
+              '<tbody class="center">\n' % (__version__, vkfft_ver, cuda_info_str(),
                                             socket.gethostname(), com)
         open("pyvkfft-test1000.html", "w").write(tmp)
     if ('pyvkfft-test1999.html' not in os.listdir()) or overwrite:

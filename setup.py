@@ -12,8 +12,10 @@ from setuptools.command.sdist import sdist
 from distutils.extension import Extension
 from distutils import unixccompiler
 from setuptools.command.build_ext import build_ext as build_ext_orig
-from pyvkfft.version import __version__
 from setuptools.command.bdist_egg import bdist_egg
+from setuptools.command.install_lib import install_lib as su_install_lib
+from setuptools.command.sdist import sdist as su_sdist
+from pyvkfft.version import __version__, git_version, vkfft_git_version
 
 # Maximum number of dimentsions VkFFT can handle. VkFFT sets this to 4,
 # pyvkfft uses a default of 8. Set an environment variable
@@ -258,6 +260,44 @@ for s in scripts:
     s0 = os.path.splitext(s)[0]
     console_scripts.append("%s = %s:main" % (s1.replace('_', '-'), s0.replace('/', '.')))
 
+
+class pyvkfft_sdist(su_sdist):
+    """Hook to include git version of pyvkfft and VkFFT"""
+
+    def make_release_tree(self, base_dir, files):
+        super(pyvkfft_sdist, self).make_release_tree(base_dir, files)
+        try:
+            # Replace git_version_placeholder by real git version
+            version_file = os.path.join(base_dir, "pyvkfft/version.py")
+            vers = open(version_file).read()
+            os.remove(version_file)
+            with open(version_file, "w") as fh:
+                vers = vers.replace("vkfft_git_version_placeholder", vkfft_git_version())
+                vers = vers.replace("git_version_placeholder", git_version())
+                fh.write(vers)
+        except:
+            print("sdist: replacing git_version failed")
+
+
+class pyvkfft_install_lib(su_install_lib):
+    """Hook to include git version of pyvkfft and VkFFT"""
+
+    def run(self):
+        super(pyvkfft_install_lib, self).run()
+        try:
+            # print(self.install_dir, self.build_dir)
+            # Replace git_version_placeholder by real git version
+            version_file = os.path.join(self.install_dir, "pyvkfft/version.py")
+            vers = open(version_file).read()
+            os.remove(version_file)
+            with open(version_file, "w") as fh:
+                vers = vers.replace("vkfft_git_version_placeholder", vkfft_git_version())
+                vers = vers.replace("git_version_placeholder", git_version())
+                fh.write(vers)
+        except:
+            print("install_lib: replacing git_version failed")
+
+
 setup(name="pyvkfft",
       version=__version__,
       description="Python wrapper for the CUDA and OpenCL backends of VkFFT,"
@@ -283,7 +323,9 @@ setup(name="pyvkfft",
       ],
       license='MIT License',
       cmdclass={'build_ext': build_ext_custom,
-                'bdist_egg': bdist_egg if 'bdist_egg' in sys.argv else bdist_egg_disabled
+                'bdist_egg': bdist_egg if 'bdist_egg' in sys.argv else bdist_egg_disabled,
+                'sdist': pyvkfft_sdist,
+                'install_lib': pyvkfft_install_lib
                 },
       install_requires=install_requires,
       extras_require={'doc': ['sphinx', 'nbsphinx', 'nbsphinx-link', 'sphinx-argparse',

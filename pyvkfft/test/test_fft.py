@@ -29,7 +29,7 @@ except ImportError:
         def ascent():
             return np.random.randint(0, 255, (512, 512))
 
-from pyvkfft.version import __version__, vkfft_version
+from pyvkfft.version import __version__, vkfft_version, vkfft_git_version
 from pyvkfft.base import primes, radix_gen_n
 from pyvkfft.fft import fftn as vkfftn, ifftn as vkifftn, rfftn as vkrfftn, \
     irfftn as vkirfftn, dctn as vkdctn, idctn as vkidctn, \
@@ -1070,7 +1070,9 @@ class TestFFTSystematic(unittest.TestCase):
             elif self.bluestein:
                 r = "_bluestein"
 
-            tit = "%s %s pyvkfft %s VkFFT %s" % (gpu_name, self.vbackend[0], __version__, vkfft_version())
+            vkfft_ver = f'{vkfft_version()}' if 'unknown' in vkfft_git_version() \
+                else f'{vkfft_version()}[{vkfft_git_version()}]'
+            tit = "%s %s pyvkfft %s VkFFT %s" % (gpu_name, self.vbackend[0], __version__, vkfft_ver)
             if self.ndim == 12:
                 sndim = "1D2D"
             elif self.ndim == 123:
