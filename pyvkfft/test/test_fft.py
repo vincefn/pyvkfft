@@ -331,7 +331,7 @@ class TestFFT(unittest.TestCase):
                                             # contiguous
                                             vorder = ['C']
                                     for order in vorder:
-                                        with self.subTest(backend=backend, n=n, dims=dims, ndim=ndim,
+                                        with self.subTest(backend=backend, shape=sh, dims=dims, ndim=ndim,
                                                           axes=axes, dtype=np.dtype(dtype), norm=norm,
                                                           use_lut=use_lut, inplace=inplace,
                                                           r2c=r2c, dct=dct, dst=dst, order=order):
@@ -392,7 +392,7 @@ class TestFFT(unittest.TestCase):
         # Need to use spawn to handle the GPU context
         with multiprocessing.get_context('spawn').Pool(self.nproc) as pool:
             for res in pool.imap(test_accuracy_kwargs, vkwargs):
-                with self.subTest(backend=res['backend'], n=max(res['shape']), ndim=res['ndim'],
+                with self.subTest(backend=res['backend'], shape=res['shape'], ndim=res['ndim'],
                                   dtype=np.dtype(res['dtype']), norm=res['norm'], use_lut=res['use_lut'],
                                   inplace=res['inplace'], r2c=res['r2c'], dct=res['dct'],
                                   dst=res['dst'], order=res['order']):
