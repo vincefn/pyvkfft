@@ -536,6 +536,15 @@ class VkFFTApp:
 
         # Experimental parameters. Not much difference is seen, so don't document this,
         # VkFFT default parameters seem fine.
+
+        # force callback version of R2C and R2R (DCT/DST) algorithms for all usecases (0 - off, 1 - on)
+        # this is normally activated automatically by VkFFT for odd sizes.
+        if "forceCallbackVersionRealTransforms" in kwargs:
+            self.forceCallbackVersionRealTransforms = kwargs["forceCallbackVersionRealTransforms"]
+        else:
+            self.forceCallbackVersionRealTransforms = -1
+
+        # disables unshuffling of Four step algorithm. Requires tempbuffer allocation (0 - off, 1 - on)
         if "disableReorderFourStep" in kwargs:
             self.disableReorderFourStep = kwargs["disableReorderFourStep"]
         else:

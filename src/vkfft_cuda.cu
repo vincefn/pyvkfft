@@ -26,7 +26,7 @@ LIBRARY_API VkFFTConfiguration* make_config(const long*, const size_t, void*, vo
                                 const int, const int, const int, const int,
                                 const int, const int, const size_t, const long*,
                                 const int, const int, const int, const int, const int, const int, const int,
-                                const long*);
+                                const long*, const int);
 
 LIBRARY_API VkFFTApplication* init_app(const VkFFTConfiguration*, int*);
 
@@ -90,7 +90,8 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
                                 const int coalescedMemory, const int numSharedBanks,
                                 const int aimThreads, const int performBandwidthBoost,
                                 const int registerBoostNonPow2, const int registerBoost4Step,
-                                const int warpSize, const long* grouped_batch)
+                                const int warpSize, const long* grouped_batch,
+                                const int forceCallbackVersionRealTransforms)
 {
   VkFFTConfiguration *config = new VkFFTConfiguration({});
   config->FFTdim = fftdim;
@@ -189,6 +190,11 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
 
   int s =  size[0];
   for(int i=1; i<VKFFT_MAX_FFT_DIMENSIONS; i++) s *= size[i];
+
+  // forceCallbackVersionRealTransforms is normally automatically set by VkFFT
+  // for odd-length R2C/DCT/DST - this can be used to force it for even lengths
+  if((r2c || dst || dct) && forceCallbackVersionRealTransforms>0)
+    config->forceCallbackVersionRealTransforms = 1;
 
   if(r2c)
   {

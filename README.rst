@@ -270,7 +270,6 @@ TODO
 - half precision ?
 - convolution ?
 - zero-padding ?
-- access to tweaking parameters in VkFFTConfiguration ?
 - access to the code of the generated kernels ?
 
 Authors & acknowledgements

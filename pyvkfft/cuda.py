@@ -47,7 +47,7 @@ try:
                                         ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_size_t,
                                         ctype_int_size_p, ctypes.c_int,
                                         ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                                        ctypes.c_int, ctype_int_size_p]
+                                        ctypes.c_int, ctype_int_size_p, ctypes.c_int]
 
     _vkfft_cuda.init_app.restype = ctypes.c_void_p
     _vkfft_cuda.init_app.argtypes = [_types.vkfft_config, ctypes.POINTER(ctypes.c_int)]
@@ -256,7 +256,8 @@ class VkFFTApp(VkFFTAppBase):
                                        int(self.coalescedMemory), int(self.numSharedBanks),
                                        int(self.aimThreads), int(self.performBandwidthBoost),
                                        int(self.registerBoostNonPow2), int(self.registerBoost4Step),
-                                       int(self.warpSize), grouped_batch)
+                                       int(self.warpSize), grouped_batch,
+                                       int(self.forceCallbackVersionRealTransforms))
 
     def fft(self, src, dest=None):
         """
