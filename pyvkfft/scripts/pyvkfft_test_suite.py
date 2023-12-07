@@ -13,6 +13,7 @@ import glob
 import platform
 import argparse
 import sys
+import itertools
 
 
 def make_parser():
@@ -132,72 +133,68 @@ def main():
         vprec = ['', ' --double']
     vradix = [' --radix'] if radix else [' --radix', ' --bluestein']
     vinplace = ['', ' --inplace']
-    for radix in vradix:
-        for norm in vnorm:
-            for lut in vlut:
-                for inplace in vinplace:
-                    for prec in vprec:
-                        if ' --lut' in lut and 'double' in prec:
-                            continue
-                        for transform in vtransform:
-                            if ('dct' in transform or 'dst' in transform) and '0' in norm:
-                                continue
-                            for ndim in vdim:
-                                n1 = 3 if ('dct 4' in transform or 'dst 4' in transform) else 2
-                                if ndim == 1:
-                                    n2 = 100000 if 'radix' in radix else 10000
-                                elif ndim == 2:
-                                    n2 = 4500
-                                else:  # ndim==3
-                                    n2 = 550
-                                # Estimate maximum memory usage
-                                mem = n2 ** ndim * 8
-                                # Assume 48 or 64 KB of shared memory to see if Vkfft needs a temp buffer.
-                                # For single precision and 64 KB, x-axis can be up to 8192 single upload,
-                                # 4096 for the other axes.
-                                if 'opencl' in backend:
-                                    b = (n2 * (16 if 'double' in prec else 8) / (48 * 1024)) * (1 + int(ndim > 1)) >= 1
-                                else:
-                                    b = (n2 * (16 if 'double' in prec else 8) / (64 * 1024)) * (1 + int(ndim > 1)) >= 1
+    for radix, norm, lut, inplace, prec in itertools.product(vradix, vnorm, vlut, vinplace, vprec):
+        if ' --lut' in lut and 'double' in prec:
+            continue
+        for transform in vtransform:
+            if ('dct' in transform or 'dst' in transform) and '0' in norm:
+                continue
+            for ndim in vdim:
+                n1 = 3 if ('dct 4' in transform or 'dst 4' in transform) else 2
+                if ndim == 1:
+                    n2 = 100000 if 'radix' in radix else 10000
+                elif ndim == 2:
+                    n2 = 4500
+                else:  # ndim==3
+                    n2 = 550
+                # Estimate maximum memory usage
+                mem = n2 ** ndim * 8
+                # Assume 48 or 64 KB of shared memory to see if Vkfft needs a temp buffer.
+                # For single precision and 64 KB, x-axis can be up to 8192 single upload,
+                # 4096 for the other axes.
+                if 'opencl' in backend:
+                    b = (n2 * (16 if 'double' in prec else 8) / (48 * 1024)) * (1 + int(ndim > 1)) >= 1
+                else:
+                    b = (n2 * (16 if 'double' in prec else 8) / (64 * 1024)) * (1 + int(ndim > 1)) >= 1
 
-                                if 'double' in prec:
-                                    mem *= 2 + int(b)
-                                elif b:
-                                    mem *= 2
+                if 'double' in prec:
+                    mem *= 2 + int(b)
+                elif b:
+                    mem *= 2
 
-                                if 'inplace' not in inplace:
-                                    mem *= 2
-                                if 'r2c' in transform:
-                                    # DCT/DST can be solved as 2N-1 systems, so no benefit from real arrays
-                                    mem /= 2
-                                mem += 200 * 1024 ** 2  # context memory
-                                nproc1 = gpumem // (mem / 1024 ** 3 * 1.5)
-                                nproc = max(1, min(nproc1, nproc0))
-                                com = 'pyvkfft-test --systematic --backend %s' % backend
-                                if gpu is not None:
-                                    com += ' --gpu %s' % gpu
-                                com += ' --graph --html --max-nb-tests 0'
-                                com += ' --nproc %2d --ndim %d --range %d %6d' % (nproc, ndim, n1, n2)
-                                com += transform + radix + inplace + prec + lut + norm + ' --range-mb 0 4100'
-                                if opencl_platform is not None:
-                                    com += ' --opencl_platform ' + opencl_platform
-                                if args.fast_random is not None:
-                                    com += ' --fast-random %d' % args.fast_random
-                                if dry_run:
-                                    if args.skip and nhtml > ct_test:
-                                        print(f'Skipping already performed test: {com}')
-                                    else:
-                                        print(com)
-                                        # os.system(com + ' --dry-run')
-                                else:
-                                    if args.skip and nhtml > ct_test:
-                                        print(f'Skipping already performed test: {com}')
-                                    else:
-                                        if os.system(com) == 2:
-                                            # Keyboard interrupt (why 2 ?)
-                                            print("Aborting test suite")
-                                            sys.exit(1)
-                                ct_test += 1
+                if 'inplace' not in inplace:
+                    mem *= 2
+                if 'r2c' in transform:
+                    # DCT/DST can be solved as 2N-1 systems, so no benefit from real arrays
+                    mem /= 2
+                mem += 200 * 1024 ** 2  # context memory
+                nproc1 = gpumem // (mem / 1024 ** 3 * 1.5)
+                nproc = max(1, min(nproc1, nproc0))
+                com = 'pyvkfft-test --systematic --backend %s' % backend
+                if gpu is not None:
+                    com += ' --gpu %s' % gpu
+                com += ' --graph --html --max-nb-tests 0'
+                com += ' --nproc %2d --ndim %d --range %d %6d' % (nproc, ndim, n1, n2)
+                com += transform + radix + inplace + prec + lut + norm + ' --range-mb 0 4100'
+                if opencl_platform is not None:
+                    com += ' --opencl_platform ' + opencl_platform
+                if args.fast_random is not None:
+                    com += ' --fast-random %d' % args.fast_random
+                if dry_run:
+                    if args.skip and nhtml > ct_test:
+                        print(f'Skipping already performed test: {com}')
+                    else:
+                        print(com)
+                        # os.system(com + ' --dry-run')
+                else:
+                    if args.skip and nhtml > ct_test:
+                        print(f'Skipping already performed test: {com}')
+                    else:
+                        if os.system(com) == 2:
+                            # Keyboard interrupt (why 2 ?)
+                            print("Aborting test suite")
+                            sys.exit(1)
+                ct_test += 1
 
     # Last, run a few 2D and 3D tests where the lengths can differ,
     # and radix and Bluestein transforms are mixed.
