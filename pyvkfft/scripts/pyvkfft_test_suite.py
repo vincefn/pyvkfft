@@ -165,10 +165,10 @@ def main():
                 if 'inplace' not in inplace:
                     mem *= 2
                 if 'r2c' in transform:
-                    # DCT/DST can be solved as 2N-1 systems, so no benefit from real arrays
+                    # DCT/DST can be solved as 2N-1 systems, so no benefit from real arrays ?
                     mem /= 2
                 mem += 200 * 1024 ** 2  # context memory
-                nproc1 = gpumem // (mem / 1024 ** 3 * 1.5)
+                nproc1 = gpumem // (mem / 1024 ** 3 * 2)  # *2 is a margin for errors
                 nproc = max(1, min(nproc1, nproc0))
                 com = 'pyvkfft-test --systematic --backend %s' % backend
                 if gpu is not None:
