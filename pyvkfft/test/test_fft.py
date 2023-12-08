@@ -271,7 +271,6 @@ class TestFFT(unittest.TestCase):
             # We assume the context was already initialised by the calling function
             # init_ctx(backend, gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
             cq = gpu_ctx_dic["pyopencl"][2] if backend == "pyopencl" else None
-            print("using nested loops...")
             for n, dims in itertools.product(vn, range(1, dims_max + 1)):
                 for ndim0 in range(1, min(dims, ndim_max) + 1):
                     for r2c, dct, dst in vrcs:
