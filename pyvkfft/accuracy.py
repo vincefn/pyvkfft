@@ -418,34 +418,35 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
         t = "DST%d" % dst
     else:
         t = "C2C"
-    if r2c and inplace:
-        tmp = list(d0.shape)
-        if order == 'C':
-            tmp[-1] -= r2c_inplace_pad
-            shstr = str(tuple(tmp)).replace(" ", "")
-            if ",)" in shstr:
-                shstr = shstr.replace(",)", f"+{r2c_inplace_pad})")
-            else:
-                shstr = shstr.replace(")", f"+{r2c_inplace_pad})")
-        else:
-            tmp[0] -= r2c_inplace_pad
-            if len(tmp) == 1:
-                shstr = f"({tmp[0]}+{r2c_inplace_pad}),"
-            else:
-                shstr = f"({tmp[0]}+{r2c_inplace_pad},"
-                shstr += str(tuple(tmp[1:])).replace(" ", "").replace(",)", ")")[1:]
-    else:
-        shstr = str(d0.shape).replace(" ", "")
+    # if r2c and inplace:
+    #     tmp = list(d0.shape)
+    #     if order == 'C':
+    #         tmp[-1] -= r2c_inplace_pad
+    #         shstr = str(tuple(tmp)).replace(" ", "")
+    #         if ",)" in shstr:
+    #             shstr = shstr.replace(",)", f"+{r2c_inplace_pad})")
+    #         else:
+    #             shstr = shstr.replace(")", f"+{r2c_inplace_pad})")
+    #     else:
+    #         tmp[0] -= r2c_inplace_pad
+    #         if len(tmp) == 1:
+    #             shstr = f"({tmp[0]}+{r2c_inplace_pad}),"
+    #         else:
+    #             shstr = f"({tmp[0]}+{r2c_inplace_pad},"
+    #             shstr += str(tuple(tmp[1:])).replace(" ", "").replace(",)", ")")[1:]
+    # else:
+    #     shstr = str(d0.shape).replace(" ", "")
+    shstr = app.get_shape_str()
     shax = str(axes).replace(" ", "")
     if colour_output:
         red = max(0, min(int((ni / tol - 0.2) * 255), 255))
-        stol = "\x1b[48;2;%d;0;0m%6.2e < %6.2e (%5.3f)\x1b[0m" % (red, ni, tol, ni / tol)
+        stol = "\x1b[48;2;%d;0;0m%5.1e < %5.1e (%5.3f)\x1b[0m" % (red, ni, tol, ni / tol)
     else:
-        stol = "%6.2e < %6.2e (%5.3f)" % (ni, tol, ni / tol)
+        stol = "%5.1e < %5.1e (%5.3f)" % (ni, tol, ni / tol)
 
-    verb_out = "%8s %4s %14s axes=%10s ndim=%4s %10s lut=%4s inplace=%d " \
-               " norm=%4s %s %5s: n2=%6.2e ninf=%s %d" % \
-               (backend, t, shstr, shax, str(ndim), str(d0.dtype),
+    verb_out = "%8s %4s %14s axes=%10s ndim=%4s %5s %10s lut=%4s inplace=%d " \
+               " norm=%4s %s %5s: n2=%5.1e ninf=%s %d" % \
+               (backend, t, shstr, shax, str(ndim), app.get_algo_str(), str(d0.dtype),
                 str(use_lut), int(inplace), str(norm), order, "FFT", n2, stol, src_unchanged_fft)
 
     t3 = timeit.default_timer()
@@ -535,10 +536,13 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
 
     if colour_output:
         red = max(0, min(int((nii / tol - 0.2) * 255), 255))
-        stol = "\x1b[48;2;%d;0;0m%6.2e < %6.2e (%5.3f)\x1b[0m" % (red, nii, tol, nii / tol)
+        stol = "\x1b[48;2;%d;0;0m%5.1e < %5.1e (%5.3f)\x1b[0m" % (red, nii, tol, nii / tol)
     else:
-        stol = "%6.2e < %6.2e (%5.3f)" % (nii, tol, nii / tol)
-    verb_out += "%5s: n2=%6.2e ninf=%s %d %4s" % ("iFFT", n2i, stol, src_unchanged_ifft, success)
+        stol = "%5.1e < %5.1e (%5.3f)" % (nii, tol, nii / tol)
+    verb_out += "%5s: n2=%5.1e ninf=%s %d" % ("iFFT", n2i, stol, src_unchanged_ifft)
+
+    # Also print the size of the allocated buffer and success
+    verb_out += f" buf={app.get_tmp_buffer_str()} {success:4s}"
 
     if verbose:
         print(verb_out)

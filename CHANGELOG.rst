@@ -9,6 +9,9 @@ Version 2023.3 (2023-XX-XX)
   the r2c_odd=True parameter
 * Custom transform axes (strided) are now allowed also for R2C,
   as long as the fast axis is transformed.
+* added functions to access the size of the temporary buffer
+  created by VkFFT (if any), the type of algorithm used alond
+  each axis (radix, Rader, Bluestein)
 * DCT and DST now support F-ordered arrays
 
 Version 2023.2.post1 (2023-09-21)

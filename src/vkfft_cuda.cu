@@ -28,7 +28,8 @@ LIBRARY_API VkFFTConfiguration* make_config(const long*, const size_t, void*, vo
                                 const int, const int, const int, const int, const int, const int, const int,
                                 const long*, const int);
 
-LIBRARY_API VkFFTApplication* init_app(const VkFFTConfiguration*, int*);
+LIBRARY_API VkFFTApplication* init_app(const VkFFTConfiguration*, int*,
+                                       size_t*, long*, long*);
 
 LIBRARY_API int fft(VkFFTApplication* app, void*, void*);
 
@@ -248,7 +249,9 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
 * \param config: the pointer to the VkFFTConfiguration
 * \return: the pointer to the newly created VkFFTApplication
 */
-VkFFTApplication* init_app(const VkFFTConfiguration* config, int *res)
+VkFFTApplication* init_app(const VkFFTConfiguration* config, int *res,
+                           size_t *tmp_buffer_nbytes, long *use_bluestein_fft,
+                           long *num_axis_upload)
 {
   VkFFTApplication* app = new VkFFTApplication({});
   *res = initializeVkFFT(app, *config);
@@ -263,6 +266,14 @@ VkFFTApplication* init_app(const VkFFTConfiguration* config, int *res)
     delete app;
     return 0;
   }
+  // Did VkFFT allocate a temporary buffer ?
+  if(app->configuration.allocateTempBuffer)
+    *tmp_buffer_nbytes = app->configuration.tempBufferSize[0];
+   else *tmp_buffer_nbytes = 0;
+
+  for(int i=0; i<VKFFT_MAX_FFT_DIMENSIONS; i++) use_bluestein_fft[i] = app->useBluesteinFFT[i];
+  for(int i=0; i<VKFFT_MAX_FFT_DIMENSIONS; i++) num_axis_upload[i] = app->localFFTPlan->numAxisUploads[i];
+
   return app;
 }
 

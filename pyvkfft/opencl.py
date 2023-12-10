@@ -35,7 +35,10 @@ try:
                                           ctypes.c_int, ctype_int_size_p, ctypes.c_int]
 
     _vkfft_opencl.init_app.restype = ctypes.c_void_p
-    _vkfft_opencl.init_app.argtypes = [_types.vkfft_config, ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)]
+    _vkfft_opencl.init_app.argtypes = [_types.vkfft_config, ctypes.c_void_p,
+                                       ctypes.POINTER(ctypes.c_int),
+                                       ctypes.POINTER(ctypes.c_size_t),
+                                       ctype_int_size_p, ctype_int_size_p]
 
     _vkfft_opencl.fft.restype = ctypes.c_int
     _vkfft_opencl.fft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
@@ -71,7 +74,7 @@ class VkFFTApp(VkFFTAppBase):
 
     def __init__(self, shape, dtype: type, queue: cl.CommandQueue, ndim=None, inplace=True, norm=1,
                  r2c=False, dct=False, dst=False, axes=None, strides=None, tune_config=None,
-                 r2c_odd=False, **kwargs):
+                 r2c_odd=False, verbose=False, **kwargs):
         """
         Init function for the VkFFT application.
 
@@ -146,6 +149,8 @@ class VkFFTApp(VkFFTAppBase):
             of 101, the input array should also be padded to 102 (101+1), and
             the resulting half-Hermitian array also has a size of 51. A
             flag is thus needed to differentiate the cases of 100+2 or 101+1.
+        :param verbose: if True, print a 1-string info about this VkFFTApp.
+            See __str__ for details.
 
         :raises RuntimeError: if the initialisation fails, e.g. if the GPU
             driver has not been properly initialised, or if the transform dimensions
@@ -168,12 +173,32 @@ class VkFFTApp(VkFFTAppBase):
 
         if self.config is None:
             raise RuntimeError("Error creating VkFFTConfiguration. Was the OpenCL context properly initialised ?")
+
         res = ctypes.c_int(0)
-        self.app = _vkfft_opencl.init_app(self.config, queue.int_ptr, ctypes.byref(res))
+        # Size of tmp buffer allocated by VkFFT - if any
+        tmp_buffer_nbytes = ctypes.c_size_t(0)
+        # 0 or 1 for each axis, only if the Bluestein algorithm is used
+        use_bluestein_fft = np.zeros(vkfft_max_fft_dimensions(), dtype=int)
+        # number of axis upload per dimension
+        num_axis_upload = np.zeros(vkfft_max_fft_dimensions(), dtype=int)
+
+        self.app = _vkfft_opencl.init_app(self.config, queue.int_ptr, ctypes.byref(res),
+                                          ctypes.byref(tmp_buffer_nbytes),
+                                          use_bluestein_fft, num_axis_upload)
+
         check_vkfft_result(res, shape, dtype, ndim, inplace, norm, r2c, dct, dst, axes, "opencl:%s:%s" %
                            (queue.device.platform.name, queue.device.name))
+
         if self.app is None:
             raise RuntimeError("Error creating VkFFTApplication. Was the OpenCL context properly initialised ?")
+
+        self.tmp_buffer_nbytes = np.int64(tmp_buffer_nbytes)
+        self.use_bluestein_fft = [bool(n) for n in use_bluestein_fft[:len(self.shape)]]
+        self.nb_axis_upload = [int(num_axis_upload[i] * (self.skip_axis[i] is False))
+                               for i in range(len(self.shape))]
+
+        if verbose:
+            print(self)
 
     def __del__(self):
         """ Takes care of deleting allocated memory in the underlying

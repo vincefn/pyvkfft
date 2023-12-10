@@ -298,12 +298,13 @@ def calc_transform_axes(shape, axes=None, ndim=None, strides=None):
         the number of axes is used
     :param strides: the array strides. If None, a C-order is assumed
         with the fastest axes along the last dimensions (numpy default)
-    :return: (shape, n_batch, skip_axis, ndim) with the shape after collapsing
+    :return: (shape, n_batch, skip_axis, ndim, axes0) with the shape after collapsing
         consecutive non-transformed axes (padded with ones if necessary,
         with the order adequate for VkFFT i.e. (nx, ny, nz,...),
         the batch size (e.g. 5 if shape=(5,16,16) and ndim=2),
         the list of booleans indicating which axes should
-        be skipped, and the number of transform axes.
+        be skipped, and the number of transform axes. Finally, axes0
+        is returned as a list of transformed axes, before any axis collapsing.
     """
     # reverse order to have list as (nx, ny, nz,...)
     shape1 = list(reversed(list(shape)))
@@ -358,7 +359,7 @@ def calc_transform_axes(shape, axes=None, ndim=None, strides=None):
         skip_axis[i] = True
 
     # print(shape, axes, ndim, strides, "->", shape1, skip_axis)
-    return shape1, n_batch, skip_axis, ndim1
+    return shape1, n_batch, skip_axis, ndim1, axes
 
 
 def check_vkfft_result(res, shape=None, dtype=None, ndim=None, inplace=None,
@@ -510,7 +511,11 @@ class VkFFTApp:
                                    f"the complex half-Hermitian array size will be nx//2+1.")
         # Get the final shape passed to VkFFT, collapsing non-transform axes
         # as necessary. The calculated shape has 4 dimensions (nx, ny, nz, n_batch).
-        self.shape, self.n_batch, self.skip_axis, self.ndim = calc_transform_axes(shape, axes, ndim, strides)
+        self.shape, self.n_batch, self.skip_axis, self.ndim, self.axes0 = \
+            calc_transform_axes(shape, axes, ndim, strides)
+        # original shape (without collapsed non-transformed axes)
+        self.shape0 = shape
+        self.strides0 = strides
         self.inplace = inplace
         self.r2c = r2c
         self.r2c_odd = r2c_odd
@@ -530,7 +535,14 @@ class VkFFTApp:
             raise RuntimeError("Only DCT of types 1, 2, 3 and 4 are allowed")
         if dst and self.dst < 1 or self.dst > 4:
             raise RuntimeError("Only DST of types 1, 2, 3 and 4 are allowed")
-        # print("VkFFTApp:", shape, axes, ndim, "->", self.shape, self.skip_axis, self.ndim)
+
+        # These parameters will be filled in by the different backends
+        # Size of the temp buffer allocated by VkFFT
+        self.tmp_buffer_nbytes = 0
+        # 0 or 1 for each axis, only if the Bluestein algorithm is used (same length as self.shape)
+        self.use_bluestein_fft = None
+        # number of axis upload per dimension (same length as self.shape)
+        self.nb_axis_upload = None
 
         # Experimental parameters. Not much difference is seen, so don't document this,
         # VkFFT default parameters seem fine.
@@ -702,6 +714,43 @@ class VkFFTApp:
         elif dtype in [np.float64, np.complex128]:
             self.precision = 8
 
+    def __str__(self):
+        """
+        Get a string describing the VkFFTApp properties, e.g.:
+          VkFFTApp[OpenCL]:(212,212+2)     R2C/s/i [RR] [11] buf=    0
+        This includes VkFFTApp with the backend (OpenCL or CUDA) used, followed
+        by the shape of the array (in python order),
+        then the type of transform (C2C or R2C or DCT/DST), then
+        h/s/d for half/single/double precisions,
+        i or o for in or out-of-place transforms,
+        [???] with a letter indicating for each axis if it uses a
+        [r]adix, [B]luestein or [R]ader transform.
+        Then [nnn] indicates how manu uploads are used per axis,
+        and finally the size of the temporary buffer allocated by VkFFT
+        is indicated, if any.
+        """
+        bufs = self.get_tmp_buffer_str()
+        ft_type = self.get_algo_str()
+
+        sh = self.shape.copy()
+        sh[-1] *= self.n_batch
+        naxup = ''.join([str(i) for i in self.get_nb_upload()])
+        s = "VkFFTApp[OpenCL]:" if 'opencl' in str(self.__class__) else "VkFFTApp[CUDA]:  "
+        s += f"{self.get_shape_str():15s}"
+        if self.dct:
+            s += f"DCT{self.dct}"
+        elif self.dst:
+            s += f"DST{self.dst}"
+        elif self.r2c:
+            s += " R2C"
+        else:
+            s += " C2C"
+        s += {2: "/h", 4: "/s", 8: "/d"}[self.precision]
+        s += '/i' if self.inplace else '/o'
+        s += f" [{ft_type}] [{naxup}]"
+        s += f" buf={bufs}"
+        return s
+
     def _get_fft_scale(self, norm):
         """Return the scale factor by which an array must be multiplied to keep its L2 norm
         after a forward FT
@@ -792,3 +841,230 @@ class VkFFTApp:
         after a backward FT
         """
         return self._get_ifft_scale(self.norm)
+
+    def get_tmp_buffer_nbytes(self):
+        """
+        Return the size (in bytes) of the temporary buffer allocated
+        by VkFFT for the transform, if any.
+        """
+        return self.tmp_buffer_nbytes
+
+    def get_tmp_buffer_str(self):
+        """
+        Get a string with the size of the temporary buffer allocated
+        by VkFFT, e.g. '0', '123kB', '1.2GB', etc. Uses 6 chars.
+        """
+        b = self.tmp_buffer_nbytes
+        return "    0  " if b == 0 else f"{b / 1024 ** 3:5.1f}GB" if b >= 1000 * 1024 ** 2 \
+            else f"{b / 1024 ** 2:5.1f}MB" if b >= 1000 * 1024 \
+            else f"{b / 1024 :5.1f}kB" if b >= 1000 else f"{b:6d}B "
+
+    def get_algo_str(self, vkfft_axes=False):
+        """
+        Return a string indicating the type of algorithm used for each axis,
+        either [r]adix, [B]luestein or [R]ader, or '-' if the axis
+        is skipped.
+        """
+        if vkfft_axes:
+            tmp = ''
+            for i in range(len(self.shape)):
+                if self.skip_axis[i]:
+                    tmp += '-'
+                elif self.is_radix_transform(i, vkfft_axes=True):
+                    tmp += 'r'
+                elif self.is_rader_transform(i, vkfft_axes=True):
+                    tmp += 'R'
+                else:
+                    tmp += 'B'
+            return tmp
+        else:
+            tmp = ''
+            for i in range(len(self.shape0)):
+                if self.skip_axis[self._get_vkfft_axes(i)]:
+                    tmp += '-'
+                elif self.is_radix_transform(i):
+                    tmp += 'r'
+                elif self.is_rader_transform(i):
+                    tmp += 'R'
+                else:
+                    tmp += 'B'
+            return tmp
+
+    def get_shape_str(self, vkfft_axes=False):
+        """
+        Get a string with the shape of the array, including the +1
+        or +2 for inplace r2c transforms.
+
+        :param vkfft_axes: True to use the index relative to VkFFT
+            axes, False (the default) otherwise.
+            See _get_vkfft_axes() for details.
+        """
+        # TODO: handle non C-contiguous array (strides) for inplace r2c
+        if vkfft_axes:
+            sh = list(self.shape).copy()
+        else:
+            sh = list(self.shape0).copy()
+
+        if self.r2c and self.inplace:
+            # Need to figure out the fast axis for the +1 or +2
+            if vkfft_axes:
+                fast_axis = 0
+            else:
+                # _get_vkfft_axes() takes into account strides
+                fast_axis = np.argmin(self._get_vkfft_axes())
+
+            if self.r2c_odd:
+                r2c_inplace_pad = 1
+            else:
+                r2c_inplace_pad = 2
+
+            sh[fast_axis] -= r2c_inplace_pad
+            tmp = [str(sh[i]) + f'+{r2c_inplace_pad}' if i == fast_axis
+                   else str(sh[i]) for i in range(len(sh))]
+            return f"({','.join(tmp)})"
+        return f"({','.join([str(n) for n in sh])})"
+
+    def _get_vkfft_axes(self, i0=None):
+        """
+        Get the index of an axis in self.shape, self.skip_axis,
+        self.use_bluestein_fft, etc..., from the original index.
+        This is used because consecutive non-transformed axes are collapsed (merged).
+        Additionally, VkFFT indexes the dimensions
+        as [nx ny nz] rather than [nz ny nx], which is also taken care of.
+        Finally, this takes into account strides if the array is not C-contiguous,
+        which will change the order of the axes stored for VkFFT.
+        Example: an array of shape (10,8,6,4) and axes=[-4,-1] will be internally
+        seen as an array of shape (4,48,10).
+
+        :param i0: the index in the original numpy array shape (can be >=0 or <0)
+        :return: the index used for the same axis with the VkFFT order, i.e.
+            reversed and after collapsing non-transformed axes. If i0=None,
+            the index of all dimensions is returned as a list
+        """
+        n = len(self.shape0)
+        i1 = len(self.shape) - 1
+        idx = [i1]
+        for i in range(n - 1):
+            if i in self.axes0 or i - n in self.axes0 or i + 1 in self.axes0 or i + 1 - n in self.axes0:
+                i1 -= 1
+            idx.append(i1)
+        if self.strides0 is not None:
+            idx = np.take(idx, np.argsort(self.strides0)[::-1])
+        if i0 is None:
+            return idx
+        return idx[i0]
+
+    def is_bluestein_transform(self, axis=None, vkfft_axes=False):
+        """
+        Return True if the transform used along a given axis uses
+        Bluestein's algorithm, or False
+
+        :param axis: the index of one axis. If None, a list of values
+            for all the axis is returned
+        :param vkfft_axes: True to use the index relative to VkFFT
+            axes, False (the default) otherwise.
+            See _get_vkfft_axes() for details.
+        """
+        b = self.use_bluestein_fft
+        if vkfft_axes:
+            if axis is not None:
+                return bool(b[axis])
+            else:
+                return b
+        else:
+            if axis is not None:
+                return b[self._get_vkfft_axes(axis)]
+            else:
+                return [b[self._get_vkfft_axes(i)] for i in range(len(self.shape0))]
+
+    def is_rader_transform(self, axis=None, vkfft_axes=False):
+        """
+        Return True if the transform used along a given axis uses
+        Rader's algorithm, or False
+
+        :param axis: the index of one axis. If None, a list of values
+            for all the axis is returned
+        :param vkfft_axes: True to use the index relative to VkFFT
+            axes, False (the default) otherwise.
+            See _get_vkfft_axes() for details.
+        """
+        b = self.use_bluestein_fft
+        t = self.skip_axis
+        sh = list(self.shape).copy()
+        if self.r2c and self.inplace:
+            # Fast axis is always first in the VkFFT order
+            if self.r2c_odd:
+                sh[0] -= 1
+            else:
+                sh[0] -= 2
+        r = [max(primes(n)) <= 13 for n in sh]
+        if vkfft_axes:
+            if axis is not None:
+                return not (b[axis] or t[axis] or r[axis])
+            else:
+                return [not (b[i] or t[i] or r[i]) for i in range(len(b))]
+        else:
+            if axis is not None:
+                i = self._get_vkfft_axes(axis)
+                return not (b[i] or t[i] or r[i])
+            else:
+                return [not (b[self._get_vkfft_axes(i)] or
+                             t[self._get_vkfft_axes(i)] or
+                             r[self._get_vkfft_axes(i)]) for i in range(len(self.shape0))]
+
+    def is_radix_transform(self, axis=None, vkfft_axes=False):
+        """
+        Return True if the transform used along a given axis uses
+        a radix algorithm, or False
+
+        :param axis: the index of one axis. If None, a list of values
+            for all axes is returned
+        :param vkfft_axes: True to use the index relative to VkFFT
+            axes, False (the default) otherwise.
+            See _get_vkfft_axes() for details.
+        """
+        t = self.skip_axis
+        sh = list(self.shape).copy()
+        if self.r2c and self.inplace:
+            # Fast axis is always first in the VkFFT order
+            if self.r2c_odd:
+                sh[0] -= 1
+            else:
+                sh[0] -= 2
+        r = [max(primes(n)) > 13 for n in sh]
+        if vkfft_axes:
+            if axis is not None:
+                return not (t[axis] or r[axis])
+            else:
+                return [not (t[i] or r[i]) for i in range(len(t))]
+        else:
+            if axis is not None:
+                i = self._get_vkfft_axes(axis)
+                return not (t[i] or r[i])
+            else:
+                return [not (t[self._get_vkfft_axes(i)] or r[self._get_vkfft_axes(i)])
+                        for i in range(len(self.shape0))]
+
+    def get_nb_upload(self, axis=None, collapsed_axes=False):
+        """
+        Number of uploads for the transform along given axes - ideally 1
+        so that each transform corresponds to 1 read and 1 write of the array.
+
+        :param axis: the index of one axis. If None, a list of values
+            for all axes is returned
+        :param collapsed_axes: True to use the index relative to collapsed
+            axes, False (the default) otherwise.
+            See _get_vkfft_axes() for details.
+        """
+        n = self.nb_axis_upload
+        if collapsed_axes:
+            if axis is not None:
+                return n[::-1][axis]
+            else:
+                return n[::-1]
+        else:
+            if axis is not None:
+                i = self._get_vkfft_axes(axis)
+                return n[i]
+            else:
+                return [n[self._get_vkfft_axes(i)] for i in range(len(self.shape0))]
