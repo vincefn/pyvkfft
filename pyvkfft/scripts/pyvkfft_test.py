@@ -194,8 +194,8 @@ def make_parser():
              "   pyvkfft-test\n" \
              "      the regular test which tries the fft interface, using parallel\n" \
              "      streams (for pycuda), and C2C/R2C/DCT/DST transforms for sizes N=15,17,30,34\n" \
-             "      with 1, 2 and 3D transforms, also N=808,2988,4200 for 1D and 2D transforms\n" \
-             "      and finally N=13000,13001,13002 just for 1D transforms.\n" \
+             "      with 1D to 4 or 5D transforms, also N=808,2988,4200,13000,13001," \
+             "      13002,130172 for 1D and 2D transforms.\n" \
              "      All tests are done with single and double precision, in and\n" \
              "      out-of-place, norm=0 and 1, and all available backends (pyopencl,\n" \
              "      pycuda and cupy). For C2C arrays up to dimension 5 are tested,\n" \
@@ -205,7 +205,7 @@ def make_parser():
              "      accuracy.\n" \
              "      The text output gives the N2 and Ninf (aka max) relative norm of\n" \
              "      the transform, with the ratio in () to the expected tolerance for\n" \
-             "      both direct and invrese transforms.\n" \
+             "      both direct and inverse transforms.\n" \
              "\n" \
              "  pyvkfft-test --nproc 8 --gpu v100 --mailto_fail toto@pyvkfft.org\n" \
              "      same test, but using 8 parallel process to speed up, and use a GPU\n" \

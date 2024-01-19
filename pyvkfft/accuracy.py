@@ -266,7 +266,7 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
             if order == 'C':
                 shapec[-1] = shapec[-1] // 2 + 1
             else:
-                shapec[0] = shapec[-1] // 2 + 1
+                shapec[0] = shapec[0] // 2 + 1
             shapec = tuple(shapec)
     else:
         r2c_odd = None
@@ -443,10 +443,10 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
         stol = "\x1b[48;2;%d;0;0m%5.1e < %5.1e (%5.3f)\x1b[0m" % (red, ni, tol, ni / tol)
     else:
         stol = "%5.1e < %5.1e (%5.3f)" % (ni, tol, ni / tol)
-
-    verb_out = "%8s %4s %14s axes=%10s ndim=%4s %5s %10s lut=%4s inplace=%d " \
+    nupstr = ''.join(str(nup) for nup in app.get_nb_upload())
+    verb_out = "%8s %4s %15s axes=%12s ndim=%4s %5s %5s %10s lut=%4s inplace=%d " \
                " norm=%4s %s %5s: n2=%5.1e ninf=%s %d" % \
-               (backend, t, shstr, shax, str(ndim), app.get_algo_str(), str(d0.dtype),
+               (backend, t, shstr, shax, str(ndim), app.get_algo_str(), nupstr, str(d0.dtype),
                 str(use_lut), int(inplace), str(norm), order, "FFT", n2, stol, src_unchanged_fft)
 
     t3 = timeit.default_timer()

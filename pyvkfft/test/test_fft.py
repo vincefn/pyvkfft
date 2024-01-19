@@ -18,6 +18,7 @@ import socket
 import time
 import timeit
 from itertools import permutations
+from copy import copy
 import numpy as np
 
 try:
@@ -229,7 +230,8 @@ class TestFFT(unittest.TestCase):
     def run_fft(self, vbackend, vn, dims_max=4, ndim_max=3, shuffle_axes=True,
                 vtype=(np.complex64, np.complex128),
                 vlut="auto", vinplace=(True, False), vnorm=(0, 1),
-                vr2c=(False,), vdct=(False,), vdst=(False,), verbose=False, dry_run=False):
+                vr2c=(False,), vdct=(False,), vdst=(False,), verbose=False, dry_run=False,
+                secondary_long_axis_size=0):
         """
         Run a series of tests
         :param vbackend: list of backends to test among "pycuda", "cupy and "pyopencl"
@@ -251,6 +253,15 @@ class TestFFT(unittest.TestCase):
         :param vdst: a list among False/0, 1, 2, 3, 4 to test various DST
         :param verbose: True or False - prints two lines per test (FFT and iFFT result)
         :param dry_run: if True, only count the number of test to run
+        :param secondary_long_axis_size: if >0, then when testing for ndim>1, the test
+            will be done by separating the long axis along the transform
+            dimensions, only one axis being long and the other transformed axes
+            will use the given size.
+            Example: for a size and ndim=3, if secondary_long_axis_size=2,
+            instead of testing with a shape (n,n,n), the 2D test will
+            be done with shapes (2,2,n),(2,n,2) and (n,2,2).
+            This is useful to test larger ndim>1 transforms (requiring multi-upload)
+            without using up too much memory.
         :return: the number of tests performed, and the list of kwargs (dry run)
         """
         ct = 0
@@ -291,18 +302,30 @@ class TestFFT(unittest.TestCase):
                                     axes_numpy = axes
 
                                 # Array shape
-                                sh = [n] * dims
+                                sh0 = [n] * dims
 
                                 # Use only a size of 2 for non-transform axes
-                                for ii in range(len(sh)):
-                                    if ii not in axes_numpy and (-len(sh) + ii) not in axes_numpy:
-                                        sh[ii] = 2
+                                for ii in range(len(sh0)):
+                                    if ii not in axes_numpy and (-len(sh0) + ii) not in axes_numpy:
+                                        sh0[ii] = 2
+                                # List of shapes for secondary_long_axis_size
+                                if secondary_long_axis_size and len(axes_numpy) > 1:
+                                    vsh = []
+                                    for ii in range(len(axes_numpy)):
+                                        tmpsh = copy(sh0)
+                                        for iii in range(len(axes_numpy)):
+                                            if iii != ii:
+                                                tmpsh[axes_numpy[iii]] = secondary_long_axis_size
+                                        vsh.append(tmpsh)
+                                else:
+                                    vsh = [sh0]
+
                                 if not dry_run:
                                     if dtype in (np.float32, np.float64):
-                                        d0 = np.random.uniform(-0.5, 0.5, sh).astype(dtype)
+                                        d0 = np.random.uniform(-0.5, 0.5, vsh[0]).astype(dtype)
                                     else:
-                                        d0 = (np.random.uniform(-0.5, 0.5, sh)
-                                              + 1j * np.random.uniform(-0.5, 0.5, sh)).astype(dtype)
+                                        d0 = (np.random.uniform(-0.5, 0.5, vsh[0])
+                                              + 1j * np.random.uniform(-0.5, 0.5, vsh[0])).astype(dtype)
                                 if vlut == "auto":
                                     if dtype in (np.float64, np.complex128):
                                         # By default, LUT is enabled for complex128, no need to test twice
@@ -311,7 +334,9 @@ class TestFFT(unittest.TestCase):
                                         tmp = [None, True]
                                 else:
                                     tmp = vlut
-                                for use_lut, inplace, norm in itertools.product(tmp, vinplace, vnorm):
+                                for sh, use_lut, inplace, norm in itertools.product(vsh, tmp, vinplace, vnorm):
+                                    if not dry_run:
+                                        d0 = d0.reshape(sh)  # needed for secondary_long_axis_size shape change
                                     vorder = ['C', 'F']
                                     if dims == 1 or dims > 3:
                                         vorder = ['C']
@@ -445,21 +470,29 @@ class TestFFT(unittest.TestCase):
                     vtype = (np.complex64,)
                 v = self.verbose and not dry_run
                 if dry_run or self.nproc == 1:
-                    tmp = self.run_fft([backend], [15, 17, 30, 34], dims_max=5, ndim_max=5,
+                    tmp = self.run_fft([backend], [15, 17], dims_max=5, ndim_max=5,
                                        vtype=vtype, verbose=v, dry_run=dry_run, shuffle_axes=True)
                     ct += tmp[0]
                     vkwargs += tmp[1]
-                    # Test larger sizes (including multi-upload) for 1D and 2D transforms
-                    # 2988 decomposes in a Sophie Germain safe prime, hence its inclusion..
-                    tmp = self.run_fft([backend], [808, 2988, 4200],
-                                       vtype=vtype, dims_max=2, ndim_max=2, verbose=v,
-                                       dry_run=dry_run, shuffle_axes=True)
+                    # Avoid large array sizes for 30, 34
+                    tmp = self.run_fft([backend], [30, 34], dims_max=5, ndim_max=5,
+                                       vtype=vtype, verbose=v, dry_run=dry_run, shuffle_axes=True,
+                                       secondary_long_axis_size=3)
                     ct += tmp[0]
                     vkwargs += tmp[1]
-                    # Test even larger 1D transform sizes
-                    tmp = self.run_fft([backend], [13000, 13001, 13002],
-                                       vtype=vtype, dims_max=3, ndim_max=1, verbose=v,
-                                       dry_run=dry_run, shuffle_axes=True)
+                    # Test larger sizes (including multi-upload) for 1D and 2D transforms
+                    # 2988 decomposes in a Sophie Germain safe prime, hence its inclusion.
+                    # Use secondary_long_axis_size to avoid too large overall sizes, but still try
+                    # the transform up to ndim=2
+                    tmp = self.run_fft([backend], [808, 2988, 4200, 13000, 13001, 13002, 131072],
+                                       vtype=vtype, dims_max=2, ndim_max=2, verbose=v,
+                                       dry_run=dry_run, shuffle_axes=True, secondary_long_axis_size=3)
+                    ct += tmp[0]
+                    vkwargs += tmp[1]
+
+                    tmp = self.run_fft([backend], [131072],
+                                       vtype=vtype, dims_max=2, ndim_max=2, verbose=v,
+                                       dry_run=dry_run, shuffle_axes=True, secondary_long_axis_size=64)
                     ct += tmp[0]
                     vkwargs += tmp[1]
                 else:
@@ -481,24 +514,33 @@ class TestFFT(unittest.TestCase):
                     vtype = (np.float32,)
                 v = self.verbose and not dry_run
                 if dry_run or self.nproc == 1:
-                    tmp = self.run_fft([backend], [15, 17, 30, 34], dims_max=4, ndim_max=4,
+                    tmp = self.run_fft([backend], [15, 17], dims_max=4, ndim_max=3,
                                        vtype=vtype, vr2c=(True,), verbose=v, dry_run=dry_run,
                                        shuffle_axes=True)
                     ct += tmp[0]
                     vkwargs += tmp[1]
+                    # Avoid large array sizes for 30, 34
+                    tmp = self.run_fft([backend], [30, 34], dims_max=4, ndim_max=4,
+                                       vtype=vtype, vr2c=(True,), verbose=v, dry_run=dry_run,
+                                       shuffle_axes=True, secondary_long_axis_size=3)
+                    ct += tmp[0]
+                    vkwargs += tmp[1]
                     # Larger 1D and 2D tests
-                    tmp = self.run_fft([backend], [808, 2988, 4200],
-                                       vtype=vtype, dims_max=2, vr2c=(True,),
-                                       verbose=v, dry_run=dry_run, shuffle_axes=True)
-                    ct += tmp[0]
-                    vkwargs += tmp[1]
-                    # Test even larger 1D transform sizes
-                    tmp = self.run_fft([backend], [13000, 13001, 13002],
+                    tmp = self.run_fft([backend], [808, 2988, 4200, 13000, 13001, 13002, 131072],
                                        vtype=vtype, vr2c=(True,),
-                                       dims_max=3, ndim_max=1, verbose=v,
-                                       dry_run=dry_run, shuffle_axes=True)
+                                       dims_max=3, ndim_max=3, verbose=v,
+                                       dry_run=dry_run, shuffle_axes=True,
+                                       secondary_long_axis_size=3)
                     ct += tmp[0]
                     vkwargs += tmp[1]
+                    # Test 131072x64 ?
+                    # tmp = self.run_fft([backend], [131072],
+                    #                    vtype=vtype, vr2c=(True,),
+                    #                    dims_max=2, ndim_max=2, verbose=v,
+                    #                    dry_run=dry_run, shuffle_axes=True,
+                    #                    secondary_long_axis_size=64)
+                    # ct += tmp[0]
+                    # vkwargs += tmp[1]
                 else:
                     self.run_fft_parallel(vkwargs)
                 if dry_run and self.verbose:
@@ -519,22 +561,23 @@ class TestFFT(unittest.TestCase):
                     vtype = (np.float32,)
                 v = self.verbose and not dry_run
                 if dry_run or self.nproc == 1:
-                    tmp = self.run_fft([backend], [15, 17, 30, 34], dims_max=4, ndim_max=4,
+                    tmp = self.run_fft([backend], [15, 17], dims_max=4, ndim_max=3,
                                        vtype=vtype, vdct=range(1, 5), vnorm=[1],
                                        verbose=v, dry_run=dry_run, shuffle_axes=True)
                     ct += tmp[0]
                     vkwargs += tmp[1]
-                    # Larger 1D and 2D tests
-                    tmp = self.run_fft([backend], [808, 2988, 4200],
-                                       vtype=vtype, dims_max=2, vdct=range(1, 5),
-                                       vnorm=[1], verbose=v, dry_run=dry_run, shuffle_axes=True)
+                    # Avoid large array sizes for 30, 34
+                    tmp = self.run_fft([backend], [30, 34], dims_max=4, ndim_max=4,
+                                       vtype=vtype, vdct=range(1, 5), vnorm=[1],
+                                       verbose=v, dry_run=dry_run, shuffle_axes=True,
+                                       secondary_long_axis_size=3)
                     ct += tmp[0]
                     vkwargs += tmp[1]
-                    # Test even larger 1D transform sizes
-                    tmp = self.run_fft([backend], [13000, 13001, 13002],
-                                       vtype=vtype, vdct=range(1, 5), vnorm=[1],
-                                       dims_max=3, ndim_max=1, verbose=v,
-                                       dry_run=dry_run, shuffle_axes=True)
+                    # Larger 1D and 2D tests
+                    tmp = self.run_fft([backend], [808, 2988, 4200, 13000, 13001, 13002, 131072],
+                                       vtype=vtype, dims_max=2, vdct=range(1, 5),
+                                       vnorm=[1], verbose=v, dry_run=dry_run, shuffle_axes=True,
+                                       secondary_long_axis_size=3)
                     ct += tmp[0]
                     vkwargs += tmp[1]
                 else:
@@ -557,22 +600,23 @@ class TestFFT(unittest.TestCase):
                     vtype = (np.float32,)
                 v = self.verbose and not dry_run
                 if dry_run or self.nproc == 1:
-                    tmp = self.run_fft([backend], [15, 17, 30, 34], dims_max=4, ndim_max=4,
+                    tmp = self.run_fft([backend], [15, 17], dims_max=4, ndim_max=4,
                                        vtype=vtype, vdst=range(1, 5),
                                        vnorm=[1], verbose=v, dry_run=dry_run, shuffle_axes=True)
                     ct += tmp[0]
                     vkwargs += tmp[1]
-                    # Larger 1D and 2D tests
-                    tmp = self.run_fft([backend], [808, 2988, 4200],
-                                       vtype=vtype, dims_max=2, vdst=range(1, 5),
-                                       vnorm=[1], verbose=v, dry_run=dry_run, shuffle_axes=True)
+                    # Avoid large array sizes for 30, 34
+                    tmp = self.run_fft([backend], [30, 34], dims_max=4, ndim_max=4,
+                                       vtype=vtype, vdst=range(1, 5), vnorm=[1],
+                                       verbose=v, dry_run=dry_run, shuffle_axes=True,
+                                       secondary_long_axis_size=3)
                     ct += tmp[0]
                     vkwargs += tmp[1]
-                    # Test even larger 1D transform sizes
-                    tmp = self.run_fft([backend], [13000, 13001, 13002],
-                                       vtype=vtype, vdst=range(1, 5), vnorm=[1],
-                                       dims_max=3, ndim_max=1, verbose=v,
-                                       dry_run=dry_run, shuffle_axes=True)
+                    # Larger 1D and 2D tests
+                    tmp = self.run_fft([backend], [808, 2988, 4200, 13000, 13001, 13002, 131072],
+                                       vtype=vtype, dims_max=2, vdst=range(1, 5),
+                                       vnorm=[1], verbose=v, dry_run=dry_run, shuffle_axes=True,
+                                       secondary_long_axis_size=3)
                     ct += tmp[0]
                     vkwargs += tmp[1]
                 else:
