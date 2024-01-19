@@ -437,7 +437,7 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
     # else:
     #     shstr = str(d0.shape).replace(" ", "")
     shstr = app.get_shape_str()
-    shax = str(axes).replace(" ", "")
+    shax = str(axes).replace(" ", "").replace("[", "").replace("]", "")
     if colour_output:
         red = max(0, min(int((ni / tol - 0.2) * 255), 255))
         stol = "\x1b[48;2;%d;0;0m%5.1e < %5.1e (%5.3f)\x1b[0m" % (red, ni, tol, ni / tol)

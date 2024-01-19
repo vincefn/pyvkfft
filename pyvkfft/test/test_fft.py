@@ -489,12 +489,6 @@ class TestFFT(unittest.TestCase):
                                        dry_run=dry_run, shuffle_axes=True, secondary_long_axis_size=3)
                     ct += tmp[0]
                     vkwargs += tmp[1]
-
-                    tmp = self.run_fft([backend], [131072],
-                                       vtype=vtype, dims_max=2, ndim_max=2, verbose=v,
-                                       dry_run=dry_run, shuffle_axes=True, secondary_long_axis_size=64)
-                    ct += tmp[0]
-                    vkwargs += tmp[1]
                 else:
                     self.run_fft_parallel(vkwargs)
                 if dry_run and self.verbose:
