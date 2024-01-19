@@ -495,15 +495,14 @@ class VkFFTApp:
             raise RuntimeError("R2C, DCT and DST are mutually exclusive")
         if (r2c or dct or dst) and dtype not in [np.float16, np.float32, np.float64]:
             raise RuntimeError("R2C, DST or DCT selected but input type is not real")
+        self.fast_axis = len(shape) - 1 if strides is None else np.argmin(strides)
         if r2c and axes is not None:
-            fast_axis = len(shape) - 1 if strides is None else np.argmin(strides)
-            if fast_axis not in axes and -len(shape) + fast_axis not in axes:
+            if self.fast_axis not in axes and -len(shape) + self.fast_axis not in axes:
                 raise RuntimeError(f"the fast axis must be transformed for R2C"
                                    f" [axes={axes}, strides={strides}], "
-                                   f"fast axis={fast_axis}/{-len(shape) + fast_axis}]")
+                                   f"fast axis={self.fast_axis}/{-len(shape) + self.fast_axis}]")
         if r2c and inplace:
-            fast_axis = -1 if strides is None else np.argmin(strides)
-            if shape[fast_axis] % 2:
+            if shape[self.fast_axis] % 2:
                 raise RuntimeError(f"For an inplace R2C/C2R transform, the supplied array shape {shape} "
                                    f"must be even along the fast (x) axis. If the transform size nx is "
                                    f"even, two buffer elements should be added to the end of the axis."
@@ -1045,7 +1044,7 @@ class VkFFTApp:
                 return [not (t[self._get_vkfft_axes(i)] or r[self._get_vkfft_axes(i)])
                         for i in range(len(self.shape0))]
 
-    def get_nb_upload(self, axis=None, collapsed_axes=False):
+    def get_nb_upload(self, axis=None, vkfft_axes=False):
         """
         Number of uploads for the transform along given axes - ideally 1
         so that each transform corresponds to 1 read and 1 write of the array.
@@ -1057,7 +1056,7 @@ class VkFFTApp:
             See _get_vkfft_axes() for details.
         """
         n = self.nb_axis_upload
-        if collapsed_axes:
+        if vkfft_axes:
             if axis is not None:
                 return n[::-1][axis]
             else:

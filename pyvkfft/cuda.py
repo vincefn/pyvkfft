@@ -330,7 +330,7 @@ class VkFFTApp(VkFFTAppBase):
             if src_ptr == dest_ptr:
                 raise RuntimeError("VkFFTApp.fft: dest and src are identical but this is an out-of-place transform")
             if self.r2c:
-                assert (dest.size == src.size // src.shape[-1] * (src.shape[-1] // 2 + 1))
+                assert (dest.size == src.size // src.shape[self.fast_axis] * (src.shape[self.fast_axis] // 2 + 1))
             res = _vkfft_cuda.fft(self.app, int(src_ptr), int(dest_ptr))
             check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
                                self.dct, self.dst, backend="cuda")
@@ -386,7 +386,7 @@ class VkFFTApp(VkFFTAppBase):
             if src_ptr == dest_ptr:
                 raise RuntimeError("VkFFTApp.ifft: dest and src are identical but this is an out-of-place transform")
             if self.r2c:
-                assert (src.size == dest.size // dest.shape[-1] * (dest.shape[-1] // 2 + 1))
+                assert (src.size == dest.size // dest.shape[self.fast_axis] * (dest.shape[self.fast_axis] // 2 + 1))
                 # Special case, src and dest buffer sizes are different,
                 # VkFFT is configured to go back to the source buffer
                 res = _vkfft_cuda.ifft(self.app, int(dest_ptr), int(src_ptr))

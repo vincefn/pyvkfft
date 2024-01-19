@@ -345,6 +345,7 @@ def run_test(config, args):
 
             print(s)
 
+
 def make_parser():
     epilog = "Examples:\n" \
              "* Simple benchmark for radix transforms:\n" \
