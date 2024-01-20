@@ -417,7 +417,8 @@ class TestFFT(unittest.TestCase):
         with multiprocessing.get_context('spawn').Pool(self.nproc) as pool:
             for res in pool.imap(test_accuracy_kwargs, vkwargs):
                 with self.subTest(backend=res['backend'], shape=res['shape'], ndim=res['ndim'],
-                                  dtype=np.dtype(res['dtype']), norm=res['norm'], use_lut=res['use_lut'],
+                                  axes=res['axes'], dtype=np.dtype(res['dtype']),
+                                  norm=res['norm'], use_lut=res['use_lut'],
                                   inplace=res['inplace'], r2c=res['r2c'], dct=res['dct'],
                                   dst=res['dst'], order=res['order']):
                     n = max(res['shape'])
