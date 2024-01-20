@@ -10,9 +10,12 @@ Version 2023.3 (2023-XX-XX)
 * Custom transform axes (strided) are now allowed also for R2C,
   as long as the fast axis is transformed.
 * added functions to access the size of the temporary buffer
-  created by VkFFT (if any), the type of algorithm used alond
-  each axis (radix, Rader, Bluestein)
+  created by VkFFT (if any), the type of algorithm used along
+  each axis (radix, Rader, Bluestein), and the number of
+  uploads for each transformed axis.
 * DCT and DST now support F-ordered arrays
+* Longer default test including multi-upload using radix,
+  Rader and Bluestein algorithms.
 
 Version 2023.2.post1 (2023-09-21)
 -----------------------------
