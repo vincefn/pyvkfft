@@ -16,6 +16,7 @@ Version 2023.3 (2023-XX-XX)
 * DCT and DST now support F-ordered arrays
 * Longer default test including multi-upload using radix,
   Rader and Bluestein algorithms.
+* Added pyvkfft-info script
 
 Version 2023.2.post1 (2023-09-21)
 -----------------------------

@@ -252,7 +252,7 @@ class bdist_egg_disabled(bdist_egg):
 
 # Console scripts, available e.g. as 'pyvkfft-test'
 scripts = ['pyvkfft/scripts/pyvkfft_test.py', 'pyvkfft/scripts/pyvkfft_test_suite.py',
-           'pyvkfft/scripts/pyvkfft_benchmark.py']
+           'pyvkfft/scripts/pyvkfft_benchmark.py', 'pyvkfft/scripts/pyvkfft_info.py']
 
 console_scripts = []
 for s in scripts:
