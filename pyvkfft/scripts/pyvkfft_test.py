@@ -200,7 +200,7 @@ def make_parser():
              "      out-of-place, norm=0 and 1, and all available backends (pyopencl,\n" \
              "      pycuda and cupy). For C2C arrays up to dimension 5 are tested,\n" \
              "      with all possible combination of transform axes.\n" \
-             "      That's for a total of a few thousands transforms, which are tested\n" \
+             "      That's for a total of a tens of thousands transforms, which are tested\n" \
              "      against the result of numpy, scipy or pyfftw (when available) for\n" \
              "      accuracy.\n" \
              "      The text output gives the N2 and Ninf (aka max) relative norm of\n" \
@@ -222,7 +222,28 @@ def make_parser():
              "  pyvkfft-test --systematic --backend cupy --nproc 8 --bluestein --range 2 10000 --ndim 2 " \
              "--lut --inplace\n" \
              "      test with cupy backend, only non-radix 2D inplace R2C transforms\n," \
-             "      using a lookup table( lut) for higher single precision accuracy.\n"
+             "      using a lookup table( lut) for higher single precision accuracy.\n\n\n" \
+             "Columns in the text output:\n" \
+             " * backend\n" \
+             " * type of transform\n" \
+             " * array shape\n" \
+             " * axes for the transform. If None, axes are set by the number of transform dimensions\n" \
+             " * number of dimensions for the transform. Can be None if axes are given.\n" \
+             " * type of algorithm for each axis: r=radix, R=Rader, B=Bluestein, -=skipped axis\n" \
+             " * number of uploads for each axis: 0 if not transformed, 1 if the axis length fits\n" \
+             "   in the cache and the transform can be done in 1 read+write, 2 or 3 if multi-upload is used\n" \
+             " * data type and precision\n" \
+             " * use of a Look-Up-Table (LUT) -for single precision only.\n" \
+             " * inplace or out-of-place transform\n" \
+             " * normalisation for the transform: 0 or 1\n" \
+             " * order of the array: C (fast axis is last) or F (fast axis is first)\n" \
+             " * N2 and N_inf error norm for the forward transform, with the comparison \n" \
+             "   to the maximum allowed error (and in parenthesis the ratio to this maximum), \n" \
+             "   and finally 0 or 1 depending on whether the source array was modified (0) or not (1)\n" \
+             " * Same values for the inverse transform\n" \
+             " * temporary buffer size allocated by VkFFT if necessary, for large transforms\n" \
+             " * status: OK, FAIL (if accuracy is above limit or source array unexpectedly changed)\n" \
+             "   or ERROR (an error was raised during execution, e.g. compilation, memory,...)\n"
     parser = argparse.ArgumentParser(prog='pyvkfft-test', epilog=epilog,
                                      description='Run pyvkfft unit tests, regular or systematic',
                                      formatter_class=argparse.RawDescriptionHelpFormatter)

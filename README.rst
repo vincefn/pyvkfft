@@ -152,7 +152,8 @@ Features
   suite**, comparing transform results for all types of transforms: single and double
   precision, 1D, 2D and 3D, inplace and out-of-place, different norms, radix and
   Bluestein, etc... The ``pyvkfft-test-suite`` script can be used to run the full suite,
-  which takes 28 hours on a V100 GPU using up to 20 parallel process (less than 12h on an A40).
+  which takes more than two days on an A40 GPU using up to 16 parallel process, with
+  about 1.5 million unit tests.
   Here are the test results for pyvkfft 2023.1:
   
   - `A40 cuda test results <http://ftp.esrf.fr/pub/scisoft/PyNX/pyvkfft-test/pyvkfft-test-2023-01-20-a40cu/pyvkfft-test.html>`_

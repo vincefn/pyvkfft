@@ -278,6 +278,11 @@ class TestFFT(unittest.TestCase):
                         vrcs.append((False, dct, False))
             else:
                 vrcs.append((r2c, False, False))
+        if verbose:
+            print("\n backend transform     shape         axes         ndim    FFTAlgo NbUp"
+                  "   type      lut?    inplace?      norm  C/F  FFT: L2 error     Linf"
+                  "       < max  (Linf/max) unchanged? iFFT: L2   Linf      < max"
+                  "  (Linf/max) unchanged? buffer status")
         for backend in vbackend:
             # We assume the context was already initialised by the calling function
             # init_ctx(backend, gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
@@ -413,6 +418,12 @@ class TestFFT(unittest.TestCase):
         return ct, vkwargs
 
     def run_fft_parallel(self, vkwargs):
+        if self.verbose:
+            print("\n backend transform     shape         axes         ndim    FFTAlgo NbUp"
+                  "   type      lut?    inplace?      norm  C/F  FFT: L2 error     Linf"
+                  "       < max  (Linf/max) unchanged? iFFT: L2   Linf      < max"
+                  "  (Linf/max) unchanged? buffer status")
+
         # Need to use spawn to handle the GPU context
         with multiprocessing.get_context('spawn').Pool(self.nproc) as pool:
             for res in pool.imap(test_accuracy_kwargs, vkwargs):
