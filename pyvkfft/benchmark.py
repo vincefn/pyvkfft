@@ -296,7 +296,7 @@ def bench_pyvkfft_opencl(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=N
                                                     opencl_platform, args, inplace, r2c, dct, dst))
     p.start()
     try:
-        results = q.get()
+        results = q.get(timeout=20)
     except:
         results = {'dt': 0, 'gbps': 0, 'gpu_name_real': None, 'platform_name_real': None,
                    'vkfft_str': None}
@@ -410,7 +410,7 @@ def bench_pyvkfft_cuda(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=Non
                                                   args, inplace, r2c, dct, dst))
     p.start()
     try:
-        results = q.get(timeout=10)
+        results = q.get(timeout=20)
     except:
         results = {'dt': 0, 'gbps': 0, 'gpu_name_real': None, 'vkfft_str': None}
     p.join()
