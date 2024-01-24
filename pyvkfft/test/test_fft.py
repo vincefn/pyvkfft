@@ -925,6 +925,7 @@ class TestFFTSystematic(unittest.TestCase):
                 init_ctx("pyopencl", gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
                 self.cq, self.has_cl_fp64 = gpu_ctx_dic["pyopencl"][2:]
         self.assertTrue(not self.bluestein or self.radix is None, "Cannot select both Bluestein and radix")
+        r2r = self.dct if self.dct else self.dst  # special case for radix generation (DCT/DST 1 and 4)
         if not self.bluestein and self.radix is None:
             self.vshape = radix_gen_n(nmax=self.range[1], max_size=self.range_size[1], radix=None,
                                       ndim=self.ndim, nmin=self.range[0], max_pow=self.max_pow,
@@ -933,7 +934,8 @@ class TestFFTSystematic(unittest.TestCase):
             self.vshape = radix_gen_n(nmax=self.range[1], max_size=self.range_size[1],
                                       radix=(2, 3, 5, 7, 11, 13), ndim=self.ndim,
                                       inverted=True, nmin=self.range[0], max_pow=self.max_pow,
-                                      range_nd_narrow=self.range_nd_narrow, min_size=self.range_size[0])
+                                      range_nd_narrow=self.range_nd_narrow, min_size=self.range_size[0],
+                                      r2r=r2r)
         else:
             if len(self.radix) == 0:
                 self.radix = [2, 3, 5, 7, 11, 13]
@@ -942,7 +944,8 @@ class TestFFTSystematic(unittest.TestCase):
             self.vshape = radix_gen_n(nmax=self.range[1], max_size=self.range_size[1],
                                       radix=self.radix, ndim=self.ndim,
                                       nmin=self.range[0], max_pow=self.max_pow,
-                                      range_nd_narrow=self.range_nd_narrow, min_size=self.range_size[0])
+                                      range_nd_narrow=self.range_nd_narrow, min_size=self.range_size[0],
+                                      r2r=r2r)
         if not self.dry_run:
             self.assertTrue(len(self.vshape), "The list of sizes to test is empty !")
             if self.max_nb_tests:

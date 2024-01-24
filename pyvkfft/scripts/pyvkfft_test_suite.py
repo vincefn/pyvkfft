@@ -165,10 +165,25 @@ def main():
                 if 'inplace' not in inplace:
                     mem *= 2
                 if 'r2c' in transform:
-                    # DCT/DST can be solved as 2N-1 systems, so no benefit from real arrays ?
+                    # DCT/DST are solved as C2C systems, so if a buffer is allocated
+                    # it will be 2x larger than the original data
                     mem /= 2
+                elif 'dct 1' in transform or 'dst 1' in transform:
+                    # System is computed as C2C of size 2N-2
+                    mem *= 2
+                if 'bluestein' in radix:
+                    # Bluestein can require 2x memory
+                    # (this over-estimates memory for Rader..)
+                    mem *= 2
+
                 mem += 200 * 1024 ** 2  # context memory
-                nproc1 = gpumem // (mem / 1024 ** 3 * 2)  # *2 is a margin for errors
+                # *2 is a margin for errors, e.g. to account for temp buffer
+                nproc1 = gpumem / (mem / 1024 ** 3 * 2)
+                if nproc1 < 1:
+                    n2 *= nproc1 ** (1 / ndim)
+                    nproc1 = 1
+                else:
+                    nproc1 = int(nproc1)
                 nproc = max(1, min(nproc1, nproc0))
                 com = 'pyvkfft-test --systematic --backend %s' % backend
                 if gpu is not None:

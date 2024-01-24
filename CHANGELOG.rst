@@ -19,6 +19,9 @@ Version 2023.3 (2023-XX-XX)
 * The full test suite (including c2c, r2c, dct, dst, radix
   and non-radix transforms, single and double precision)
   now includes about 1.5 million unit tests
+* The pyvkff-benchmark script can also test R2C, DCT and DST
+  transforms, and will give more details about the algorithm
+  used for performance tuning.
 * Added pyvkfft-info script
 
 Version 2023.2.post1 (2023-09-21)

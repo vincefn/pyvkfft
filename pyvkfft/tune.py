@@ -133,16 +133,16 @@ def tune_vkfft(tune, shape, dtype: type, ndim=None, inplace=True, stream=None, q
             if 'dest' not in tune:
                 if 'src' in tune:
                     raise RuntimeError("VkFFT autotune: 'src' array is provided but not the destination, "
-                                       "which is required for an inplace transform")
+                                       "which is required for an out-of-place transform")
                 if r2c:
                     shc = list(shape)
                     shc[-1] = shape[-1] // 2 + 1
                     shc = tuple(shc)
                     dtypec = np.complex64 if dtype == np.float32 else np.complex128
                     if tune['backend'] == 'pyopencl':
-                        src = cla.to_device(queue, np.ones(shc, dtype=dtypec))
+                        dest = cla.to_device(queue, np.ones(shc, dtype=dtypec))
                     else:
-                        src = cua.ones(shape, dtype=np.float32).astype(dtypec)
+                        dest = cua.ones(shape, dtype=np.float32).astype(dtypec)
                 else:
                     dest = src.copy()
             else:

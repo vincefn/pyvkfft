@@ -139,7 +139,8 @@ def primes(n):
     return v
 
 
-def radix_gen(nmax, radix, even=False, exclude_one=True, inverted=False, nmin=None, max_pow=None):
+def radix_gen(nmax, radix, even=False, exclude_one=True, inverted=False,
+              nmin=None, max_pow=None, r2r=False):
     """
     Generate an array of integers which are only multiple of powers
     of base integers, e.g. 2**N1 * 3**N2 * 5**N3 etc...
@@ -156,6 +157,12 @@ def radix_gen(nmax, radix, even=False, exclude_one=True, inverted=False, nmin=No
         in the form 2**N1 * 3**N2 * 5**N3) will be at max equal to this
         value, which allows to reduce the number of generated sizes
         while testing all base radixes
+    :param r2r: if r2r=4, assume we try to generate radix sizes for
+        a DCT1 or DST1 transform, which are computed as a C2C
+        transform of size 2N-2.
+        If r2r=4, assume we try to generate radix sizes for a
+        DCT4 or DST4, which are performed as a C2C transform
+        of size n/2 (if n is even) or n (if odd).
     :return: the numpy array of integers, sorted
     """
     a = np.ones(1, dtype=np.int64)
@@ -167,6 +174,14 @@ def radix_gen(nmax, radix, even=False, exclude_one=True, inverted=False, nmin=No
         a = a * radix[i] ** tmp[:, np.newaxis]
         a = a.flatten()
         a = a[a <= nmax]
+    if r2r == 1:
+        # We need 2N-2 to be radix, so use generated n+1
+        a = a[a > 1] + 1
+    elif r2r == 4:
+        a[a % 2 == 0] //= 2
+        a = np.unique(a)
+    a = a[a <= nmax]
+
     if inverted:
         b = np.arange(nmax + 1)
         b[a] = 0
@@ -176,6 +191,7 @@ def radix_gen(nmax, radix, even=False, exclude_one=True, inverted=False, nmin=No
     if nmin is not None:
         a = a[a >= nmin]
     a.sort()
+    a = a[a > 0]  # weird cases with r2r=1 or 4
     if len(a):
         if exclude_one and a[0] == 1:
             return a[1:]
@@ -183,7 +199,7 @@ def radix_gen(nmax, radix, even=False, exclude_one=True, inverted=False, nmin=No
 
 
 def radix_gen_n(nmax, max_size, radix, ndim=None, even=False, exclude_one=True, inverted=False,
-                nmin=None, max_pow=None, range_nd_narrow=None, min_size=0):
+                nmin=None, max_pow=None, range_nd_narrow=None, min_size=0, r2r=False):
     """
     Generate a list of array shape with integers which are only multiple
     of powers of base integers, e.g. 2**N1 * 3**N2 * 5**N3 etc...,
@@ -191,7 +207,7 @@ def radix_gen_n(nmax, max_size, radix, ndim=None, even=False, exclude_one=True, 
     Note that this can generate a large number of sizes.
 
     :param nmax: the maximum value for the length of each dimension (included)
-    :param max_size: the maximum size (number of elements) for the array
+    :param max_size: the maximum size (number of elements) for the array.
     :param radix: the list/tuple of base integers - which don't need
         to be primes. If None, all sizes are allowed
     :param ndim: the number of dimensions allowed. If None, 1D, 2D and 3D
@@ -215,6 +231,12 @@ def radix_gen_n(nmax, max_size, radix, ndim=None, even=False, exclude_one=True, 
     :param min_size: the minimum size (number of elements). This can be
         used to separate large array tests and use a larger number of
         parallel process for smaller ones.
+    :param r2r: if r2r=4, assume we try to generate radix sizes for
+        a DCT1 or DST1 transform, which are computed as a C2C
+        transform of size 2N-2.
+        If r2r=4, assume we try to generate radix sizes for a
+        DCT4 or DST4, which are performed as a C2C transform
+        of size n/2 (if n is even) or n (if odd).
     :return: the list of array shapes.
     """
     v = []
@@ -230,7 +252,8 @@ def radix_gen_n(nmax, max_size, radix, ndim=None, even=False, exclude_one=True, 
             else:
                 n0 = np.arange(nmin, min(nmax, max_size))
     else:
-        n0 = radix_gen(nmax, radix, even=even, exclude_one=exclude_one, inverted=inverted, nmin=nmin, max_pow=max_pow)
+        n0 = radix_gen(nmax, radix, even=even, exclude_one=exclude_one, inverted=inverted,
+                       nmin=nmin, max_pow=max_pow, r2r=r2r)
 
     if ndim is None or ndim in [1, 12, 123]:
         idx = np.nonzero((n0 <= max_size) * (n0 >= min_size))[0]
@@ -506,7 +529,7 @@ class VkFFTApp:
                 raise RuntimeError(f"For an inplace R2C/C2R transform, the supplied array shape {shape} "
                                    f"must be even along the fast (x) axis. If the transform size nx is "
                                    f"even, two buffer elements should be added to the end of the axis."
-                                   f"If it is even, only one element should be added. In both cases, "
+                                   f"If it is odd, only one element should be added. In both cases, "
                                    f"the complex half-Hermitian array size will be nx//2+1.")
         # Get the final shape passed to VkFFT, collapsing non-transform axes
         # as necessary. The calculated shape has 4 dimensions (nx, ny, nz, n_batch).
@@ -996,7 +1019,15 @@ class VkFFTApp:
                 sh[0] -= 1
             else:
                 sh[0] -= 2
+
+        if self.dct == 1 or self.dst == 1:
+            # Transforms are mapped to a C2C of size 2N-2
+            sh = [max(2 * n - 2, 1) for n in sh]  # avoid 2*(n=1)-2=0
+        elif self.dct == 4 or self.dst == 4:
+            # even mapped to C2C of half-size, else C2C of same size
+            sh = [n if n % 2 else n // 2 for n in sh]
         r = [max(primes(n)) <= 13 for n in sh]
+
         if vkfft_axes:
             if axis is not None:
                 return not (b[axis] or t[axis] or r[axis])
@@ -1030,7 +1061,15 @@ class VkFFTApp:
                 sh[0] -= 1
             else:
                 sh[0] -= 2
+
+        if self.dct == 1 or self.dst == 1:
+            # Transforms are mapped to a C2C of size 2N-2
+            sh = [max(2 * n - 2, 1) for n in sh]  # avoid 2*(n=1)-2=0
+        elif self.dct == 4 or self.dst == 4:
+            # even mapped to C2C of half-size, else C2C of same size
+            sh = [n if n % 2 else n // 2 for n in sh]
         r = [max(primes(n)) > 13 for n in sh]
+
         if vkfft_axes:
             if axis is not None:
                 return not (t[axis] or r[axis])
