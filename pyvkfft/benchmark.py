@@ -368,8 +368,10 @@ def _bench_pyvkfft_cuda(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name
         vkfft_str = f"algo={app.get_algo_str()} buf={app.get_tmp_buffer_str()} " \
                     f"up={''.join(str(nup) for nup in app.get_nb_upload())}"
         if 'tune_config' in kwargs:
-            for k, v in kwargs['tune_config']:
-                vkfft_str += f" {v}={getattr(app, v)}"
+            for k, v in kwargs['tune_config'].items():
+                if k == "backend":
+                    continue
+                vkfft_str += f" {k}={getattr(app, k)}"
         start = cu_drv.Event()
         stop = cu_drv.Event()
         for i in range(nb_repeat):
