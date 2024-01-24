@@ -268,7 +268,6 @@ def run_test(config, args):
             res = bench_skcuda(sh, precision, ndim, nb_repeat, gpu_name, serial=args.serial)
             gbps = res['gbps']
             gpu_name_real = res['gpu_name_real']
-            platform_name_real = res['platform_name_real']
         elif backend == 'gpyfft':
             res = bench_gpyfft(sh, precision, ndim, nb_repeat, gpu_name,
                                opencl_platform=opencl_platform,
