@@ -135,6 +135,7 @@ def tune_vkfft(tune, shape, dtype: type, ndim=None, inplace=True, stream=None, q
                     raise RuntimeError("VkFFT autotune: 'src' array is provided but not the destination, "
                                        "which is required for an out-of-place transform")
                 if r2c:
+                    # TODO: handle different strides, with fast axis != -1
                     shc = list(shape)
                     shc[-1] = shape[-1] // 2 + 1
                     shc = tuple(shc)
@@ -142,7 +143,7 @@ def tune_vkfft(tune, shape, dtype: type, ndim=None, inplace=True, stream=None, q
                     if tune['backend'] == 'pyopencl':
                         dest = cla.to_device(queue, np.ones(shc, dtype=dtypec))
                     else:
-                        dest = cua.ones(shape, dtype=np.float32).astype(dtypec)
+                        dest = cua.ones(shc, dtype=np.float32).astype(dtypec)
                 else:
                     dest = src.copy()
             else:
