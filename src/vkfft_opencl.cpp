@@ -28,12 +28,12 @@ LIBRARY_API VkFFTConfiguration* make_config(const long*,
                                             const size_t, const long*,
                                             const int, const int, const int, const int,
                                             const int, const int, const int, const long*,
-                                            const int);
+                                            const int, const int, const int, const int);
 
 LIBRARY_API VkFFTApplication* init_app(const VkFFTConfiguration*, void*, int*,
                                        size_t*, long*, long*);
 
-LIBRARY_API int fft(VkFFTApplication* app, void*, void*, void*);
+LIBRARY_API int fft(VkFFTApplication* app, void*, void*, void*, void*);
 
 LIBRARY_API int ifft(VkFFTApplication* app, void*, void*, void*);
 
@@ -76,7 +76,9 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
                                 const int aimThreads, const int performBandwidthBoost,
                                 const int registerBoostNonPow2, const int registerBoost4Step,
                                 const int warpSize, const long* grouped_batch,
-                                const int forceCallbackVersionRealTransforms)
+                                const int forceCallbackVersionRealTransforms,
+                                const int performConvolution, const int conjugateConvolution,
+                                const int crossPowerSpectrumNormalization)
 {
   VkFFTConfiguration *config = new VkFFTConfiguration({});
   config->FFTdim = fftdim;
@@ -197,6 +199,17 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
     config->buffer = (cl_mem*)pbuf;
   }
 
+  // Convolution parameters
+  config->performConvolution = performConvolution;
+	config->conjugateConvolution = conjugateConvolution;
+	config->crossPowerSpectrumNormalization = crossPowerSpectrumNormalization;
+
+  if(performConvolution)
+  {
+    void **pkernel = new void*;
+    config->kernel = (cl_mem*)pkernel;
+  }
+
   return config;
 }
 
@@ -229,7 +242,7 @@ VkFFTApplication* init_app(const VkFFTConfiguration* config, void *queue, int *r
   return app;
 }
 
-int fft(VkFFTApplication* app, void *in, void *out, void* queue)
+int fft(VkFFTApplication* app, void *in, void *out, void* queue, void* kernel)
 {
   cl_command_queue q = (cl_command_queue) queue;
 
@@ -245,6 +258,12 @@ int fft(VkFFTApplication* app, void *in, void *out, void* queue)
   par.buffer =  app->configuration.buffer;
   par.inputBuffer = app->configuration.inputBuffer;
   par.outputBuffer = app->configuration.outputBuffer;
+
+  if(app->configuration.performConvolution)
+  {
+    *(app->configuration.kernel) = (cl_mem)kernel;
+    par.kernel = app->configuration.kernel;
+  }
 
   return VkFFTAppend(app, -1, &par);
 }
@@ -301,6 +320,8 @@ void free_config(VkFFTConfiguration *config)
     free(config->inputBufferSize);
   if((config->outputBufferSize != NULL) && (config->outputBufferSize != config->bufferSize)
      && (config->outputBufferSize != config->inputBufferSize)) free(config->outputBufferSize);
+
+  if((config->kernel != NULL) && config->performConvolution) free(config->kernel);
 
   free(config);
 }

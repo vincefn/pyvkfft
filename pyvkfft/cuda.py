@@ -47,7 +47,8 @@ try:
                                         ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_size_t,
                                         ctype_int_size_p, ctypes.c_int,
                                         ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                                        ctypes.c_int, ctype_int_size_p, ctypes.c_int]
+                                        ctypes.c_int, ctype_int_size_p, ctypes.c_int,
+                                        ctypes.c_int, ctypes.c_int, ctypes.c_int]
 
     _vkfft_cuda.init_app.restype = ctypes.c_void_p
     _vkfft_cuda.init_app.argtypes = [_types.vkfft_config, ctypes.POINTER(ctypes.c_int),
@@ -55,7 +56,7 @@ try:
                                      ctype_int_size_p, ctype_int_size_p]
 
     _vkfft_cuda.fft.restype = ctypes.c_int
-    _vkfft_cuda.fft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p]
+    _vkfft_cuda.fft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
 
     _vkfft_cuda.ifft.restype = ctypes.c_int
     _vkfft_cuda.ifft.argtypes = [_types.vkfft_app, ctypes.c_void_p, ctypes.c_void_p]
@@ -85,7 +86,8 @@ class VkFFTApp(VkFFTAppBase):
 
     def __init__(self, shape, dtype: type, ndim=None, inplace=True, stream=None, norm=1,
                  r2c=False, dct=False, dst=False, axes=None, strides=None, tune_config=None,
-                 r2c_odd=False, verbose=False, **kwargs):
+                 r2c_odd=False, convolve=False, convolve_conj=0, convolve_norm=False,
+                 verbose=False, **kwargs):
         """
 
         :param shape: the shape of the array to be transformed. The number
@@ -164,6 +166,16 @@ class VkFFTApp(VkFFTAppBase):
                 of 101, the input array should also be padded to 102 (101+1), and
                 the resulting half-Hermitian array also has a size of 51. A
                 flag is thus needed to differentiate the cases of 100+2 or 101+1.
+        :param convolve: create a VkFFTApp to perform an on-the-fly convolution
+            using a supplied kernel. Calling the app's fft() will perform
+            the complete convolution (fft+multiplication by kernel+ifft),
+            bypassing saving the arrays after the FT, resulting in a ~2X
+            speedup for the convolution. The kernel must be supplied
+            when calling the fft().
+        :param convolve_conj: if 1, use the conjugate of the transformed
+            input array. If 2, use the conjugate of the kernel.
+        :param convolve_norm: if True, normalise the kernel multiplcation
+            (crossPowerSpectrumNormalization).
         :param verbose: if True, print a 1-string info about this VkFFTApp.
             See __str__ for details.
 
@@ -176,7 +188,9 @@ class VkFFTApp(VkFFTAppBase):
                                 norm=norm, r2c=r2c, dct=dct, dst=dst, axes=axes, strides=strides, verbose=False,
                                 r2c_odd=r2c_odd, **kwargs)[0]
         super().__init__(shape, dtype, ndim=ndim, inplace=inplace, norm=norm, r2c=r2c,
-                         dct=dct, dst=dst, axes=axes, strides=strides, r2c_odd=r2c_odd, **kwargs)
+                         dct=dct, dst=dst, axes=axes, strides=strides, r2c_odd=r2c_odd,
+                         convolve=convolve, convolve_norm=convolve_norm,
+                         convolve_conj=convolve_conj, **kwargs)
 
         self.stream = stream
 
@@ -281,17 +295,23 @@ class VkFFTApp(VkFFTAppBase):
                                        int(self.aimThreads), int(self.performBandwidthBoost),
                                        int(self.registerBoostNonPow2), int(self.registerBoost4Step),
                                        int(self.warpSize), grouped_batch,
-                                       int(self.forceCallbackVersionRealTransforms))
+                                       int(self.forceCallbackVersionRealTransforms),
+                                       int(self._convolve), int(self._convolve_conj),
+                                       int(self._convolve_norm))
 
-    def fft(self, src, dest=None):
+    def fft(self, src, dest=None, convolve_kernel=None):
         """
         Compute the forward FFT
 
         :param src: the source pycuda.gpuarray.GPUArray or cupy.ndarray
         :param dest: the destination GPU array. Should be None for an inplace transform
+        :param convolve_kernel: the convolution kernel, only if the application
+            is configured to perform a convolution. It must have the shape and
+            type corresponding to the FT of the source array.
         :raises RuntimeError: in case of a GPU kernel launch error
         :return: the transformed array. For a R2C inplace transform, the complex view of the
-            array is returned.
+            array is returned. If this is a convolution application, the full
+            convolution is performed (FT, kernel multiplication, IFT)
         """
         use_cupy = False
         if has_cupy:
@@ -310,10 +330,21 @@ class VkFFTApp(VkFFTAppBase):
                 dest_ptr = int(dest.gpudata)
         else:
             dest_ptr = src_ptr
+
+        conv_k_ptr = 0
+        if convolve_kernel is not None:
+            if use_cupy:
+                conv_k_ptr = convolve_kernel.__cuda_array_interface__['data'][0]
+            else:
+                conv_k_ptr = int(convolve_kernel.gpudata)
+
+        if self._convolve and conv_k_ptr == 0:
+            raise RuntimeError("VkFFTApp.fft: convolve=True but not convolution kernel was given")
+
         if self.inplace:
             if src_ptr != dest_ptr:
                 raise RuntimeError("VkFFTApp.fft: dest is not None but this is an inplace transform")
-            res = _vkfft_cuda.fft(self.app, int(src_ptr), int(src_ptr))
+            res = _vkfft_cuda.fft(self.app, int(src_ptr), int(src_ptr), int(conv_k_ptr))
             check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
                                self.dct, self.dst, backend="cuda")
             if self.norm == "ortho":
@@ -329,9 +360,9 @@ class VkFFTApp(VkFFTAppBase):
                 raise RuntimeError("VkFFTApp.fft: dest is None but this is an out-of-place transform")
             if src_ptr == dest_ptr:
                 raise RuntimeError("VkFFTApp.fft: dest and src are identical but this is an out-of-place transform")
-            if self.r2c:
+            if self.r2c and not self._convolve:
                 assert (dest.size == src.size // src.shape[self.fast_axis] * (src.shape[self.fast_axis] // 2 + 1))
-            res = _vkfft_cuda.fft(self.app, int(src_ptr), int(dest_ptr))
+            res = _vkfft_cuda.fft(self.app, int(src_ptr), int(dest_ptr), int(conv_k_ptr))
             check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
                                self.dct, self.dst, backend="cuda")
             if self.norm == "ortho":
@@ -348,6 +379,8 @@ class VkFFTApp(VkFFTAppBase):
         :return: the transformed array. For a C2R inplace transform, the float view of the
             array is returned.
         """
+        if self._convolve:
+            raise RuntimeError("VkFFTApp.ifft: only fft() can be used when convolve=True")
         use_cupy = False
         if has_cupy:
             if isinstance(src, cp.ndarray):

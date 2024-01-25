@@ -26,12 +26,12 @@ LIBRARY_API VkFFTConfiguration* make_config(const long*, const size_t, void*, vo
                                 const int, const int, const int, const int,
                                 const int, const int, const size_t, const long*,
                                 const int, const int, const int, const int, const int, const int, const int,
-                                const long*, const int);
+                                const long*, const int, const int, const int, const int);
 
 LIBRARY_API VkFFTApplication* init_app(const VkFFTConfiguration*, int*,
                                        size_t*, long*, long*);
 
-LIBRARY_API int fft(VkFFTApplication* app, void*, void*);
+LIBRARY_API int fft(VkFFTApplication* app, void*, void*, void*);
 
 LIBRARY_API int ifft(VkFFTApplication* app, void*, void*);
 
@@ -92,7 +92,9 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
                                 const int aimThreads, const int performBandwidthBoost,
                                 const int registerBoostNonPow2, const int registerBoost4Step,
                                 const int warpSize, const long* grouped_batch,
-                                const int forceCallbackVersionRealTransforms)
+                                const int forceCallbackVersionRealTransforms,
+                                const int performConvolution, const int conjugateConvolution,
+                                const int crossPowerSpectrumNormalization)
 {
   VkFFTConfiguration *config = new VkFFTConfiguration({});
   config->FFTdim = fftdim;
@@ -236,6 +238,17 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
     config->buffer = pbuf;
   }
 
+  // Convolution parameters
+  config->performConvolution = performConvolution;
+	config->conjugateConvolution = conjugateConvolution;
+	config->crossPowerSpectrumNormalization = crossPowerSpectrumNormalization;
+
+  if(performConvolution)
+  {
+    void **pkernel = new void*;
+    config->kernel = (cl_mem*)pkernel;
+  }
+
   /*
   cout << "make_config: "<<config<<" "<<endl<< config->buffer<<", "<< *(config->buffer)<<", "
        << config->size[0] << " " << config->size[1] << " " << config->size[2] << " "<< config->FFTdim
@@ -277,7 +290,7 @@ VkFFTApplication* init_app(const VkFFTConfiguration* config, int *res,
   return app;
 }
 
-int fft(VkFFTApplication* app, void *in, void *out)
+int fft(VkFFTApplication* app, void *in, void *out, void *kernel)
 {
   // Modify the original app only to avoid allocating
   // new buffer pointers in memory
@@ -289,6 +302,12 @@ int fft(VkFFTApplication* app, void *in, void *out)
   par.buffer =  app->configuration.buffer;
   par.inputBuffer = app->configuration.inputBuffer;
   par.outputBuffer = app->configuration.outputBuffer;
+
+  if(app->configuration.performConvolution)
+  {
+    *(app->configuration.kernel) = kernel;
+    par.kernel = app->configuration.kernel;
+  }
 
   return VkFFTAppend(app, -1, &par);
 }
@@ -339,6 +358,8 @@ void free_config(VkFFTConfiguration *config)
     free(config->inputBufferSize);
   if((config->outputBufferSize != NULL) && (config->outputBufferSize != config->bufferSize)
      && (config->outputBufferSize != config->inputBufferSize)) free(config->outputBufferSize);
+
+  if((config->kernel != NULL) && config->performConvolution) free(config->kernel);
 
   if(config->stream != 0) free(config->stream);
   free(config);

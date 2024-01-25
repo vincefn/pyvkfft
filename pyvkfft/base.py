@@ -452,7 +452,8 @@ class VkFFTApp:
 
     def __init__(self, shape, dtype: type, ndim=None, inplace=True, norm=1,
                  r2c=False, dct=False, dst=False, axes=None, strides=None,
-                 r2c_odd=False, **kwargs):
+                 r2c_odd=False, convolve=False, convolve_conj=0,
+                 convolve_norm=False, **kwargs):
         """
         Init function for the VkFFT application.
 
@@ -508,6 +509,16 @@ class VkFFTApp:
             of 101, the input array should also be padded to 102 (101+1), and
             the resulting half-Hermitian array also has a size of 51. A
             flag is thus needed to differentiate the cases of 100+2 or 101+1.
+        :param convolve: create a VkFFTApp to perform an on-the-fly convolution
+            using a supplied kernel. Calling the app's fft() will perform
+            the complete convolution (fft+multiplication by kernel+ifft),
+            bypassing saving the arrays after the FT, resulting in a ~2X
+            speedup for the convolution. The kernel must be supplied
+            when calling the fft().
+        :param convolve_conj: if 1, use the conjugate of the transformed
+            input array. If 2, use the conjugate of the kernel.
+        :param convolve_norm: if True, normalise the kernel multiplcation
+            (crossPowerSpectrumNormalization).
 
         :raises RuntimeError:  if the transform dimensions or data type
             are not allowed by VkFFT.
@@ -557,6 +568,11 @@ class VkFFTApp:
             raise RuntimeError("Only DCT of types 1, 2, 3 and 4 are allowed")
         if dst and self.dst < 1 or self.dst > 4:
             raise RuntimeError("Only DST of types 1, 2, 3 and 4 are allowed")
+
+        # Convolution parameters
+        self._convolve = convolve
+        self._convolve_conj = convolve_conj
+        self._convolve_norm = convolve_norm
 
         # These parameters will be filled in by the different backends
         # Size of the temp buffer allocated by VkFFT
