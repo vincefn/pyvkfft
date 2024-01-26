@@ -281,6 +281,10 @@ def make_parser():
                         help="When used without --systematic, perform only "
                              "c2c quick tests and skip the long r2c/dct/dst "
                              "unless they were also requested.")
+    # Perform only convolution tests.
+    parser.add_argument('--convolve', action='store_true',
+                        help=argparse.SUPPRESS)
+
     parser.add_argument('--systematic', action='store_true',
                         help="Perform a systematic accuracy test over a range of array sizes.\n"
                              "Without this argument a faster test (a few minutes) will be "
@@ -489,7 +493,7 @@ def main():
                 del t.test_pycuda_streams
             if 'pyopencl' not in args.backend:
                 del t.test_pyopencl_queues
-        if args.r2c or args.dct or args.dst or args.c2c:
+        if args.r2c or args.dct or args.dst or args.c2c or args.convolve:
             # A selection of subtests was made - remove the other long ones
             if not args.r2c:
                 del t.test_r2c

@@ -348,7 +348,7 @@ class VkFFTApp(VkFFTAppBase):
                                self.dct, self.dst, backend="opencl")
             if self.norm == "ortho":
                 src *= self._get_fft_scale(norm=0)
-            if self.r2c:
+            if self.r2c and not self._convolve:
                 if src.dtype == np.float32:
                     return src.view(dtype=np.complex64)
                 elif src.dtype == np.float64:
