@@ -570,6 +570,11 @@ class VkFFTApp:
             raise RuntimeError("Only DST of types 1, 2, 3 and 4 are allowed")
 
         # Convolution parameters
+        if convolve and r2c and not inplace:
+            raise RuntimeError("Out-of-place R2C convolution is not supported")
+        if not (np.alltrue(self.is_radix_transform())) and convolve:
+            # TODO: check if some non-radix transforms are supported
+            raise RuntimeError("On-the-fly VkFFT convolution is not supported for non-radix transforms")
         self._convolve = convolve
         self._convolve_conj = convolve_conj
         self._convolve_norm = convolve_norm

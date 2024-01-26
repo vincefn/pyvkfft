@@ -638,7 +638,9 @@ class TestFFT(unittest.TestCase):
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
     def test_zeropad(self):
         for backend, transform, inplace, shape in itertools.product(self.vbackend, ['c2c', 'r2c'], [True, False],
-                                                                    [(256, 256), (256, 200)]):  # , (181, 171)
+                                                                    [(256, 256), (256, 200), (256, 143)]):
+            if transform == 'r2c' and not inplace:
+                continue  # Not supported
             with self.subTest(backend=backend, transform=transform, inplace=inplace, shape=shape):
                 ny, nx = shape
                 r2c = transform == 'r2c'
@@ -650,6 +652,17 @@ class TestFFT(unittest.TestCase):
                 g = np.fft.fftshift(np.exp(-(x ** 2 + y ** 2) / 100))
                 g /= g.sum()
                 dtype = np.complex64 if transform == 'c2c' else np.float32
+                a, g = a.astype(dtype), g.astype(dtype)
+                # Numpy reference convolution
+                if r2c:
+                    ga0 = np.fft.irfftn(np.fft.rfftn(a) * np.fft.rfftn(g), s=(ny, nx))
+                else:
+                    ga0 = np.fft.ifftn(np.fft.fftn(a) * np.fft.fftn(g))
+
+                if r2c and inplace:
+                    a = np.pad(a, ((0, 0), (0, 2 - r2c_odd)))
+                    g = np.pad(g, ((0, 0), (0, 2 - r2c_odd)))
+
                 if backend == "pycuda":
                     da = cua.to_gpu(a.astype(dtype))
                     dg = cua.to_gpu(g.astype(np.float32))
@@ -667,23 +680,17 @@ class TestFFT(unittest.TestCase):
                     else:
                         db = cla.empty_like(da)
                         dk = None
-                    app = clVkFFTApp(shape, dtype, cq, inplace=inplace, r2c=r2c, convolve=True)  # , r2c_odd=r2c_odd
+                    app = clVkFFTApp(da.shape, dtype, cq, inplace=inplace, r2c=r2c, convolve=True, r2c_odd=r2c_odd)
 
                 if transform == 'r2c':
-                    # TODO: does not work yet:
-                    #   - inplace has some strange interlaced effects
-                    #   - out-of place has an OK convolution, but in the source array (?),
-                    #     and the last few rows (not columns) are incorrect (?)
-                    ga0 = vkirfftn(vkrfftn(da) * vkrfftn(dg)).get()  # , r2c_odd=r2c_odd
-                    dk = vkrfftn(dg, dk)  # , r2c_odd=r2c_odd
+                    dk = vkrfftn(dg, dk, r2c_odd=r2c_odd)
                     ga1 = app.fft(da, db, convolve_kernel=dk).get()
                 else:
-                    ga0 = vkifftn(vkfftn(da) * vkfftn(dg)).get()
                     ga1 = app.fft(da, db, convolve_kernel=vkfftn(dg, dk)).get()
 
                 # Compare results
                 if r2c and inplace:
-                    self.assertTrue(np.allclose(ga0[:, :-1 - (nx % 2)], ga1[:, :-1 - (nx % 2)]))
+                    self.assertTrue(np.allclose(ga0, ga1[:, :-2 + r2c_odd]))
                 else:
                     self.assertTrue(np.allclose(ga0, ga1))
 
