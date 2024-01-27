@@ -59,6 +59,7 @@ default_config = [
 
 def plot_benchmark(*sql_files):
     import matplotlib.pyplot as plt
+    from matplotlib.markers import MarkerStyle
     res_all = {}
     vgpu = []
     vbackend = []
@@ -95,8 +96,16 @@ def plot_benchmark(*sql_files):
             res = dbc0.fetchall()
             if len(res):
                 vk = [k[0] for k in dbc0.description]
+
                 igbps = vk.index('gbps')
                 vgbps = [r[igbps] for r in res]
+
+                ialgo = vk.index('algo')
+                valgo = [r[ialgo] for r in res]
+
+                iup = vk.index('nb_upload')
+                vup = [r[iup] for r in res]
+
                 ish = vk.index('shape')
                 vlength = [int(r[ish].split('x')[-1]) for r in res]
                 platgpu = f'{clplat}:{gpu}' if len(clplat) else gpu
@@ -134,7 +143,8 @@ def plot_benchmark(*sql_files):
                     k += f"-radix{config['radix']}"
                 k += f"[{min(vlength)}-{max(vlength)}]"
                 r = {'length': vlength, 'gbps': vgbps, 'backend': config['backend'],
-                     'gpu': gpu, 'platform': config['platform']}
+                     'gpu': gpu, 'platform': config['platform'],
+                     'algo': valgo, 'nb_upload': vup}
                 if ndim not in res_all:
                     res_all[ndim] = {k: r}
                 else:
@@ -155,9 +165,11 @@ def plot_benchmark(*sql_files):
     # * If only one backend is used, the colour changes automatically with the parameters
 
     # Symbols used
-    vsymb = ['.', 'v', '^', '<', '>', 's', 'p', '*', 'h', 'H', 'd', 'D', '+', 'x', '1', '2', '3', '4']
+    vsymb = ['.', 'v', '^', '<', '>', 's', 'p', '*', 'h', 'H', 'd', 'D']
     # Colour for each backend
     vcol = {'cuda': '#FF8C00', 'opencl': '#FF00FF', 'skcuda': '#0000FF', 'cupy': '#0090FF', 'gpyfft': '#00FF00'}
+    # Colours when changing parameters for 1 backend
+    vcol_k = ['k', 'r', 'g', 'b', 'c', 'm', 'y', 'gray', 'chartreuse', 'maroon', 'turquoise', 'deepskyblue']
     for ndim, res in res_all.items():
         plt.figure(figsize=(16, 8))
 
@@ -171,23 +183,40 @@ def plot_benchmark(*sql_files):
         vct = {'cuda': 0, 'opencl': 0, 'skcuda': 0, 'cupy': 0, 'gpyfft': 0}
 
         vk = sorted(res.keys())
+        icol = 0  # iterate color when using 1 backend with multiple config
         for k in vk:
             v = res[k]
             x, y = v['length'], v['gbps']
             backend = v['backend']
-            valpha = [max(primes(xx)) for xx in x]
-            if backend in ['cuda', 'opencl', 'gpyfft']:
-                valpha = np.array([1 if xx <= 13 else 0.2 for xx in valpha], dtype=np.float32)
+            vprim = [max(primes(xx)) for xx in x]
+            if backend in ['cuda', 'opencl']:
+                vfill = np.array(['B' if 'B' in a else 'R' if 'R' in a else 'r' for a in v['algo']])
+            elif backend in ['gpyfft']:
+                vfill = ['r'] * len(vprim)
             else:
                 # cufft (cupy, skcuda)
-                valpha = np.array([1 if xx <= 7 else 0.2 for xx in valpha], dtype=np.float32)
-            print(len(x), len(valpha))
+                vfill = ['B' if xx <= 7 else 'r' for xx in vprim]
             if one_backend:
-                plt.scatter(x, y, marker='.', label=k, alpha=valpha)
+                # Plot separately Bluestein, Rader and radix
+                for algo in ['r', 'B', 'R']:
+                    idx = np.where(vfill == algo)[0]
+                    if len(idx):
+                        # fillstyle={'r': 'full', 'B': 'none', 'R': 'bottom'}[algo]
+                        ms = MarkerStyle({'r': 'o', 'R': 'd', 'B': 'x'}[algo])
+                        plt.scatter(np.take(x, idx), np.take(y, idx), s=12, label=k, marker=ms,
+                                    alpha={'r': 1, 'B': 0.3, 'R': 0.6}[algo],
+                                    color=vcol_k[icol])
+                        k = None  # display legend only once
+                icol += 1
             else:
                 i = vct[backend]
-                plt.scatter(x, y, marker=vsymb[i % len(vsymb)], color=vcol[backend],
-                            label=k, alpha=valpha)
+                for algo in ['r', 'B', 'R']:
+                    idx = np.where(vfill == algo)[0]
+                    if len(idx):
+                        ms = MarkerStyle(vsymb[i % len(vsymb)])
+                        plt.scatter(np.take(x, idx), np.take(y, idx), label=k, marker=ms, color=vcol[backend],
+                                    alpha={'r': 1, 'R': 0.6, 'B': 0.3}[algo])
+                        k = None  # display legend only once
                 vct[backend] += 1
 
         plt.xlabel("array length")
@@ -203,7 +232,12 @@ def plot_benchmark(*sql_files):
             xmin = 0
         plt.xticks(np.arange(xmin, xmax, step))
 
-        plt.legend()
+        if one_backend:
+            plt.legend(title="Symbols: disc=radix, diamond=Rader, X=Bluestein",
+                       title_fontsize=8)
+        else:
+            plt.legend(title="Alpha: radix=1 Rader=0.6 Bluestein=0.3",
+                       title_fontsize=8)
         plt.grid(True)
         plt.tight_layout()
         n = f"pyvkfft-benchmark-{str_config.replace(' ', '_')}-{ndim}D{str_opt}."
@@ -246,6 +280,8 @@ def run_test(config, args):
         gpu_name_real = ''
         platform_name_real = ''
         vkfft_str = None
+        nup_str = None
+        algo_str = None
         if backend == 'cuda':
             res = bench_pyvkfft_cuda(sh, precision, ndim, nb_repeat, gpu_name, args=vargs,
                                      serial=args.serial, inplace=inplace, r2c=r2c,
@@ -254,6 +290,8 @@ def run_test(config, args):
             gbps = res['gbps']
             gpu_name_real = res['gpu_name_real']
             vkfft_str = res['vkfft_str']
+            nup_str = res['nup_str']
+            algo_str = res['algo_str']
         elif backend == 'opencl':
             res = bench_pyvkfft_opencl(sh, precision, ndim, nb_repeat, gpu_name,
                                        opencl_platform=opencl_platform, args=vargs,
@@ -263,7 +301,8 @@ def run_test(config, args):
             gpu_name_real = res['gpu_name_real']
             platform_name_real = res['platform_name_real']
             vkfft_str = res['vkfft_str']
-
+            nup_str = res['nup_str']
+            algo_str = res['algo_str']
         elif backend == 'skcuda':
             res = bench_skcuda(sh, precision, ndim, nb_repeat, gpu_name, serial=args.serial)
             gbps = res['gbps']
@@ -331,10 +370,12 @@ def run_test(config, args):
                              args.registerBoostNonPow2, args.registerBoost4Step, warpSize,
                              args.useLUT, 'x'.join(str(i) for i in args.batchedGroup)))
                 db.commit()
-                dbc.execute('CREATE TABLE IF NOT EXISTS benchmark (epoch int, ndim int, shape text, gbps float)')
+                dbc.execute('CREATE TABLE IF NOT EXISTS benchmark (epoch int, ndim int, shape text,'
+                            'gbps float, algo str, nb_upload str)')
                 db.commit()
-            dbc.execute('INSERT INTO benchmark VALUES (?,?,?,?)',
-                        (time.time(), ndim, 'x'.join(str(i) for i in sh), gbps))
+            dbc.execute('INSERT INTO benchmark VALUES (?,?,?,?,?,?)',
+                        (time.time(), ndim, 'x'.join(str(i) for i in sh), gbps,
+                         algo_str, nup_str))
             db.commit()
         if compare and first:
             dbc0 = sqlite3.connect(compare).cursor()

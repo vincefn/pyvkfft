@@ -245,8 +245,9 @@ def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_na
                     kwargs[k] = v
         app = clVkFFTApp(d.shape, dtype=dtype, queue=cq, ndim=ndim, inplace=inplace,
                          r2c=r2c, dct=dct, dst=dst, r2c_odd=r2c_odd, **kwargs)
-        vkfft_str = f"algo={app.get_algo_str()} buf={app.get_tmp_buffer_str()} " \
-                    f"up={''.join(str(nup) for nup in app.get_nb_upload())}"
+        algo_str = app.get_algo_str()
+        nup_str = ''.join(str(nup) for nup in app.get_nb_upload())
+        vkfft_str = f"algo={algo_str} buf={app.get_tmp_buffer_str()} up={nup_str}"
         if 'tune_config' in kwargs:
             for k, v in kwargs['tune_config'].items():
                 if k == "backend":
@@ -277,7 +278,7 @@ def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_na
         gbps = 0
     results = {'dt': dt, 'gbps': gbps, 'gpu_name_real': gpu_name_real,
                'platform_name_real': platform_name_real,
-               'vkfft_str': vkfft_str}
+               'vkfft_str': vkfft_str, 'algo_str': algo_str, 'nup_str': nup_str}
     if q is None:
         return results
     else:
@@ -365,8 +366,9 @@ def _bench_pyvkfft_cuda(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name
                     kwargs[k] = v
         app = cuVkFFTApp(d.shape, dtype=dtype, ndim=ndim, inplace=inplace,
                          r2c=r2c, dct=dct, dst=dst, r2c_odd=r2c_odd, **kwargs)
-        vkfft_str = f"algo={app.get_algo_str()} buf={app.get_tmp_buffer_str()} " \
-                    f"up={''.join(str(nup) for nup in app.get_nb_upload())}"
+        algo_str = app.get_algo_str()
+        nup_str = ''.join(str(nup) for nup in app.get_nb_upload())
+        vkfft_str = f"algo={algo_str} buf={app.get_tmp_buffer_str()} up={nup_str}"
         if 'tune_config' in kwargs:
             for k, v in kwargs['tune_config'].items():
                 if k == "backend":
@@ -393,7 +395,8 @@ def _bench_pyvkfft_cuda(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name
     except:
         gbps = 0
     cu_ctx.pop()
-    results = {'dt': dt, 'gbps': gbps, 'gpu_name_real': gpu_name_real, 'vkfft_str': vkfft_str}
+    results = {'dt': dt, 'gbps': gbps, 'gpu_name_real': gpu_name_real, 'vkfft_str': vkfft_str,
+               'algo_str': algo_str, 'nup_str': nup_str}
     if q is None:
         return results
     else:
