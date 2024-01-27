@@ -572,7 +572,8 @@ class VkFFTApp:
         # Convolution parameters
         if convolve and r2c and not inplace:
             raise RuntimeError("Out-of-place R2C convolution is not supported")
-        if not (np.alltrue(self.is_radix_transform())) and convolve:
+        rx = self.is_radix_transform(vkfft_axes=True)
+        if not (np.alltrue([rx[i] or self.skip_axis[i] for i in range(len(rx))])) and convolve:
             # TODO: check if some non-radix transforms are supported
             raise RuntimeError("On-the-fly VkFFT convolution is not supported for non-radix transforms")
         self._convolve = convolve
