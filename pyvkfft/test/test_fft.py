@@ -636,12 +636,15 @@ class TestFFT(unittest.TestCase):
                     print(f"Running {ct} DST tests (backend: {self.backend_info(backend)})")
 
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
-    def test_zeropad(self):
-        for backend, transform, inplace, shape in itertools.product(self.vbackend, ['c2c', 'r2c'], [True, False],
-                                                                    [(256, 256), (256, 200), (256, 143)]):
+    def test_convolve_2d(self):
+        """ Test VkFFT's on-the-fly convolution in 2D, with and without batch"""
+        for backend, transform, inplace, shape, nbatch, cconj in \
+                itertools.product(self.vbackend, ['c2c', 'r2c'], [True, False],
+                                  [(256, 256), (256, 200), (256, 143)], [1, 4], [0, 1, 2]):
             if transform == 'r2c' and not inplace:
                 continue  # Not supported
-            with self.subTest(backend=backend, transform=transform, inplace=inplace, shape=shape):
+            with self.subTest(backend=backend, transform=transform, inplace=inplace,
+                              shape=shape, nbatch=nbatch, cconj=cconj):
                 ny, nx = shape
                 r2c = transform == 'r2c'
                 r2c_odd = nx % 2
@@ -653,44 +656,83 @@ class TestFFT(unittest.TestCase):
                 g /= g.sum()
                 dtype = np.complex64 if transform == 'c2c' else np.float32
                 a, g = a.astype(dtype), g.astype(dtype)
+                # Batch ?
+                if nbatch > 1:
+                    a = np.tile(a, (nbatch, 1, 1))
+                    g = np.tile(g, (nbatch, 1, 1))
+                    axes = [1, 2]
+                else:
+                    axes = None
                 # Numpy reference convolution
                 if r2c:
-                    ga0 = np.fft.irfftn(np.fft.rfftn(a) * np.fft.rfftn(g), s=(ny, nx))
+                    if cconj == 1:
+                        ga0 = np.fft.irfftn(np.fft.rfftn(a, axes=axes).conj() *
+                                            np.fft.rfftn(g, axes=axes), s=(ny, nx), axes=axes)
+                    elif cconj == 2:
+                        ga0 = np.fft.irfftn(np.fft.rfftn(a, axes=axes) *
+                                            np.fft.rfftn(g, axes=axes).conj(),
+                                            s=(ny, nx), axes=axes)
+                    else:
+                        ga0 = np.fft.irfftn(np.fft.rfftn(a, axes=axes) *
+                                            np.fft.rfftn(g, axes=axes), s=(ny, nx), axes=axes)
                 else:
-                    ga0 = np.fft.ifftn(np.fft.fftn(a) * np.fft.fftn(g))
+                    if cconj == 1:
+                        ga0 = np.fft.ifftn(np.fft.fftn(a, axes=axes).conj() *
+                                           np.fft.fftn(g, axes=axes), axes=axes)
+                    elif cconj == 2:
+                        ga0 = np.fft.ifftn(np.fft.fftn(a, axes=axes) *
+                                           np.fft.fftn(g, axes=axes).conj(), axes=axes)
+                    else:
+                        ga0 = np.fft.ifftn(np.fft.fftn(a, axes=axes) *
+                                           np.fft.fftn(g, axes=axes), axes=axes)
 
                 if r2c and inplace:
-                    a = np.pad(a, ((0, 0), (0, 2 - r2c_odd)))
-                    g = np.pad(g, ((0, 0), (0, 2 - r2c_odd)))
+                    if nbatch > 1:
+                        a = np.pad(a, ((0, 0), (0, 0), (0, 2 - r2c_odd)))
+                        g = np.pad(g, ((0, 0), (0, 0), (0, 2 - r2c_odd)))
+                    else:
+                        a = np.pad(a, ((0, 0), (0, 2 - r2c_odd)))
+                        g = np.pad(g, ((0, 0), (0, 2 - r2c_odd)))
 
                 if backend == "pycuda":
                     da = cua.to_gpu(a.astype(dtype))
-                    dg = cua.to_gpu(g.astype(np.float32))
+                    dg = cua.to_gpu(g.astype(dtype))
+                    app = cuVkFFTApp(da.shape, dtype, inplace=inplace, ndim=2,
+                                     r2c=r2c, convolve=True, convolve_conj=cconj,
+                                     r2c_odd=r2c_odd)
                 elif backend == "cupy":
                     cp.cuda.Device(0).use()
-                    dc = cp.array(a.astype(np.complex64))
-                    dr = cp.array(a.astype(np.float32))
+                    da = cp.array(a.astype(dtype))
+                    dg = cp.array(g.astype(dtype))
+                    app = cuVkFFTApp(da.shape, dtype, inplace=inplace, ndim=2,
+                                     r2c=r2c, convolve=True, convolve_conj=cconj,
+                                     r2c_odd=r2c_odd)
                 else:
                     cq = gpu_ctx_dic["pyopencl"][2]
                     da = cla.to_device(cq, a.astype(dtype))
                     dg = cla.to_device(cq, g.astype(dtype))
-                    if inplace:
-                        db = da
-                        dk = dg
-                    else:
+                    app = clVkFFTApp(da.shape, dtype, cq, inplace=inplace, ndim=2,
+                                     r2c=r2c, convolve=True, convolve_conj=cconj,
+                                     r2c_odd=r2c_odd)
+                if inplace:
+                    db = da
+                    dk = dg
+                else:
+                    if backend == "pyopencl":
                         db = cla.empty_like(da)
-                        dk = None
-                    app = clVkFFTApp(da.shape, dtype, cq, inplace=inplace, r2c=r2c, convolve=True, r2c_odd=r2c_odd)
+                    else:
+                        db = cua.empty_like(da)
+                    dk = None
 
                 if transform == 'r2c':
-                    dk = vkrfftn(dg, dk, r2c_odd=r2c_odd)
+                    dk = vkrfftn(dg, dk, r2c_odd=r2c_odd, ndim=2)
                     ga1 = app.fft(da, db, convolve_kernel=dk).get()
                 else:
-                    ga1 = app.fft(da, db, convolve_kernel=vkfftn(dg, dk)).get()
+                    ga1 = app.fft(da, db, convolve_kernel=vkfftn(dg, dk, ndim=2)).get()
 
                 # Compare results
                 if r2c and inplace:
-                    self.assertTrue(np.allclose(ga0, ga1[:, :-2 + r2c_odd]))
+                    self.assertTrue(np.allclose(ga0, ga1[..., :-2 + r2c_odd]))
                 else:
                     self.assertTrue(np.allclose(ga0, ga1))
 

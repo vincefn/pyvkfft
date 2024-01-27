@@ -83,7 +83,9 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
   VkFFTConfiguration *config = new VkFFTConfiguration({});
   config->FFTdim = fftdim;
   for(int i=0; i<VKFFT_MAX_FFT_DIMENSIONS; i++) config->size[i] = size[i];
-  config->numberBatches = n_batch;
+
+  if(performConvolution) config->numberBatches = 1;
+  else config->numberBatches = n_batch;
 
   for(int i=0; i<VKFFT_MAX_FFT_DIMENSIONS; i++) config->omitDimension[i] = skip[i];
 
@@ -208,6 +210,7 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
   {
     void **pkernel = new void*;
     config->kernel = (cl_mem*)pkernel;
+    if(n_batch>1) config->coordinateFeatures = n_batch;
   }
 
   return config;

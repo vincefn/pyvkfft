@@ -570,12 +570,18 @@ class VkFFTApp:
             raise RuntimeError("Only DST of types 1, 2, 3 and 4 are allowed")
 
         # Convolution parameters
-        if convolve and r2c and not inplace:
-            raise RuntimeError("Out-of-place R2C convolution is not supported")
-        rx = self.is_radix_transform(vkfft_axes=True)
-        if not (np.alltrue([rx[i] or self.skip_axis[i] for i in range(len(rx))])) and convolve:
-            # TODO: check if some non-radix transforms are supported
-            raise RuntimeError("On-the-fly VkFFT convolution is not supported for non-radix transforms")
+        if convolve:
+            if r2c and not inplace:
+                raise RuntimeError("Out-of-place R2C convolution is not supported")
+            if axes is not None:
+                raise RuntimeError("Use of axes is not supported with convolution- you can still "
+                                   "perform batch transforms using e.g. a 3D array and ndim=2")
+            if strides is not None:
+                raise RuntimeError("Use of strides is not supported with convolution")
+            rx = self.is_radix_transform(vkfft_axes=True)
+            if not (np.alltrue([rx[i] or self.skip_axis[i] for i in range(len(rx))])):
+                # TODO: check if some non-radix transforms are supported
+                raise RuntimeError("On-the-fly VkFFT convolution is not supported for non-radix transforms")
         self._convolve = convolve
         self._convolve_conj = convolve_conj
         self._convolve_norm = convolve_norm
