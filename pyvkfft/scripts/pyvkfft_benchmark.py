@@ -23,16 +23,19 @@ from pyvkfft.version import __version__, vkfft_version
 
 
 class BenchConfig:
-    def __init__(self, transform: str, shape, ndim: int, inplace: bool = True, precision: str = 'single'):
+    def __init__(self, transform: str, shape, ndim: int, inplace: bool = True, precision: str = 'single',
+                 nb_loop=1):
         self.transform = transform
         self.shape = shape
         self.ndim = ndim
         self.inplace = inplace
         self.precision = precision
+        self.nb_loop = nb_loop
 
     def __str__(self):
         return f"{self.transform}_{'x'.join([str(i) for i in self.shape])}_{self.ndim}D_" \
-               f"{'i' if self.inplace else 'o'}_{'s' if self.precision == 'single' else 'double'}"
+               f"{'i' if self.inplace else 'o'}_{'s' if self.precision == 'single' else 'd'}" \
+               f" [nloop={self.nb_loop}]"
 
 
 default_config = [
@@ -250,7 +253,7 @@ def run_test(config, args):
     gpu_name = args.gpu
     backend = args.backend
     opencl_platform = None
-    verbose = args.verbose
+    verbose = True
     db = args.save
     compare = args.compare
     dbc = None
@@ -277,13 +280,14 @@ def run_test(config, args):
         sh = tuple(c.shape)
         ndim = c.ndim
         nb_repeat = 4
+        nb_loop = c.nb_loop
         gpu_name_real = ''
         platform_name_real = ''
         vkfft_str = None
         nup_str = None
         algo_str = None
         if backend == 'cuda':
-            res = bench_pyvkfft_cuda(sh, precision, ndim, nb_repeat, gpu_name, args=vargs,
+            res = bench_pyvkfft_cuda(sh, precision, ndim, nb_repeat, nb_loop, gpu_name, args=vargs,
                                      serial=args.serial, inplace=inplace, r2c=r2c,
                                      dct=dct, dst=dst)
             dt = res['dt']
@@ -293,7 +297,7 @@ def run_test(config, args):
             nup_str = res['nup_str']
             algo_str = res['algo_str']
         elif backend == 'opencl':
-            res = bench_pyvkfft_opencl(sh, precision, ndim, nb_repeat, gpu_name,
+            res = bench_pyvkfft_opencl(sh, precision, ndim, nb_repeat, nb_loop, gpu_name,
                                        opencl_platform=opencl_platform, args=vargs,
                                        serial=args.serial, inplace=inplace,
                                        r2c=r2c, dct=dct, dst=dst)
@@ -304,18 +308,18 @@ def run_test(config, args):
             nup_str = res['nup_str']
             algo_str = res['algo_str']
         elif backend == 'skcuda':
-            res = bench_skcuda(sh, precision, ndim, nb_repeat, gpu_name, serial=args.serial)
+            res = bench_skcuda(sh, precision, ndim, nb_repeat, nb_loop, gpu_name, serial=args.serial)
             gbps = res['gbps']
             gpu_name_real = res['gpu_name_real']
         elif backend == 'gpyfft':
-            res = bench_gpyfft(sh, precision, ndim, nb_repeat, gpu_name,
+            res = bench_gpyfft(sh, precision, ndim, nb_repeat, nb_loop, gpu_name,
                                opencl_platform=opencl_platform,
                                serial=args.serial)
             gbps = res['gbps']
             gpu_name_real = res['gpu_name_real']
             platform_name_real = res['platform_name_real']
         elif backend == 'cupy':
-            res = bench_cupy(sh, precision, ndim, nb_repeat, gpu_name, serial=args.serial)
+            res = bench_cupy(sh, precision, ndim, nb_repeat, nb_loop, gpu_name, serial=args.serial)
             gbps = res['gbps']
             gpu_name_real = res['gpu_name_real']
         if gpu_name_real is None or gbps == 0:
@@ -380,7 +384,7 @@ def run_test(config, args):
         if compare and first:
             dbc0 = sqlite3.connect(compare).cursor()
         if verbose:
-            s = f"{str(c):>30} {gbps:6.1f} GB/s {gpu_name_real} {backend:6^} "
+            s = f"{str(c):>40} {gbps:6.1f} GB/s {gpu_name_real} {backend:6^} "
             if compare:
                 # Find similar result
                 q = f"SELECT * from benchmark WHERE shape = '{'x'.join(str(i) for i in sh)}' ORDER by epoch"
@@ -411,13 +415,13 @@ def run_test(config, args):
 def make_parser():
     epilog = "Examples:\n" \
              "* Simple benchmark for radix transforms:\n" \
-             "     pyvkfft-benchmark --backend cuda --gpu titan --verbose\n\n" \
+             "     pyvkfft-benchmark --backend cuda --gpu titan\n\n" \
              "* Systematic benchmark for 1D radix transforms over a given range:\n" \
-             "     pyvkfft-benchmark --backend cuda --gpu titan --systematic --ndim 1 --range 2 256 --verbose\n\n" \
+             "     pyvkfft-benchmark --backend cuda --gpu titan --systematic --ndim 1 --range 2 256\n\n" \
              "* Same but only for powers of 2 and 3 sizes, in 2D, and save the results " \
              "to an SQL file for later plotting:\n" \
              "     pyvkfft-benchmark --backend cuda --gpu titan --systematic --radix 2 3 " \
-             "--ndim 2 --range 2 256 --verbose --save\n\n" \
+             "--ndim 2 --range 2 256 --save\n\n" \
              "* plot the result of a benchmark:\n" \
              "     pyvkfft-benchmark --plot pyvkfft-version-gpu-date-etc.sql\n\n" \
              "* plot & compare the results of multiple benchmarks (grouped by 1D/2D/3D transforms):\n" \
@@ -426,7 +430,7 @@ def make_parser():
              "  with the best possible 'aimthreads' low-level parameter to maximise" \
              " throughput:\n" \
              "     pyvkfft-benchmark --backend opencl --gpu m1 --systematic --radix --ndim 2 " \
-             "--range 2 256 --verbose --inplace --aimThreads 16 32 64 --r2c\n\n" \
+             "--range 2 256 --inplace --aimThreads 16 32 64 --r2c\n\n" \
              "When testing VkFFT, each line also indicates at the end the type of\n" \
              "algorithm used: (r)adix, (R)ader or (B)luestein, the size of the\n" \
              "temporary buffer (if any) and the number of uploads (number of read and\n" \
@@ -456,7 +460,6 @@ def make_parser():
                              "Note that by default the PoCL platform is skipped, "
                              "unless it is specifically requested or it is the only one available "
                              "(PoCL has some issues with VkFFT for some transforms)")
-    parser.add_argument('--verbose', action='store_true', help="Verbose ?")
     parser.add_argument('--serial', action='store_true',
                         help="Use this to perform all tests in a single process. This is mostly "
                              "useful for testing, and can lead to GPU memory issues, especially "
@@ -503,7 +506,15 @@ def make_parser():
     sysgrp.add_argument('--minsize-mb', action='store', type=int, default=100,
                         help="Minimal size (in MB) of the transformed array to ensure a precise "
                              "enough timing, as the FT is tested on a stacked array using "
-                             "a batch transform. Larger values take more time.")
+                             "a batch transform. Larger values take more time. Ignored if "
+                             "--nbatch is not -1 (the default)")
+    sysgrp.add_argument('--nbatch', action='store', type=int,
+                        help="Specify the batch size for the array transforms. By default (-1), "
+                             "this  number is automatically adjusted for each length so that the total "
+                             "size is equal to 'minsize-mb' (100MB by default), e.g. for 2D R2C "
+                             "test of 512x512, the batch number is 100. Use 1 to disable "
+                             "batch, or any other number to use a fixed batch size.",
+                        default=-1)
     sysgrp.add_argument('--r2c', action='store_true',
                         help="Test real-to-complex transform (default is c2c)")
     sysgrp.add_argument('--dct', action='store', default=False, type=int,
@@ -610,11 +621,26 @@ def main():
                                           inverted=args.bluestein,
                                           r2r=args.dct if args.dct else args.dst),
                               dtype=int).flatten()
-            nbatch = args.minsize_mb * 1024 ** 2 / (vshape ** ndim * (8 if args.precision == 'double' else 4))
+            # Number of loops * batch size to transform at least 100 MB
+            s = 8
+            if args.precision == 'double':
+                s *= 2
+            elif args.precision == 'half':
+                s /= 2
+            if args.r2c or args.dct or args.dst:
+                s /= 2
+            nb = args.minsize_mb * 1024 ** 2 / (vshape ** ndim * 8)
+
+            if args.nbatch == -1:
+                nloop, nbatch = 1, nb.astype(int)
+            else:
+                nbatch = np.ones(len(vshape), dtype=int) * args.nbatch
+                nloop = nb.astype(int) / nbatch
             nbatch = np.maximum(1, nbatch).astype(int)
+            nloop = np.minimum(1024, np.maximum(1, nloop)).astype(int)
             config += [BenchConfig(transform, [b] + [n] * ndim, ndim, inplace=args.inplace,
-                                   precision=args.precision)
-                       for b, n in zip(nbatch, vshape)]
+                                   precision=args.precision, nb_loop=nl)
+                       for b, n, nl in zip(nbatch, vshape, nloop)]
     else:
         config = default_config
     if args.dry_run:

@@ -35,6 +35,9 @@ Requirements:
 - on Windows, this requires visual studio (c++ tools) and a cuda toolkit installation,
   with either CUDA_PATH or CUDA_HOME environment variable. However it should be
   simpler to install using ``conda``, as detailed below
+- Optional:
+
+  - ``scipy`` and ``pyfftw`` for more accurate tests (and to test DCT/DST)
 
 This package can be installed from source using ``pip install .``.
 
@@ -86,7 +89,7 @@ arrays (pycuda, pyopencl or cupy), and also cache these apps:
 
 .. code-block:: python
 
-  import pycuda.autoinit
+  import pycuda.autoprimaryctx
   import pycuda.gpuarray as cua
   from pyvkfft.fft import fftn
   import numpy as np
@@ -114,11 +117,11 @@ Features
 - complex (C2C) transforms
 - R2C/C2R, now fully supporting odd sizes for the fast axis with inplace transforms
 - Direct Cosine or Sine transforms (DCT/DST) of type 1, 2, 3 and 4
-- out-of-place and inplace
+- out-of-place or inplace
 - single and double precision for all transforms (double precision requires device support)
-- Allows up to 8 FFT dimensions (can be increased by using
+- Allows up to 8 FFT dimensions by default (can be increased by using
   ``VKFFT_MAX_FFT_DIMENSIONS`` when installing).
-- arrays can be have more dimensions than the FFT (batch transforms).
+- arrays can have more dimensions than the FFT (batch transforms).
 - Options are available to tune (manually or automatically) the performance for
   specific GPUs.
 - arbitrary array size, using Bluestein algorithm for prime numbers>13 (note that in this case
@@ -180,8 +183,6 @@ Notes regarding this plot:
 * the batch size is adapted for each N so the transform takes long enough, in practice the
   transformed array is at around 600MB. Transforms on small arrays with small batch sizes
   could produce smaller performances, or better ones when fully cached.
-* The dots which are labelled as using a Blustein algorithm can also be using a Rader one,
-  hence the better performance of many sizes, both for vkFFT and cuFFT
 
 The general results are:
 
@@ -209,7 +210,7 @@ Starting with VkFFT 1.3.0 and pyvkfft 2023.2, it is possible to tweak low-level
 parameters including coalesced memory or warp size, batch grouping, number of threads,
 etc...
 
-Optimising those is difficult, so only do it for fun when trying to get some
+Optimising those is difficult, so only do it out of curiosity or when trying to get some
 extra performance. Generally, VkFFT defaults work quite well. Using the
 simple FFT API, you can activate auto-tuning by passing `tuning=True` to the
 transform functions (`fftn`, `rfftn`, etc..). **Only do this when using iterative
@@ -269,7 +270,7 @@ TODO
 - out-of-place C2R transform without modifying the C array ? This would require using a R
   array padded with two wolumns, as for the inplace transform
 - half precision ?
-- convolution ?
+- on-the-fly convolution ?
 - zero-padding ?
 - access to the code of the generated kernels ?
 

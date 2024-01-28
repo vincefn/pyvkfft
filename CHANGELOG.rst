@@ -1,4 +1,4 @@
-Version 2023.3 (2023-XX-XX)
+Version 2024.1 (2024-XX-XX)
 -----------------------------
 * Based on VkFFT 1.3.X
 * Add support for direct sine transforms (DST)
