@@ -632,7 +632,7 @@ def main():
             nb = args.minsize_mb * 1024 ** 2 / (vshape ** ndim * 8)
 
             if args.nbatch == -1:
-                nloop, nbatch = 1, nb.astype(int)
+                nloop, nbatch =  np.ones(len(vshape), dtype=int), nb.astype(int)
             else:
                 nbatch = np.ones(len(vshape), dtype=int) * args.nbatch
                 nloop = nb.astype(int) / nbatch
