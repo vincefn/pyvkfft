@@ -88,7 +88,7 @@ def init_ctx(backend, gpu_name=None, opencl_platform=None, verbose=False):
                 raise RuntimeError("Selected backend is pycuda, but no device found (name=%s)" % gpu_name)
             else:
                 raise RuntimeError("Selected backend is pycuda, but no device found")
-        gpu_ctx_dic["pycuda"] = (d, d.make_context())
+        gpu_ctx_dic["pycuda"] = (d, d.retain_primary_context())
         if verbose:
             print("Selected device for pycuda: %s" % d.name())
     elif backend == "pyopencl":
