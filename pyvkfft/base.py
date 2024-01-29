@@ -798,6 +798,8 @@ class VkFFTApp:
         s += {2: "/h", 4: "/s", 8: "/d"}[self.precision]
         s += '/i' if self.inplace else '/o'
         s += f" [{ft_type}] [{naxup}]"
+        if self._convolve:
+            s += " [convolve]"
         s += f" buf={bufs}"
         return s
 

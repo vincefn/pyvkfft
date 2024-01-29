@@ -248,7 +248,7 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
   if(performConvolution)
   {
     void **pkernel = new void*;
-    config->kernel = (cl_mem*)pkernel;
+    config->kernel = pkernel;
     if(n_batch>1) config->coordinateFeatures = n_batch;
   }
 

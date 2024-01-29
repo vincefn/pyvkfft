@@ -720,6 +720,8 @@ class TestFFT(unittest.TestCase):
                 else:
                     if backend == "pyopencl":
                         db = cla.empty_like(da)
+                    elif backend == 'cupy':
+                        db = cp.empty_like(da)
                     else:
                         db = cua.empty_like(da)
                     dk = None
