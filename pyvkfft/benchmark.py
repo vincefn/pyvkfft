@@ -153,7 +153,7 @@ def test_gpyfft():
     return has_gpyfft
 
 
-def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None,
+def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, nb_loop=1, gpu_name=None,
                           opencl_platform=None, args=None, inplace=True, r2c=False, dct=False, dst=False):
     import pyopencl as cl
     import pyopencl.array as cla
@@ -245,8 +245,9 @@ def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_na
                     kwargs[k] = v
         app = clVkFFTApp(d.shape, dtype=dtype, queue=cq, ndim=ndim, inplace=inplace,
                          r2c=r2c, dct=dct, dst=dst, r2c_odd=r2c_odd, **kwargs)
-        vkfft_str = f"algo={app.get_algo_str()} buf={app.get_tmp_buffer_str()} " \
-                    f"up={''.join(str(nup) for nup in app.get_nb_upload())}"
+        algo_str = app.get_algo_str()
+        nup_str = ''.join(str(nup) for nup in app.get_nb_upload())
+        vkfft_str = f"algo={algo_str} buf={app.get_tmp_buffer_str()} up={nup_str}"
         if 'tune_config' in kwargs:
             for k, v in kwargs['tune_config'].items():
                 if k == "backend":
@@ -257,13 +258,14 @@ def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_na
             t0 = timeit.default_timer()
             # Apparently OpenCL events don't always work. Need kernel events ?
             # start = cl.enqueue_marker(cq)
-            d1 = app.fft(d, d1)
-            d = app.ifft(d1, d)
+            for ii in range(nb_loop):
+                d1 = app.fft(d, d1)
+                d = app.ifft(d1, d)
             # end = cl.enqueue_marker(cq)
             # end.wait()
             # dt1 = 1e-9 * (start.profile.END - end.profile.END)
             cq.finish()
-            dt1 = timeit.default_timer() - t0
+            dt1 = (timeit.default_timer() - t0) / nb_loop
             if dt == 0:
                 dt = dt1
             elif dt1 < dt:
@@ -277,22 +279,22 @@ def _bench_pyvkfft_opencl(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_na
         gbps = 0
     results = {'dt': dt, 'gbps': gbps, 'gpu_name_real': gpu_name_real,
                'platform_name_real': platform_name_real,
-               'vkfft_str': vkfft_str}
+               'vkfft_str': vkfft_str, 'algo_str': algo_str, 'nup_str': nup_str}
     if q is None:
         return results
     else:
         q.put(results)
 
 
-def bench_pyvkfft_opencl(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None,
+def bench_pyvkfft_opencl(sh, precision='single', ndim=1, nb_repeat=3, nb_loop=1, gpu_name=None,
                          opencl_platform=None, args=None, serial=False,
                          inplace=True, r2c=False, dct=False, dst=False):
     if serial:
-        return _bench_pyvkfft_opencl(None, sh, precision, ndim, nb_repeat, gpu_name,
+        return _bench_pyvkfft_opencl(None, sh, precision, ndim, nb_repeat, nb_loop, gpu_name,
                                      opencl_platform, args, inplace=inplace,
                                      r2c=r2c, dct=dct, dst=dst)
     q = Queue()
-    p = Process(target=_bench_pyvkfft_opencl, args=(q, sh, precision, ndim, nb_repeat, gpu_name,
+    p = Process(target=_bench_pyvkfft_opencl, args=(q, sh, precision, ndim, nb_repeat, nb_loop, gpu_name,
                                                     opencl_platform, args, inplace, r2c, dct, dst))
     p.start()
     try:
@@ -304,7 +306,7 @@ def bench_pyvkfft_opencl(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=N
     return results
 
 
-def _bench_pyvkfft_cuda(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None, args=None,
+def _bench_pyvkfft_cuda(q, sh, precision='single', ndim=1, nb_repeat=3, nb_loop=1, gpu_name=None, args=None,
                         inplace=True, r2c=False, dct=False, dst=False):
     import pycuda.autoprimaryctx  # See https://github.com/lebedov/scikit-cuda/issues/330#issuecomment-1125471345
     import pycuda.driver as cu_drv
@@ -365,8 +367,9 @@ def _bench_pyvkfft_cuda(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name
                     kwargs[k] = v
         app = cuVkFFTApp(d.shape, dtype=dtype, ndim=ndim, inplace=inplace,
                          r2c=r2c, dct=dct, dst=dst, r2c_odd=r2c_odd, **kwargs)
-        vkfft_str = f"algo={app.get_algo_str()} buf={app.get_tmp_buffer_str()} " \
-                    f"up={''.join(str(nup) for nup in app.get_nb_upload())}"
+        algo_str = app.get_algo_str()
+        nup_str = ''.join(str(nup) for nup in app.get_nb_upload())
+        vkfft_str = f"algo={algo_str} buf={app.get_tmp_buffer_str()} up={nup_str}"
         if 'tune_config' in kwargs:
             for k, v in kwargs['tune_config'].items():
                 if k == "backend":
@@ -377,11 +380,12 @@ def _bench_pyvkfft_cuda(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name
         for i in range(nb_repeat):
             cu_ctx.synchronize()
             start.record()
-            d1 = app.fft(d, d1)
-            d = app.ifft(d1, d)
+            for ii in range(nb_loop):
+                d1 = app.fft(d, d1)
+                d = app.ifft(d1, d)
             stop.record()
             cu_ctx.synchronize()
-            dt1 = stop.time_since(start) / 1000
+            dt1 = stop.time_since(start) / 1000 / nb_loop
             if dt == 0:
                 dt = dt1
             elif dt1 < dt:
@@ -393,20 +397,21 @@ def _bench_pyvkfft_cuda(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name
     except:
         gbps = 0
     cu_ctx.pop()
-    results = {'dt': dt, 'gbps': gbps, 'gpu_name_real': gpu_name_real, 'vkfft_str': vkfft_str}
+    results = {'dt': dt, 'gbps': gbps, 'gpu_name_real': gpu_name_real, 'vkfft_str': vkfft_str,
+               'algo_str': algo_str, 'nup_str': nup_str}
     if q is None:
         return results
     else:
         q.put(results)
 
 
-def bench_pyvkfft_cuda(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None, args=None, serial=False,
+def bench_pyvkfft_cuda(sh, precision='single', ndim=1, nb_repeat=3, nb_loop=1, gpu_name=None, args=None, serial=False,
                        inplace=True, r2c=False, dct=False, dst=False):
     if serial:
-        return _bench_pyvkfft_cuda(None, sh, precision, ndim, nb_repeat, gpu_name, args, inplace=inplace,
+        return _bench_pyvkfft_cuda(None, sh, precision, ndim, nb_repeat, nb_loop, gpu_name, args, inplace=inplace,
                                    r2c=r2c, dct=dct, dst=dst)
     q = Queue()
-    p = Process(target=_bench_pyvkfft_cuda, args=(q, sh, precision, ndim, nb_repeat, gpu_name,
+    p = Process(target=_bench_pyvkfft_cuda, args=(q, sh, precision, ndim, nb_repeat, nb_loop, gpu_name,
                                                   args, inplace, r2c, dct, dst))
     p.start()
     try:
@@ -417,7 +422,7 @@ def bench_pyvkfft_cuda(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=Non
     return results
 
 
-def _bench_cupy(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None):
+def _bench_cupy(q, sh, precision='single', ndim=1, nb_repeat=3, nb_loop=1, gpu_name=None):
     import cupy as cp
     import cupyx
     dtype = np.complex128 if precision == 'double' else np.complex64
@@ -439,13 +444,14 @@ def _bench_cupy(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None):
     for i in range(nb_repeat):
         dev.synchronize()
         start.record()
-        cupyx.scipy.fft.fftn(d, axes=ax, overwrite_x=True)
-        cupyx.scipy.fft.ifftn(d, axes=ax, overwrite_x=True)
+        for ii in range(nb_loop):
+            cupyx.scipy.fft.fftn(d, axes=ax, overwrite_x=True)
+            cupyx.scipy.fft.ifftn(d, axes=ax, overwrite_x=True)
         # a = cp.fft.fftn(d, axes=ax)
         # a = cp.fft.ifftn(d, axes=ax)
         stop.record()
         dev.synchronize()
-        dt1 = cp.cuda.get_elapsed_time(start, stop) / 1000
+        dt1 = cp.cuda.get_elapsed_time(start, stop) / 1000 / nb_loop
         if dt == 0:
             dt = dt1
         elif dt1 < dt:
@@ -458,11 +464,11 @@ def _bench_cupy(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None):
         q.put(results)
 
 
-def bench_cupy(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None, serial=False):
+def bench_cupy(sh, precision='single', ndim=1, nb_repeat=3, nb_loop=1, gpu_name=None, serial=False):
     if serial:
-        return _bench_cupy(None, sh, precision, ndim, nb_repeat, gpu_name)
+        return _bench_cupy(None, sh, precision, ndim, nb_repeat, nb_loop, gpu_name)
     q = Queue()
-    p = Process(target=_bench_cupy, args=(q, sh, precision, ndim, nb_repeat, gpu_name))
+    p = Process(target=_bench_cupy, args=(q, sh, precision, ndim, nb_repeat, nb_loop, gpu_name))
     p.start()
     try:
         results = q.get(timeout=10)
@@ -472,7 +478,7 @@ def bench_cupy(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None, seria
     return results
 
 
-def _bench_skcuda(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None):
+def _bench_skcuda(q, sh, precision='single', ndim=1, nb_repeat=3, nb_loop=1, gpu_name=None):
     import pycuda.autoprimaryctx  # See https://github.com/lebedov/scikit-cuda/issues/330#issuecomment-1125471345
     import pycuda.driver as cu_drv
     from pycuda import curandom
@@ -504,11 +510,12 @@ def _bench_skcuda(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None)
     for i in range(nb_repeat):
         cu_ctx.synchronize()
         start.record()
-        cu_fft.fft(d, d, plan)
-        cu_fft.ifft(d, d, plan)
+        for ii in range(nb_loop):
+            cu_fft.fft(d, d, plan)
+            cu_fft.ifft(d, d, plan)
         stop.record()
         cu_ctx.synchronize()
-        dt1 = stop.time_since(start) / 1000
+        dt1 = stop.time_since(start) / 1000 / nb_loop
         if dt == 0:
             dt = dt1
         elif dt1 < dt:
@@ -522,11 +529,11 @@ def _bench_skcuda(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None)
         q.put(results)
 
 
-def bench_skcuda(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None, serial=False):
+def bench_skcuda(sh, precision='single', ndim=1, nb_repeat=3, nb_loop=1, gpu_name=None, serial=False):
     if serial:
-        return _bench_skcuda(None, sh, precision, ndim, nb_repeat, gpu_name)
+        return _bench_skcuda(None, sh, precision, ndim, nb_repeat, nb_loop, gpu_name)
     q = Queue()
-    p = Process(target=_bench_skcuda, args=(q, sh, precision, ndim, nb_repeat, gpu_name))
+    p = Process(target=_bench_skcuda, args=(q, sh, precision, ndim, nb_repeat, nb_loop, gpu_name))
     p.start()
     try:
         results = q.get(timeout=10)
@@ -536,7 +543,7 @@ def bench_skcuda(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None, ser
     return results
 
 
-def _bench_gpyfft(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None, opencl_platform=None):
+def _bench_gpyfft(q, sh, precision='single', ndim=1, nb_repeat=3, nb_loop=1, gpu_name=None, opencl_platform=None):
     results = {'dt': 0, 'gbps': 0, 'gpu_name_real': None, 'platform_name_real': None}
     if max(primes(sh[-1])) > 13:
         q.put(results)
@@ -577,10 +584,11 @@ def _bench_gpyfft(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None,
             for i in range(nb_repeat):
                 cq.finish()
                 t0 = timeit.default_timer()
-                gpyfft_plan.enqueue(forward=True)
-                gpyfft_plan.enqueue(forward=False)
+                for ii in range(nb_loop):
+                    gpyfft_plan.enqueue(forward=True)
+                    gpyfft_plan.enqueue(forward=False)
                 cq.finish()
-                dt1 = timeit.default_timer() - t0
+                dt1 = (timeit.default_timer() - t0) / nb_loop
                 if dt == 0:
                     dt = dt1
                 elif dt1 < dt:
@@ -595,11 +603,12 @@ def _bench_gpyfft(q, sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None,
             q.put(results)
 
 
-def bench_gpyfft(sh, precision='single', ndim=1, nb_repeat=3, gpu_name=None, opencl_platform=None, serial=False):
+def bench_gpyfft(sh, precision='single', ndim=1, nb_repeat=3, nb_loop=1, gpu_name=None, opencl_platform=None,
+                 serial=False):
     if serial:
-        return _bench_gpyfft(None, sh, precision, ndim, nb_repeat, gpu_name, opencl_platform)
+        return _bench_gpyfft(None, sh, precision, ndim, nb_repeat, nb_loop, gpu_name, opencl_platform)
     q = Queue()
-    p = Process(target=_bench_gpyfft, args=(q, sh, precision, ndim, nb_repeat, gpu_name, opencl_platform))
+    p = Process(target=_bench_gpyfft, args=(q, sh, precision, ndim, nb_repeat, nb_loop, gpu_name, opencl_platform))
     p.start()
     try:
         results = q.get(timeout=10)
@@ -707,7 +716,7 @@ def init_results(has_pyvkfft_opencl, has_pyvkfft_cuda, has_skcuda, has_gpyfft):
     return results
 
 
-def run(nmin, nmax, radix_max, ndim, precision="single", nb_repeat=3, gpu_name=None,
+def run(nmin, nmax, radix_max, ndim, precision="single", nb_repeat=3, nb_loop=1, gpu_name=None,
         batch=True, opencl_platform=None, figsize=(16, 8),
         has_pyvkfft_opencl=None, has_pyvkfft_cuda=None, has_gpyfft=None, has_skcuda=None,
         r2c=False, dct=False, dst=False, inplace=True):
@@ -807,7 +816,7 @@ def run(nmin, nmax, radix_max, ndim, precision="single", nb_repeat=3, gpu_name=N
         vkfft_str = None
         # OpenCL backends
         if has_pyvkfft_opencl:
-            res = bench_pyvkfft_opencl(sh, precision, ndim, nb_repeat, gpu_name, opencl_platform,
+            res = bench_pyvkfft_opencl(sh, precision, ndim, nb_repeat, nb_loop, gpu_name, opencl_platform,
                                        r2c=r2c, dct=dct, dst=dst, inplace=inplace)
             dt = res['dt']
             gbps = res['gbps']
@@ -821,7 +830,7 @@ def run(nmin, nmax, radix_max, ndim, precision="single", nb_repeat=3, gpu_name=N
             gpu_name_real_ok = gpu_name_real
 
         if has_gpyfft:
-            res = bench_gpyfft(sh, precision, ndim, nb_repeat, gpu_name, opencl_platform)
+            res = bench_gpyfft(sh, precision, ndim, nb_repeat, nb_loop, gpu_name, opencl_platform)
             dt = res['dt']
             gbps = res['gbps']
             gpu_name_real = res['gpu_name_real']
@@ -831,7 +840,7 @@ def run(nmin, nmax, radix_max, ndim, precision="single", nb_repeat=3, gpu_name=N
 
         # CUDA backends
         if has_pyvkfft_cuda:
-            res = bench_pyvkfft_cuda(sh, precision, ndim, nb_repeat, gpu_name)
+            res = bench_pyvkfft_cuda(sh, precision, ndim, nb_repeat, nb_loop, gpu_name)
             dt = res['dt']
             gbps = res['gbps']
             gpu_name_real = res['gpu_name_real']
@@ -843,7 +852,7 @@ def run(nmin, nmax, radix_max, ndim, precision="single", nb_repeat=3, gpu_name=N
             gpu_name_real_ok = gpu_name_real
 
         if has_skcuda:
-            res = bench_skcuda(sh, precision, ndim, nb_repeat, gpu_name)
+            res = bench_skcuda(sh, precision, ndim, nb_repeat, nb_loop, gpu_name)
             dt = res['dt']
             gbps = res['gbps']
             gpu_name_real = res['gpu_name_real']
