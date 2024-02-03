@@ -65,26 +65,26 @@ nvidia card - YMMV:
 
 Then you can either install all packages using conda:
 
-```
-mamba create -n myenv python=3.11 numpy scipy matplotlib ipython psutil pyopencl cupy pycuda nvidia::cuda pyvkfft
-```
+.. code-block:: shell
+
+   mamba create -n myenv python=3.11 numpy scipy matplotlib ipython psutil pyopencl cupy pycuda nvidia::cuda pyvkfft
 
 or install all packages except pyvkfft using conda:
 
-```
-mamba create -n myenv python=3.11 numpy scipy matplotlib ipython psutil pyopencl cupy pycuda nvidia::cuda
-conda activate myenv
-pip install pyvkfft
-```
+.. code-block:: shell
+
+   mamba create -n myenv python=3.11 numpy scipy matplotlib ipython psutil pyopencl cupy pycuda nvidia::cuda
+   conda activate myenv
+   pip install pyvkfft
 
 or install using conda for base packages including nvidia::cuda, then pypi for
 pyopencl, pycuda, cupy and pyvkfft
 
-```
-mamba create -n myenv python=3.11 numpy scipy matplotlib ipython psutil pyopencl cupy pycuda nvidia::cuda
-conda activate myenv
-pip install pyopencl pycuda cupy-cuda12x pyvkfft
-```
+.. code-block:: shell
+
+   mamba create -n myenv python=3.11 numpy scipy matplotlib ipython psutil pyopencl cupy pycuda nvidia::cuda
+   conda activate myenv
+   pip install pyopencl pycuda cupy-cuda12x pyvkfft
 
 Troubleshooting installation
 ----------------------------
