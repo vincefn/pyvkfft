@@ -17,7 +17,7 @@ from setuptools.command.install_lib import install_lib as su_install_lib
 from setuptools.command.sdist import sdist as su_sdist
 from pyvkfft.version import __version__, git_version, vkfft_git_version
 
-# Maximum number of dimentsions VkFFT can handle. VkFFT sets this to 4,
+# Maximum number of dimensions VkFFT can handle. VkFFT sets this to 4,
 # pyvkfft uses a default of 8. Set an environment variable
 # VKFFT_MAX_FFT_DIMENSIONS to increase this
 if 'VKFFT_MAX_FFT_DIMENSIONS' in os.environ:
@@ -46,18 +46,26 @@ def locate_cuda():
     Starts by looking for the CUDAHOME or CUDA_PATH env variable.
     If not found, find 'nvcc' in the PATH.
     """
-    if platform.system() == "Windows":
-        if 'CUDA_PATH' in os.environ:
-            home = os.environ['CUDA_PATH']
-            nvcc = pjoin(home, 'bin', 'nvcc.exe')
-        else:
-            # Otherwise, search the PATH for NVCC
-            nvcc = find_in_path('nvcc.exe', os.environ['PATH'])
-            if nvcc is None:
-                raise EnvironmentError('The nvcc binary could not be '
-                                       'located in your $PATH. Either add it to your path, '
-                                       'or set $CUDA_PATH')
+    # search for nvcc
+    app_name = 'nvcc.exe' if platform.system() == "Windows" else 'nvcc'
+    nvcc, home = None, None
+    for p in ['CUDA_PATH', 'CUDA_HOME', 'CUDAHOME']:
+        if p in os.environ:
+            if os.path.exists(pjoin(os.environ[p], 'bin', app_name)):
+                nvcc = pjoin(os.environ[p], 'bin', app_name)
+                home = os.environ[p]
+                break
+    if nvcc is None:
+        # Search the PATH for NVCC
+        nvcc = find_in_path('nvcc.exe', os.environ['PATH'])
+        if nvcc is not None:
             home = os.path.dirname(os.path.dirname(nvcc))
+        else:
+            raise EnvironmentError('The nvcc binary could not be '
+                                   'located in your $PATH. Either add it to your path, '
+                                   'or set $CUDA_PATH')
+
+    if platform.system() == "Windows":
         libdir = pjoin(home, 'lib', 'x64')
         extra_compile_args = ['-O3', '--ptxas-options=-v', '-Xcompiler', '-MD',
                               f'-DVKFFT_MAX_FFT_DIMENSIONS={VKFFT_MAX_FFT_DIMENSIONS}',
@@ -69,18 +77,6 @@ def locate_cuda():
                            os.path.dirname(find_in_path('cl.exe', os.environ['PATH'])),
                            '-L%s' % tmp]
     else:
-        # First check if the CUDAHOME env variable is in use
-        if 'CUDAHOME' in os.environ:
-            home = os.environ['CUDAHOME']
-            nvcc = pjoin(home, 'bin', 'nvcc')
-        else:
-            # Otherwise, search the PATH for NVCC
-            nvcc = find_in_path('nvcc', os.environ['PATH'])
-            if nvcc is None:
-                raise EnvironmentError('The nvcc binary could not be '
-                                       'located in your $PATH. Either add it to your path, '
-                                       'or set $CUDAHOME or $CUDA_PATH')
-            home = os.path.dirname(os.path.dirname(nvcc))
         if os.path.exists(pjoin(home, 'lib64')):
             libdir = pjoin(home, 'lib64')
         else:
@@ -93,10 +89,9 @@ def locate_cuda():
                   'include_dirs': [pjoin(home, 'include'), 'src/VkFFT/vkFFT'],
                   'extra_compile_args': extra_compile_args,
                   'extra_link_args': extra_link_args}
-    for k in ['home', 'nvcc']:
-        if not os.path.exists(cudaconfig[k]):
-            raise EnvironmentError('The CUDA %s path could not be '
-                                   'located in %s' % (k, v))
+    if 'CONDA_PREFIX' in os.environ:
+        cudaconfig['include_dirs'].append(f"{os.environ['CONDA_PREFIX']}/include")
+        cudaconfig['include_dirs'].append(f"{os.environ['CONDA_PREFIX']}/Library/include")
     return cudaconfig
 
 
@@ -127,6 +122,11 @@ def locate_opencl():
         # Linux
         libraries = ['OpenCL']
         extra_link_args = ['--shared']
+
+    if 'CONDA_PREFIX' in os.environ:
+        include_dirs.append(f"{os.environ['CONDA_PREFIX']}/include")
+        include_dirs.append(f"{os.environ['CONDA_PREFIX']}/Library/include")
+        library_dirs.append(f"{os.environ['CONDA_PREFIX']}/Library/Lib")
 
     opencl_config = {'libraries': libraries, 'extra_link_args': extra_link_args,
                      'include_dirs': include_dirs, 'library_dirs': library_dirs,
