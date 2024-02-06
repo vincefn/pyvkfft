@@ -60,7 +60,7 @@ platforms.
 **Note regarding CUDA support**: there are multiple package versions of
 ``pyvkfft`` available, with either only OpenCL support, or compiled also using
 the cuda toolkit versions 11.2 or 11.8. If you want cuda support, you should
-preferably install ``pyvkfft`` at the same time as the cuda packages, optionnally
+preferably install ``pyvkfft`` at the same time as the cuda packages, optionally
 selecting the cuda/cuda-toolkit version
 e.g. ``conda install pyvkfft pycuda`` or ``conda install pyvkfft cupy cuda-version=11.2``
 or ``conda install pyvkfft cudatoolkit=11.8``. The only constraint is that the
@@ -151,17 +151,17 @@ Features
   corresponding VkFFTApp (see the example notebook pyvkfft-fft.ipynb).
 - the ``pyvkfft-test`` command-line script allows to test specific transforms against
   expected accuracy values, for all types of transforms.
-- pyvkfft results are now evaluated before any release with a **comprehensive test
+- pyvkfft results are evaluated before any release with a **comprehensive test
   suite**, comparing transform results for all types of transforms: single and double
   precision, 1D, 2D and 3D, inplace and out-of-place, different norms, radix and
   Bluestein, etc... The ``pyvkfft-test-suite`` script can be used to run the full suite,
   which takes more than two days on an A40 GPU using up to 16 parallel process, with
   about 1.5 million unit tests.
-  Here are the test results for pyvkfft 2023.1:
+  Here are the test results for pyvkfft 2024.1:
   
-  - `A40 cuda test results <http://ftp.esrf.fr/pub/scisoft/PyNX/pyvkfft-test/pyvkfft-test-2023-01-20-a40cu/pyvkfft-test.html>`_
-  - `A40 opencl test results <http://ftp.esrf.fr/pub/scisoft/PyNX/pyvkfft-test/pyvkfft-test-2023-01-20-a40cl/pyvkfft-test.html>`_
-  - `V100 cuda test resukts <http://ftp.esrf.fr/pub/scisoft/PyNX/pyvkfft-test/pyvkfft-test-2023-01-20-v100cu11.7/pyvkfft-test.html>`_
+  - `A40 cuda test results <http://ftp.esrf.fr/pub/scisoft/PyNX/pyvkfft-test/pyvkfft-test-2024-01-21-a40cu/pyvkfft-test.html>`_
+  - `H100 opencl test results <http://ftp.esrf.fr/pub/scisoft/PyNX/pyvkfft-test/pyvkfft-test-2024-01-21-h100cl/pyvkfft-test.html>`_
+  - `Apple M1 OpenCL test results <http://ftp.esrf.fr/pub/scisoft/PyNX/pyvkfft-test/pyvkfft-test-2024-01-21-apple-m1/pyvkfft-test.html>`_
 
 Performance
 -----------

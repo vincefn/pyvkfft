@@ -1,6 +1,6 @@
-Version 2024.1 (2024-XX-XX)
+Version 2024.1 (2024-02-06)
 -----------------------------
-* Based on VkFFT 1.3.X
+* Based on VkFFT 1.3.4
 * Add support for direct sine transforms (DST)
 * R2C, DST and DCT now support arbitrary sizes (up to ~2^32,
   same as C2C)
