@@ -1,3 +1,7 @@
+Version 2024.1.1 (2024-02-12)
+-----------------------------
+* Fix pycuda initialisation during accuracy tests (pyvkff-test).
+
 Version 2024.1 (2024-02-06)
 -----------------------------
 * Based on VkFFT 1.3.4
