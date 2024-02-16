@@ -30,7 +30,8 @@ Notes:
 Requirements:
 
 - ``pyopencl`` and the opencl libraries/development tools for the opencl backend
-- ``pycuda`` or ``cupy`` and CUDA developments tools (`nvcc`) for the cuda backend
+- ``pycuda`` or ``cupy`` and CUDA developments tools (`nvcc`, ``nvrtc`` library)
+  for the cuda backend
 - ``numpy``
 - on Windows, this requires visual studio (c++ tools) and a cuda toolkit installation,
   with either CUDA_PATH or CUDA_HOME environment variable. However it should be
@@ -58,14 +59,28 @@ platforms.
    conda install pyvkfft
 
 **Note regarding CUDA support**: there are multiple package versions of
-``pyvkfft`` available, with either only OpenCL support, or compiled also using
-the cuda toolkit versions 11.2 or 11.8. If you want cuda support, you should
-preferably install ``pyvkfft`` at the same time as the cuda packages, optionally
-selecting the cuda/cuda-toolkit version
-e.g. ``conda install pyvkfft pycuda`` or ``conda install pyvkfft cupy cuda-version=11.2``
-or ``conda install pyvkfft cudatoolkit=11.8``. The only constraint is that the
-cuda driver should be more recent than the cuda toolkit installed (type
-``conda info`` or ``mamba info`` to see conda's detected `__cuda` variable).
+``pyvkfft`` available, with either only OpenCL support, or compiled using
+the cuda nvrtc library versions 11.2, 11.8 or 12.x. If you want cuda support,
+you can install ``pyvkfft`` while using the ``cuda-version`` meta-package to select
+a specific cuda version. For example:
+
+.. code-block:: shell
+
+   # Only install pyvkfft, select cuda nvrtc 11.2
+   conda install pyvkfft cuda-version=11.2
+
+   # Install pyvkfft, pyopencl, cupy with nvrtc version 12
+   conda install pyvkfft pyopencl cupy cuda-version=12
+
+The only constraint is that the cuda driver must be more recent than the
+cuda nvrtc version requested installed (type ``conda info`` or ``mamba info``
+to see conda's detected ``__cuda`` variable).
+
+See more information in `conda-forge's documentation
+<https://conda-forge.org/docs/maintainer/knowledge_base.html#cuda-builds>`_
+
+Once installed, you can use the ``pyvkfft-info`` script to see which
+languages, backends (pyopencl, pycuda, cupy) and GPU devices are available.
 
 Installation from source (git)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

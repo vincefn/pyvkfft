@@ -34,6 +34,14 @@ or conda (using the conda-forge channel):
    conda config --add channels conda-forge
    conda install pyvkfft
 
+When using cuda, you can also specify the nvrtc library version
+using the ``cuda-version`` package:
+
+.. code-block:: shell
+
+   # Example also with pyopencl and cupy
+   conda install pyvkfft pyopencl cupy cuda-version=12
+
 Driver/toolkit requirements
 ---------------------------
 ``pyvkfft`` needs a working GPU computing environment, including drivers,
