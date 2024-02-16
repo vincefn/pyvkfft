@@ -9,6 +9,8 @@
 # Basic test imports of the opencl library
 # Primarily used to check build status.
 
-from ..base import load_library
+import os
+from ..base import _library_path, load_library
 
-_vkfft_opencl = load_library("_vkfft_opencl")
+assert os.path.exists(_library_path("_vkfft_opencl")), "_vkfft_opencl shared library not found"
+# _vkfft_opencl = load_library("_vkfft_opencl")

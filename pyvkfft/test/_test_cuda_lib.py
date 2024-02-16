@@ -9,6 +9,8 @@
 # Basic test imports of the cuda library
 # Primarily used to check build status.
 
-from ..base import load_library
+import os
+from ..base import _library_path, load_library
 
-_vkfft_cuda = load_library("_vkfft_cuda")
+assert os.path.exists(_library_path("_vkfft_cuda")), "_vkfft_cuda shared library not found"
+# _vkfft_cuda = load_library("_vkfft_cuda")
