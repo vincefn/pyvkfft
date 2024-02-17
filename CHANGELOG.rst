@@ -1,3 +1,13 @@
+Version 2024.1.2 (2024-02-17)
+-----------------------------
+* Fix conda installation with specified ``cuda-version``,
+  notably for cuda 12.x support
+* add conda-forge build test for cuda and opencl libraries
+
+Version 2024.1.1 (2024-02-12)
+-----------------------------
+* Fix pycuda initialisation during accuracy tests (pyvkff-test).
+
 Version 2024.1 (2024-02-06)
 -----------------------------
 * Based on VkFFT 1.3.4

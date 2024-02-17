@@ -111,13 +111,17 @@ class VkFFTResult(Enum):
     VKFFT_ERROR_FAILED_TO_CREATE_EVENT = 4052
 
 
-def load_library(basename):
+def _library_path(basename):
     if platform.system() == 'Windows':
         # We patched build_ext so the module is a .so and not a dll
         ext = '.so'
     else:
         ext = sysconfig.get_config_var('EXT_SUFFIX')
-    return ctypes.cdll.LoadLibrary(os.path.join(os.path.dirname(__file__) or os.path.curdir, basename + ext))
+    return os.path.join(os.path.dirname(__file__) or os.path.curdir, basename + ext)
+
+
+def load_library(basename):
+    return ctypes.cdll.LoadLibrary(_library_path(basename))
 
 
 def primes(n):
