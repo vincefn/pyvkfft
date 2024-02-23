@@ -351,7 +351,7 @@ def calc_transform_axes(shape, axes=None, ndim=None, strides=None):
 
     if strides is not None and len(shape) > 1:
         idx = np.argsort(strides)[::-1]
-        if not np.alltrue((idx[1:] - idx[:-1]) > 0):
+        if not np.all((idx[1:] - idx[:-1]) > 0):
             # Array is not C-ordered, need to move axes
             idxend = -len(idx) + idx
             # print("Re-ordering:", shape1, np.take(shape1, idx), "axes:", axes, [idxend[i] for i in axes])
@@ -585,7 +585,7 @@ class VkFFTApp:
             if strides is not None:
                 raise RuntimeError("Use of strides is not supported with convolution")
             rx = self.is_radix_transform(vkfft_axes=True)
-            if not (np.alltrue([rx[i] or self.skip_axis[i] for i in range(len(rx))])):
+            if not (np.all([rx[i] or self.skip_axis[i] for i in range(len(rx))])):
                 # TODO: check if some non-radix transforms are supported
                 raise RuntimeError("On-the-fly VkFFT convolution is not supported for non-radix transforms")
         self._convolve = convolve
