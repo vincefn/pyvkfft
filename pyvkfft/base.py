@@ -575,6 +575,8 @@ class VkFFTApp:
 
         # Convolution parameters
         if convolve:
+            if self.ndim not in [2, 3]:
+                raise RuntimeError("Convolution is only supported for ndim=2 or 3")
             if r2c and not inplace:
                 raise RuntimeError("Out-of-place R2C convolution is not supported")
             if axes is not None:

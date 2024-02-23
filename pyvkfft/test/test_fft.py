@@ -636,45 +636,60 @@ class TestFFT(unittest.TestCase):
                     print(f"Running {ct} DST tests (backend: {self.backend_info(backend)})")
 
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
-    def test_convolve_2d(self):
-        """ Test VkFFT's on-the-fly convolution in 2D, with and without batch"""
+    def test_convolve(self):
+        """ Test VkFFT's on-the-fly convolution in 2&3D, with and without batch"""
         for backend, transform, inplace, shape, nbatch, cconj in \
                 itertools.product(self.vbackend, ['c2c', 'r2c'], [True, False],
-                                  [(256, 256), (256, 200), (256, 143)], [1, 4], [0, 1, 2]):
+                                  [(256, 256), (256, 200), (256, 143),
+                                   (64, 64, 64), (64, 60, 60), (64, 64, 39)],
+                                  [1, 4], [0, 1, 2]):
             if transform == 'r2c' and not inplace:
                 continue  # Not supported
             with self.subTest(backend=backend, transform=transform, inplace=inplace,
                               shape=shape, nbatch=nbatch, cconj=cconj):
-                ny, nx = shape
+                ndim = len(shape)
+                if ndim == 2:
+                    ny, nx = shape
+                    a = ascent()[:ny, :nx]
+                    y, x = np.meshgrid(np.arange(-ny // 2, -ny // 2 + ny),
+                                       np.arange(-nx // 2, -nx // 2 + nx), indexing='ij')
+                    g = np.fft.fftshift(np.exp(-(x ** 2 + y ** 2) / 100))
+                else:
+                    nz, ny, nx = shape
+                    a = np.zeros((nz, ny, nx), dtype=dtype)
+                    for iz in range(nz):
+                        a[iz] = np.roll(ascent()[:ny, :nx], np.random.randint(-20, 20, 2))
+
+                    z, y, x = np.meshgrid(np.arange(-nz // 2, -nz // 2 + nz),
+                                          np.arange(-ny // 2, -ny // 2 + ny),
+                                          np.arange(-nx // 2, -nx // 2 + nx), indexing='ij')
+                    g = np.fft.fftshift(np.exp(-(x ** 2 + y ** 2 + z ** 2) / 100))
+
+                g /= g.sum()
                 r2c = transform == 'r2c'
                 r2c_odd = nx % 2
                 init_ctx(backend, gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
-                a = ascent()[:ny, :nx]
-                y, x = np.meshgrid(np.arange(-ny // 2, -ny // 2 + ny),
-                                   np.arange(-nx // 2, -nx // 2 + nx), indexing='ij')
-                g = np.fft.fftshift(np.exp(-(x ** 2 + y ** 2) / 100))
-                g /= g.sum()
                 dtype = np.complex64 if transform == 'c2c' else np.float32
                 a, g = a.astype(dtype), g.astype(dtype)
                 # Batch ?
                 if nbatch > 1:
-                    a = np.tile(a, (nbatch, 1, 1))
-                    g = np.tile(g, (nbatch, 1, 1))
-                    axes = [1, 2]
+                    a = np.tile(a, [nbatch] + [1] * ndim)
+                    g = np.tile(g, [nbatch] + [1] * ndim)
+                    axes = [1, 2, 3][:ndim]
                 else:
                     axes = None
                 # Numpy reference convolution
                 if r2c:
                     if cconj == 1:
                         ga0 = np.fft.irfftn(np.fft.rfftn(a, axes=axes).conj() *
-                                            np.fft.rfftn(g, axes=axes), s=(ny, nx), axes=axes)
+                                            np.fft.rfftn(g, axes=axes), s=shape, axes=axes)
                     elif cconj == 2:
                         ga0 = np.fft.irfftn(np.fft.rfftn(a, axes=axes) *
                                             np.fft.rfftn(g, axes=axes).conj(),
-                                            s=(ny, nx), axes=axes)
+                                            s=shape, axes=axes)
                     else:
                         ga0 = np.fft.irfftn(np.fft.rfftn(a, axes=axes) *
-                                            np.fft.rfftn(g, axes=axes), s=(ny, nx), axes=axes)
+                                            np.fft.rfftn(g, axes=axes), s=shape, axes=axes)
                 else:
                     if cconj == 1:
                         ga0 = np.fft.ifftn(np.fft.fftn(a, axes=axes).conj() *
@@ -688,30 +703,30 @@ class TestFFT(unittest.TestCase):
 
                 if r2c and inplace:
                     if nbatch > 1:
-                        a = np.pad(a, ((0, 0), (0, 0), (0, 2 - r2c_odd)))
-                        g = np.pad(g, ((0, 0), (0, 0), (0, 2 - r2c_odd)))
+                        a = np.pad(a, [(0, 0)] * ndim + [(0, 2 - r2c_odd)])
+                        g = np.pad(g, [(0, 0)] * ndim + [(0, 2 - r2c_odd)])
                     else:
-                        a = np.pad(a, ((0, 0), (0, 2 - r2c_odd)))
-                        g = np.pad(g, ((0, 0), (0, 2 - r2c_odd)))
+                        a = np.pad(a, [(0, 0)] * (ndim - 1) + [(0, 2 - r2c_odd)])
+                        g = np.pad(g, [(0, 0)] * (ndim - 1) + [(0, 2 - r2c_odd)])
 
                 if backend == "pycuda":
                     da = cua.to_gpu(a.astype(dtype))
                     dg = cua.to_gpu(g.astype(dtype))
-                    app = cuVkFFTApp(da.shape, dtype, inplace=inplace, ndim=2,
+                    app = cuVkFFTApp(da.shape, dtype, inplace=inplace, ndim=ndim,
                                      r2c=r2c, convolve=True, convolve_conj=cconj,
                                      r2c_odd=r2c_odd)
                 elif backend == "cupy":
                     cp.cuda.Device(0).use()
                     da = cp.array(a.astype(dtype))
                     dg = cp.array(g.astype(dtype))
-                    app = cuVkFFTApp(da.shape, dtype, inplace=inplace, ndim=2,
+                    app = cuVkFFTApp(da.shape, dtype, inplace=inplace, ndim=ndim,
                                      r2c=r2c, convolve=True, convolve_conj=cconj,
                                      r2c_odd=r2c_odd)
                 else:
                     cq = gpu_ctx_dic["pyopencl"][2]
                     da = cla.to_device(cq, a.astype(dtype))
                     dg = cla.to_device(cq, g.astype(dtype))
-                    app = clVkFFTApp(da.shape, dtype, cq, inplace=inplace, ndim=2,
+                    app = clVkFFTApp(da.shape, dtype, cq, inplace=inplace, ndim=ndim,
                                      r2c=r2c, convolve=True, convolve_conj=cconj,
                                      r2c_odd=r2c_odd)
                 if inplace:
@@ -727,10 +742,10 @@ class TestFFT(unittest.TestCase):
                     dk = None
 
                 if transform == 'r2c':
-                    dk = vkrfftn(dg, dk, r2c_odd=r2c_odd, ndim=2)
+                    dk = vkrfftn(dg, dk, r2c_odd=r2c_odd, ndim=ndim)
                     ga1 = app.fft(da, db, convolve_kernel=dk).get()
                 else:
-                    ga1 = app.fft(da, db, convolve_kernel=vkfftn(dg, dk, ndim=2)).get()
+                    ga1 = app.fft(da, db, convolve_kernel=vkfftn(dg, dk, ndim=ndim)).get()
 
                 # Compare results
                 if r2c and inplace:
