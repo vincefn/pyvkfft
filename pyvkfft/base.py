@@ -10,6 +10,7 @@ import platform
 import sysconfig
 import ctypes
 import warnings
+from copy import deepcopy
 from enum import Enum
 import numpy as np
 from . import config
@@ -385,6 +386,10 @@ def calc_transform_axes(shape, axes=None, ndim=None, strides=None):
         # Axes beyond ndim are marked skipped
         skip_axis[i] = True
 
+    # # Axes beyond ndim are taken into account only through n_batch (?)
+    # shape1 = shape1[:ndim1]
+    # skip_axis = skip_axis[:ndim1]
+
     # print(shape, axes, ndim, strides, "->", shape1, skip_axis)
     return shape1, n_batch, skip_axis, ndim1, axes
 
@@ -457,7 +462,7 @@ class VkFFTApp:
     def __init__(self, shape, dtype: type, ndim=None, inplace=True, norm=1,
                  r2c=False, dct=False, dst=False, axes=None, strides=None,
                  r2c_odd=False, convolve=False, convolve_conj=0,
-                 convolve_norm=False, **kwargs):
+                 convolve_norm=False, convolve_shape=None, **kwargs):
         """
         Init function for the VkFFT application.
 
@@ -519,10 +524,19 @@ class VkFFTApp:
             bypassing saving the arrays after the FT, resulting in a ~2X
             speedup for the convolution. The kernel must be supplied
             when calling the fft().
+            This only supports C2C (any dimensions) and R2C (ndim>1) transforms,
+            only for radix sizes.
         :param convolve_conj: if 1, use the conjugate of the transformed
             input array. If 2, use the conjugate of the kernel.
         :param convolve_norm: if True, normalise the kernel multiplcation
             (crossPowerSpectrumNormalization).
+        :param convolve_shape: by default (None), the convolution kernel
+            must have the same shape as the transformed array.
+            Alternatively, a batch convolution can be performed e.g.
+            with kernel and array shapes respectively equal to
+            (ny, nx) and (n_batch, ny, nx) for a 2D batch transform.
+            It is also possible to use a kernel size of shape (nz, ny, nx),
+            as long as n_batch is a multiple of nz.
 
         :raises RuntimeError:  if the transform dimensions or data type
             are not allowed by VkFFT.
@@ -575,15 +589,17 @@ class VkFFTApp:
 
         # Convolution parameters
         if convolve:
-            if self.ndim not in [2, 3]:
-                raise RuntimeError("Convolution is only supported for ndim=2 or 3")
-            if r2c and not inplace:
-                raise RuntimeError("Out-of-place R2C convolution is not supported")
-            if axes is not None:
-                raise RuntimeError("Use of axes is not supported with convolution- you can still "
-                                   "perform batch transforms using e.g. a 3D array and ndim=2")
-            if strides is not None:
-                raise RuntimeError("Use of strides is not supported with convolution")
+            # if self.ndim not in [1, 2, 3]:
+            #     raise RuntimeError("Convolution is only supported for ndim=2 or 3")
+            if self.dct or self.dst:
+                raise RuntimeError("Convolution is not supported for DCT and DST transforms")
+            # if axes is not None:
+            #     # TODO: allow skipping axes
+            #     raise RuntimeError("Use of axes is not supported with convolution- you can still "
+            #                        "perform batch transforms using e.g. a 3D array and ndim=2")
+            # if strides is not None:
+            #     # TODO: allow strides
+            #     raise RuntimeError("Use of strides is not supported with convolution")
             rx = self.is_radix_transform(vkfft_axes=True)
             if not (np.all([rx[i] or self.skip_axis[i] for i in range(len(rx))])):
                 # TODO: check if some non-radix transforms are supported
@@ -591,6 +607,34 @@ class VkFFTApp:
         self._convolve = convolve
         self._convolve_conj = convolve_conj
         self._convolve_norm = convolve_norm
+        self._convolve_shape = convolve_shape
+        self._coordinateFeatures = 0
+        self._singleKernelMultipleBatches = 0
+        if convolve_shape is not None:
+            shtmp = list(deepcopy(shape))
+            if r2c:
+                if inplace:
+                    shtmp[self.fast_axis] //= 2
+                else:
+                    shtmp[self.fast_axis] = shtmp[self.fast_axis] // 2 + 1
+
+            if np.prod(shtmp) % np.prod(convolve_shape):
+                raise RuntimeError(f"kernel convolve_shape {convolve_shape} is not compatible with "
+                                   f"the transformed array shape {shtmp}")
+
+            n = np.prod(shtmp) // np.prod(convolve_shape)
+            if n != 1:
+                if n == self.n_batch:
+                    self._singleKernelMultipleBatches = 1
+                elif self.n_batch % n == 0:
+                    self._coordinateFeatures = int(n)
+                    self._singleKernelMultipleBatches = 1
+                    self.n_batch //= n
+                else:
+                    raise RuntimeError(f"convolve_shape {convolve_shape} is not compatible "
+                                       f"with the given array shape {shape}: the computed "
+                                       f" batch size ({self.n_batch}) is not a "
+                                       f"multiple of {n}= array_size / convolution_kernel_size")
 
         # These parameters will be filled in by the different backends
         # Size of the temp buffer allocated by VkFFT
@@ -803,9 +847,9 @@ class VkFFTApp:
             s += " C2C"
         s += {2: "/h", 4: "/s", 8: "/d"}[self.precision]
         s += '/i' if self.inplace else '/o'
-        s += f" [{ft_type}] [{naxup}]"
         if self._convolve:
-            s += " [convolve]"
+            s += '/\u2A02'
+        s += f" [{ft_type}] [{naxup}]"
         s += f" buf={bufs}"
         return s
 
@@ -923,8 +967,8 @@ class VkFFTApp:
         either [r]adix, [B]luestein or [R]ader, or '-' if the axis
         is skipped.
         """
+        tmp = ''
         if vkfft_axes:
-            tmp = ''
             for i in range(len(self.shape)):
                 if self.skip_axis[i]:
                     tmp += '-'
@@ -934,9 +978,7 @@ class VkFFTApp:
                     tmp += 'R'
                 else:
                     tmp += 'B'
-            return tmp
         else:
-            tmp = ''
             for i in range(len(self.shape0)):
                 if self.skip_axis[self._get_vkfft_axes(i)]:
                     tmp += '-'
@@ -946,7 +988,7 @@ class VkFFTApp:
                     tmp += 'R'
                 else:
                     tmp += 'B'
-            return tmp
+        return tmp
 
     def get_shape_str(self, vkfft_axes=False):
         """
