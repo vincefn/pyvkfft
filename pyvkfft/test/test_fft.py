@@ -637,18 +637,30 @@ class TestFFT(unittest.TestCase):
 
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
     def test_convolve(self):
-        """ Test VkFFT's on-the-fly convolution in 2&3D, with and without batch"""
-        for backend, transform, inplace, shape, nbatch, cconj in \
-                itertools.product(self.vbackend, ['c2c', 'r2c'], [True, False],
-                                  [(256, 256), (256, 200), (256, 143),
-                                   (64, 64, 64), (64, 60, 60), (64, 64, 39)],
-                                  [1, 4], [0, 1, 2]):
-            if transform == 'r2c' and not inplace:
+        """ Test VkFFT's on-the-fly convolution in 1D,2,3D, with and without batch"""
+        v = itertools.product(self.vbackend, ['c2c', 'r2c'], [True, False],
+                              [(256,), (200,), (143,), (39,),
+                               (256, 200), (256, 143), (128, 39),
+                               (64, 64, 64), (64, 60, 60), (64, 64, 39)],
+                              [(1, 1), (4, 4), (4, 1), (4, 2)], [0, 1, 2])
+        # v = itertools.product(self.vbackend, ['r2c'], [True], [(256,), (256, 200),(256, 143), (64, 64, 64)], [(4,4)], [0])
+        for backend, transform, inplace, shape, vbatch, cconj in v:
+            if transform == 'r2c' and (len(shape) == 1 or not inplace):
                 continue  # Not supported
+
+            nbatch, nbatchk = vbatch
+            # nbatch: number of batched transformed arrays
+            # nbatchk: batch size in kernel (will use VkFFT coordinateFeatures)
+
             with self.subTest(backend=backend, transform=transform, inplace=inplace,
-                              shape=shape, nbatch=nbatch, cconj=cconj):
+                              shape=shape, batch=vbatch, cconj=cconj):
                 ndim = len(shape)
-                if ndim == 2:
+                if ndim == 1:
+                    nx = shape[0]
+                    a = ascent()[0, :nx]
+                    x = np.arange(-nx // 2, -nx // 2 + nx)
+                    g = np.fft.fftshift(np.exp(-(x ** 2) / 100))
+                elif ndim == 2:
                     ny, nx = shape
                     a = ascent()[:ny, :nx]
                     y, x = np.meshgrid(np.arange(-ny // 2, -ny // 2 + ny),
@@ -674,61 +686,74 @@ class TestFFT(unittest.TestCase):
                 # Batch ?
                 if nbatch > 1:
                     a = np.tile(a, [nbatch] + [1] * ndim)
-                    g = np.tile(g, [nbatch] + [1] * ndim)
-                    axes = [1, 2, 3][:ndim]
+                    g = np.tile(g, [nbatchk] + [1] * ndim)
+                    if nbatch == nbatchk:
+                        g_np = g
+                    else:
+                        g_np = np.tile(g, [nbatch // nbatchk] + [1] * ndim)
+                    # Careful: axes order must be the same as the shape with irfftn(..., shape=.., axes=..)
+                    axes = [-1, -2, -3][:ndim][::-1]
                 else:
+                    g_np = g
                     axes = None
                 # Numpy reference convolution
                 if r2c:
                     if cconj == 1:
                         ga0 = np.fft.irfftn(np.fft.rfftn(a, axes=axes).conj() *
-                                            np.fft.rfftn(g, axes=axes), s=shape, axes=axes)
+                                            np.fft.rfftn(g_np, axes=axes), s=shape, axes=axes)
                     elif cconj == 2:
                         ga0 = np.fft.irfftn(np.fft.rfftn(a, axes=axes) *
-                                            np.fft.rfftn(g, axes=axes).conj(),
+                                            np.fft.rfftn(g_np, axes=axes).conj(),
                                             s=shape, axes=axes)
                     else:
                         ga0 = np.fft.irfftn(np.fft.rfftn(a, axes=axes) *
-                                            np.fft.rfftn(g, axes=axes), s=shape, axes=axes)
+                                            np.fft.rfftn(g_np, axes=axes), s=shape, axes=axes)
                 else:
                     if cconj == 1:
                         ga0 = np.fft.ifftn(np.fft.fftn(a, axes=axes).conj() *
-                                           np.fft.fftn(g, axes=axes), axes=axes)
+                                           np.fft.fftn(g_np, axes=axes), axes=axes)
                     elif cconj == 2:
                         ga0 = np.fft.ifftn(np.fft.fftn(a, axes=axes) *
-                                           np.fft.fftn(g, axes=axes).conj(), axes=axes)
+                                           np.fft.fftn(g_np, axes=axes).conj(), axes=axes)
                     else:
                         ga0 = np.fft.ifftn(np.fft.fftn(a, axes=axes) *
-                                           np.fft.fftn(g, axes=axes), axes=axes)
+                                           np.fft.fftn(g_np, axes=axes), axes=axes)
 
                 if r2c and inplace:
-                    if nbatch > 1:
-                        a = np.pad(a, [(0, 0)] * ndim + [(0, 2 - r2c_odd)])
-                        g = np.pad(g, [(0, 0)] * ndim + [(0, 2 - r2c_odd)])
-                    else:
-                        a = np.pad(a, [(0, 0)] * (ndim - 1) + [(0, 2 - r2c_odd)])
-                        g = np.pad(g, [(0, 0)] * (ndim - 1) + [(0, 2 - r2c_odd)])
+                    a = np.pad(a, [(0, 0)] * (a.ndim - 1) + [(0, 2 - r2c_odd)])
+                    g = np.pad(g, [(0, 0)] * (g.ndim - 1) + [(0, 2 - r2c_odd)])
+
+                convolve_shape = None
+                if nbatch != nbatchk:
+                    convolve_shape = g.shape
+                    if r2c:
+                        convolve_shape = list(convolve_shape)
+                        if inplace:
+                            convolve_shape[-1] //= 2
+                        else:
+                            convolve_shape[-1] = convolve_shape[-1] // 2 + 1
+                        convolve_shape = tuple(convolve_shape)
 
                 if backend == "pycuda":
                     da = cua.to_gpu(a.astype(dtype))
                     dg = cua.to_gpu(g.astype(dtype))
                     app = cuVkFFTApp(da.shape, dtype, inplace=inplace, ndim=ndim,
                                      r2c=r2c, convolve=True, convolve_conj=cconj,
-                                     r2c_odd=r2c_odd)
+                                     r2c_odd=r2c_odd, convolve_shape=convolve_shape)
                 elif backend == "cupy":
                     cp.cuda.Device(0).use()
                     da = cp.array(a.astype(dtype))
                     dg = cp.array(g.astype(dtype))
                     app = cuVkFFTApp(da.shape, dtype, inplace=inplace, ndim=ndim,
                                      r2c=r2c, convolve=True, convolve_conj=cconj,
-                                     r2c_odd=r2c_odd)
+                                     r2c_odd=r2c_odd, convolve_shape=convolve_shape)
                 else:
                     cq = gpu_ctx_dic["pyopencl"][2]
                     da = cla.to_device(cq, a.astype(dtype))
                     dg = cla.to_device(cq, g.astype(dtype))
                     app = clVkFFTApp(da.shape, dtype, cq, inplace=inplace, ndim=ndim,
                                      r2c=r2c, convolve=True, convolve_conj=cconj,
-                                     r2c_odd=r2c_odd)
+                                     r2c_odd=r2c_odd, convolve_shape=convolve_shape)
                 if inplace:
                     db = da
                     dk = dg
@@ -741,11 +766,16 @@ class TestFFT(unittest.TestCase):
                         db = cua.empty_like(da)
                     dk = None
 
-                if transform == 'r2c':
+                if r2c:
                     dk = vkrfftn(dg, dk, r2c_odd=r2c_odd, ndim=ndim)
                     ga1 = app.fft(da, db, convolve_kernel=dk).get()
                 else:
                     ga1 = app.fft(da, db, convolve_kernel=vkfftn(dg, dk, ndim=ndim)).get()
+
+                # Somehow
+                if r2c and not inplace:
+                    ga1 = da.get()
+                np.savez_compressed(f"test_{transform}_{ndim}D.npz", ga0=ga0, ga1=ga1)
 
                 # Compare results
                 if r2c and inplace:
