@@ -62,6 +62,8 @@ except ImportError:
     has_cupy = False
     has_pycuda = False
 
+from pyvkfft.fft import fftn as vkfftn, rfftn as vkrfftn
+
 # Dictionary of cuda/opencl (device, context). Will be initialised on-demand.
 # This is needed for multiprocessing.
 # The pyopencl entry is a tuple with (device, context, queue, has_cl_fp64)
@@ -169,7 +171,8 @@ def li(a, b):
 def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
                   r2c=False, dct=False, dst=False,
                   gpu_name=None, opencl_platform=None, stream=None, queue=None, return_array=False,
-                  init_array=None, verbose=False, colour_output=False, ref_long_double=True, order='C'):
+                  init_array=None, verbose=False, colour_output=False, ref_long_double=True, order='C',
+                  convolve=False):
     """
     Measure the FT accuracy by comparing to the result from scipy (if available), or numpy.
 
@@ -211,6 +214,7 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
         stride. Note that for the latter, a 3D transform on a 4D array will not
         be supported as the last transform axis would be on the 4th dimension
         (once ordered by stride).
+    :param convolve: if True, test on-the-fly convolution
     :return: a dictionary with (l2_fft, li_fft, l2_ifft, li_ifft, tol, dt_array,
         dt_app, dt_fft, dt_ifft, src_unchanged_fft, src_unchanged_ifft, tol_test, str),
         with the L2 and Linf normalised norms comparing pyvkfft's result with either
@@ -247,6 +251,13 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
     else:
         dtype = np.complex128
         dtypef = np.float64
+
+    if backend == "pyopencl":
+        gpu_name = gpu_ctx_dic["pyopencl"][0].name
+    elif backend == "pycuda":
+        gpu_name = gpu_ctx_dic["pycuda"][0].name()
+    else:
+        gpu_name = ""
 
     if dct or dst:
         if norm != 1:
@@ -295,6 +306,9 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
         else:
             d0 = (np.random.uniform(-0.5, 0.5, shape) + 1j * np.random.uniform(-0.5, 0.5, shape)).astype(dtype)
 
+    if convolve:
+        d0_conv = np.random.uniform(-0.5, 0.5, shape).astype(d0.dtype)
+
     if order != 'C':
         d0 = np.asarray(d0, order=order)
 
@@ -304,9 +318,11 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
         app = clVkFFTApp(d0.shape, d0.dtype, queue, ndim=ndim, norm=norm,
                          axes=axes, useLUT=use_lut, inplace=inplace,
                          r2c=r2c, dct=dct, dst=dst, strides=d0.strides,
-                         r2c_odd=r2c_odd)
+                         r2c_odd=r2c_odd, convolve=convolve)
         t2 = timeit.default_timer()
         d_gpu = cla.to_device(queue, d0)
+        if convolve:
+            d0_conv_gpu = cla.to_device(queue, d0_conv)
         empty_like = cla.empty_like
     else:
         if backend == "pycuda":
@@ -319,9 +335,12 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
         app = cuVkFFTApp(d0.shape, d0.dtype, ndim=ndim, norm=norm, axes=axes,
                          useLUT=use_lut, inplace=inplace, r2c=r2c,
                          dct=dct, dst=dst, strides=d0.strides,
-                         r2c_odd=r2c_odd, stream=stream)
+                         r2c_odd=r2c_odd, stream=stream,
+                         convolve=convolve)
         t2 = timeit.default_timer()
         d_gpu = to_gpu(d0)
+        if convolve:
+            d0_conv_gpu = to_gpu(d0_conv)
 
     if axes is None:
         axes_numpy = list(range(ndims))[-ndim:]
@@ -385,28 +404,52 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
     else:
         d0n = d0
 
-    d1_gpu = app.fft(d_gpu, d1_gpu)
-    if not (dct or dst):
+    if convolve:
+        if r2c:
+            if inplace:
+                conv_kernel_gpu = vkrfftn(d0_conv_gpu, d0_conv_gpu, r2c_odd=r2c_odd)
+            else:
+                # not supported anyway...
+                conv_kernel_gpu = vkrfftn(d0_conv_gpu, r2c_odd=r2c_odd)
+        else:
+            conv_kernel_gpu = vkfftn(d0_conv_gpu)
+    else:
+        conv_kernel_gpu = None
+
+    d1_gpu = app.fft(d_gpu, d1_gpu, convolve_kernel=conv_kernel_gpu)
+    if not (dct or dst or convolve):
         d1_gpu *= app.get_fft_scale()
 
-    if r2c:
-        if inplace:
-            # Need to cut the fastest axis by 1 or 2
-            d = rfftn(np.take(d0n, range(d0n.shape[fast_axis] - r2c_inplace_pad),
-                              axis=fast_axis), axes=axes_numpy) / s
+    if convolve:
+        if r2c:
+            r = list(d0n.shape)
+            if inplace:
+                r[fast_axis] -= r2c_inplace_pad  # cut the fastest axis by 1 or 2
+            d = irfftn(rfftn(d0n, r, axes=axes_numpy) * rfftn(d0_conv, r, axes=axes_numpy), r, axes=axes_numpy)
         else:
-            d = rfftn(d0n, axes=axes_numpy) / s
-    elif dct:
-        d = dctn(d0n, axes=axes_numpy, type=dct)
-    elif dst:
-        d = dstn(d0n, axes=axes_numpy, type=dst)
+            d = ifftn(fftn(d0n, axes=axes_numpy) * fftn(d0_conv, axes=axes_numpy), axes=axes_numpy)
     else:
-        d = fftn(d0n, axes=axes_numpy) / s
+        if r2c:
+            if inplace:
+                d = rfftn(np.take(d0n, range(d0n.shape[fast_axis] - r2c_inplace_pad),
+                                  axis=fast_axis), axes=axes_numpy) / s
+            else:
+                d = rfftn(d0n, axes=axes_numpy) / s
+        elif dct:
+            d = dctn(d0n, axes=axes_numpy, type=dct)
+        elif dst:
+            d = dstn(d0n, axes=axes_numpy, type=dst)
+        else:
+            d = fftn(d0n, axes=axes_numpy) / s
 
-    if inplace and r2c:
-        assert d1_gpu.dtype == dtype, "The array type is incorrect after an inplace FFT"
+        if inplace and r2c:
+            assert d1_gpu.dtype == dtype, "The array type is incorrect after an inplace FFT"
 
-    n2, ni = l2(d, d1_gpu.get()), li(d, d1_gpu.get())
+    d1_ = d1_gpu.get()
+    if convolve and r2c and inplace:
+        d1_ = np.take(d1_, range(d0n.shape[fast_axis] - r2c_inplace_pad), axis=fast_axis)
+
+    n2, ni = l2(d, d1_), li(d, d1_)
 
     src_unchanged_fft = np.all(np.equal(d_gpu.get(), d0))
 
@@ -419,6 +462,8 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
         t = "DST%d" % dst
     else:
         t = "C2C"
+    if convolve:
+        t += "\u2A02"
     # if r2c and inplace:
     #     tmp = list(d0.shape)
     #     if order == 'C':
@@ -460,6 +505,29 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
             # Clean memory pool, we are changing array sizes constantly, and using
             # N parallel process so memory management  must be done manually
             mempool.free_all_blocks()
+
+    if convolve:
+        # no need for inverse transform
+        if ni <= tol and (inplace or src_unchanged_fft):
+            success = 'OK'
+        else:
+            success = 'FAIL'
+
+        # Also print the size of the allocated buffer and success
+        verb_out += f" buf={app.get_tmp_buffer_str()} {success:4s}"
+
+        res = {"n2": n2, "ni": ni, "n2i": 0, "nii": 0, "tol": tol, "dt_array": t1 - t0, "dt_app": t2 - t1,
+               "dt_fft": t3 - t2, "dt_ifft": 0, "src_unchanged_fft": src_unchanged_fft,
+               "src_unchanged_ifft": True, "tol_test": ni < tol, "str": verb_out,
+               "backend": backend, "shape": shape0, "ndim": ndim, "axes": axes, "dtype": dtype0, "inplace": inplace,
+               "norm": norm, "use_lut": use_lut, "r2c": r2c, "dct": dct, "dst": dst,
+               "gpu_name": gpu_name, "order": order}
+        if verbose:
+            print(verb_out)
+
+        if return_array:
+            res["d0"] = d0
+        return res
 
     ############################################################
     # IFFT - from original array to avoid error propagation

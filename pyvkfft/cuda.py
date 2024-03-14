@@ -48,7 +48,7 @@ try:
                                         ctype_int_size_p, ctypes.c_int,
                                         ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
                                         ctypes.c_int, ctype_int_size_p, ctypes.c_int,
-                                        ctypes.c_int, ctypes.c_int, ctypes.c_int]
+                                        ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
 
     _vkfft_cuda.init_app.restype = ctypes.c_void_p
     _vkfft_cuda.init_app.argtypes = [_types.vkfft_config, ctypes.POINTER(ctypes.c_int),
@@ -87,7 +87,7 @@ class VkFFTApp(VkFFTAppBase):
     def __init__(self, shape, dtype: type, ndim=None, inplace=True, stream=None, norm=1,
                  r2c=False, dct=False, dst=False, axes=None, strides=None, tune_config=None,
                  r2c_odd=False, convolve=False, convolve_conj=0, convolve_norm=False,
-                 verbose=False, **kwargs):
+                 convolve_shape=None, verbose=False, **kwargs):
         """
 
         :param shape: the shape of the array to be transformed. The number
@@ -172,10 +172,20 @@ class VkFFTApp(VkFFTAppBase):
             bypassing saving the arrays after the FT, resulting in a ~2X
             speedup for the convolution. The kernel must be supplied
             when calling the fft().
+            This supports C2C (any dimensions) and R2C (ndim>1 and inplace),
+            only for radix sizes and single-upload transforms (so allowed
+            sizes depend on the GPU cache size).
         :param convolve_conj: if 1, use the conjugate of the transformed
             input array. If 2, use the conjugate of the kernel.
-        :param convolve_norm: if True, normalise the kernel multiplcation
+        :param convolve_norm: if True, normalise the kernel multiplication
             (crossPowerSpectrumNormalization).
+        :param convolve_shape: by default (None), the convolution kernel
+            must have the same shape as the transformed array.
+            Alternatively, a batch convolution can be performed e.g.
+            with kernel and array shapes respectively equal to
+            (ny, nx) and (n_batch, ny, nx) for a 2D batch transform.
+            It is also possible to use a kernel size of shape (nz, ny, nx),
+            as long as n_batch is a multiple of nz.
         :param verbose: if True, print a 1-string info about this VkFFTApp.
             See __str__ for details.
 
@@ -190,7 +200,7 @@ class VkFFTApp(VkFFTAppBase):
         super().__init__(shape, dtype, ndim=ndim, inplace=inplace, norm=norm, r2c=r2c,
                          dct=dct, dst=dst, axes=axes, strides=strides, r2c_odd=r2c_odd,
                          convolve=convolve, convolve_norm=convolve_norm,
-                         convolve_conj=convolve_conj, **kwargs)
+                         convolve_conj=convolve_conj, convolve_shape=convolve_shape, **kwargs)
 
         self.stream = stream
 
@@ -225,7 +235,8 @@ class VkFFTApp(VkFFTAppBase):
         self.use_bluestein_fft = [bool(n) for n in use_bluestein_fft[:len(self.shape)]]
         self.nb_axis_upload = [int(num_axis_upload[i] * (self.skip_axis[i] is False))
                                for i in range(len(self.shape))]
-
+        if convolve and max(self.nb_axis_upload) > 1:
+            raise RuntimeError(f"On-the-fly convolution is not supported with axis multi-upload [{self.__str__()}]")
         if verbose:
             print(self)
 
@@ -297,7 +308,8 @@ class VkFFTApp(VkFFTAppBase):
                                        int(self.warpSize), grouped_batch,
                                        int(self.forceCallbackVersionRealTransforms),
                                        int(self._convolve), int(self._convolve_conj),
-                                       int(self._convolve_norm))
+                                       int(self._convolve_norm), int(self._coordinateFeatures),
+                                         int(self._singleKernelMultipleBatches))
 
     def fft(self, src, dest=None, convolve_kernel=None):
         """
@@ -306,8 +318,7 @@ class VkFFTApp(VkFFTAppBase):
         :param src: the source pycuda.gpuarray.GPUArray or cupy.ndarray
         :param dest: the destination GPU array. Should be None for an inplace transform
         :param convolve_kernel: the convolution kernel, only if the application
-            is configured to perform a convolution. It must have the shape and
-            type corresponding to the FT of the source array.
+            is configured to perform a convolution.
         :raises RuntimeError: in case of a GPU kernel launch error
         :return: the transformed array. For a R2C inplace transform, the complex view of the
             array is returned. If this is a convolution application, the full
@@ -338,8 +349,14 @@ class VkFFTApp(VkFFTAppBase):
             else:
                 conv_k_ptr = int(convolve_kernel.gpudata)
 
-        if self._convolve and conv_k_ptr == 0:
-            raise RuntimeError("VkFFTApp.fft: convolve=True but not convolution kernel was given")
+        if self._convolve:
+            if conv_k_ptr == 0:
+                raise RuntimeError("VkFFTApp.fft: convolve=True but not convolution kernel was given")
+            if self._coordinateFeatures or self._singleKernelMultipleBatches:
+                if convolve_kernel.shape != self._convolve_shape:
+                    raise RuntimeError(f"VkFFTApp.fft: the convolution kernel shape "
+                                       f"{convolve_kernel.shape} does not match "
+                                       f"the one used to create the app {self._convolve_shape}")
 
         if self.inplace:
             if src_ptr != dest_ptr:

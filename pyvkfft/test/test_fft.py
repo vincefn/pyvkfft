@@ -31,7 +31,7 @@ except ImportError:
             return np.random.randint(0, 255, (512, 512))
 
 from pyvkfft.version import __version__, vkfft_version, vkfft_git_version
-from pyvkfft.base import primes, radix_gen_n
+from pyvkfft.base import primes, radix_gen_n, primes_str
 from pyvkfft.fft import fftn as vkfftn, ifftn as vkifftn, rfftn as vkrfftn, \
     irfftn as vkirfftn, dctn as vkdctn, idctn as vkidctn, \
     dstn as vkdstn, idstn as vkidstn, clear_vkfftapp_cache
@@ -1029,6 +1029,7 @@ class TestFFTSystematic(unittest.TestCase):
     axes = None
     bluestein = False
     colour = False
+    convolve = False
     dct = False
     dst = False
     db = None
@@ -1122,7 +1123,7 @@ class TestFFTSystematic(unittest.TestCase):
                           "r2c": self.r2c, "dct": self.dct, "dst": self.dst, "gpu_name": self.gpu,
                           "opencl_platform": self.opencl_platform, "stream": None, "verbose": False,
                           "colour_output": self.colour, "ref_long_double": self.ref_long_double,
-                          "order": 'F' if self.fstride else 'C'}
+                          "order": 'F' if self.fstride else 'C', "convolve": self.convolve}
                 vkwargs.append(kwargs)
         if self.db is not None:
             # TODO secure the db with a context 'with'
@@ -1167,13 +1168,15 @@ class TestFFTSystematic(unittest.TestCase):
                 for i in range(i_start, len(vkwargs)):
                     v = vkwargs[i]
                     sh = v['shape']
+                    ssh = primes_str(max(sh))
                     ndim = len(sh)
                     # We use np.dtype(dtype) instead of dtype because it is written out simply
                     # as e.g. "float32" instead of "<class 'numpy.float32'>"
-                    with self.subTest(backend=backend, shape=sh, ndim=ndim,
+                    with self.subTest(backend=backend, shape=sh, primes=ssh, ndim=ndim,
                                       dtype=np.dtype(self.dtype), norm=self.norm, use_lut=self.lut,
                                       inplace=self.inplace, r2c=self.r2c,
-                                      dct=self.dct, dst=self.dst, fstride=self.fstride):
+                                      dct=self.dct, dst=self.dst, fstride=self.fstride,
+                                      convolve=self.convolve):
                         if self.serial:
                             res = test_accuracy_kwargs(v)
                         else:

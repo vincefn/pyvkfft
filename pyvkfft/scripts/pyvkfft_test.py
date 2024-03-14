@@ -282,8 +282,9 @@ def make_parser():
                              "c2c quick tests and skip the long r2c/dct/dst "
                              "unless they were also requested.")
     # Perform only convolution tests.
-    parser.add_argument('--convolve', action='store_true',
-                        help=argparse.SUPPRESS)
+    parser.add_argument('--convolve', '--convolution', action='store_true',
+                        help="Test using VkFFT's on-the-fly convolution. Without --systematic, "
+                             "this will only perform the quick convolution tests.")
 
     parser.add_argument('--systematic', action='store_true',
                         help="Perform a systematic accuracy test over a range of array sizes.\n"
@@ -430,6 +431,7 @@ def main():
         t.colour = args.colour
         t.dct = args.dct
         t.dst = args.dst
+        t.convolve = args.convolve
         t.db = args.db[0] if args.db is not None else None
         t.dry_run = args.dry_run
         t.dtype = np.float64 if args.double else np.float32

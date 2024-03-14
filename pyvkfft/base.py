@@ -144,6 +144,21 @@ def primes(n):
     return v
 
 
+def primes_str(n):
+    """Return the string describing the prime decomposition of a number"""
+    vp = primes(n)
+    if vp[0] == 1:
+        vp = vp[vp.count(1):]
+    s = []
+    while len(vp):
+        k = vp.count(vp[0])
+        utfexp = {i: f'\\u00B{i}'.encode('ASCII').decode('unicode-escape') for i in [2, 3]}
+        utfexp.update({i: f'\\u207{i}'.encode('ASCII').decode('unicode-escape') for i in range(4, 10)})
+        s.append(f"{vp[0]}^{k}" if k > 9 else f"{vp[0]}{utfexp[k]}" if k > 1 else f"{vp[0]}")
+        vp = vp[k:]
+    return '\u00D7'.join(s)
+
+
 def radix_gen(nmax, radix, even=False, exclude_one=True, inverted=False,
               nmin=None, max_pow=None, r2r=False):
     """
@@ -524,11 +539,12 @@ class VkFFTApp:
             bypassing saving the arrays after the FT, resulting in a ~2X
             speedup for the convolution. The kernel must be supplied
             when calling the fft().
-            This only supports C2C (any dimensions) and R2C (ndim>1) transforms,
-            only for radix sizes.
+            This supports C2C (any dimensions) and R2C (ndim>1 and inplace),
+            only for radix sizes and single-upload transforms (so allowed
+            sizes depend on the GPU cache size).
         :param convolve_conj: if 1, use the conjugate of the transformed
             input array. If 2, use the conjugate of the kernel.
-        :param convolve_norm: if True, normalise the kernel multiplcation
+        :param convolve_norm: if True, normalise the kernel multiplication
             (crossPowerSpectrumNormalization).
         :param convolve_shape: by default (None), the convolution kernel
             must have the same shape as the transformed array.
@@ -593,6 +609,8 @@ class VkFFTApp:
             #     raise RuntimeError("Convolution is only supported for ndim=2 or 3")
             if self.dct or self.dst:
                 raise RuntimeError("Convolution is not supported for DCT and DST transforms")
+            if r2c and not inplace:
+                raise RuntimeError("Convolution is not supported for out-of-place R2C transforms")
             # if axes is not None:
             #     # TODO: allow skipping axes
             #     raise RuntimeError("Use of axes is not supported with convolution- you can still "

@@ -158,9 +158,12 @@ class VkFFTApp(VkFFTAppBase):
             bypassing saving the arrays after the FT, resulting in a ~2X
             speedup for the convolution. The kernel must be supplied
             when calling the fft().
+            This supports C2C (any dimensions) and R2C (ndim>1 and inplace),
+            only for radix sizes and single-upload transforms (so allowed
+            sizes depend on the GPU cache size).
         :param convolve_conj: if 1, use the conjugate of the transformed
             input array. If 2, use the conjugate of the kernel.
-        :param convolve_norm: if True, normalise the kernel multiplcation
+        :param convolve_norm: if True, normalise the kernel multiplication
             (crossPowerSpectrumNormalization).
         :param convolve_shape: by default (None), the convolution kernel
             must have the same shape as the transformed array.
@@ -218,7 +221,8 @@ class VkFFTApp(VkFFTAppBase):
         self.use_bluestein_fft = [bool(n) for n in use_bluestein_fft[:len(self.shape)]]
         self.nb_axis_upload = [int(num_axis_upload[i] * (self.skip_axis[i] is False))
                                for i in range(len(self.shape))]
-
+        if convolve and max(self.nb_axis_upload) > 1:
+            raise RuntimeError(f"On-the-fly convolution is not supported with axis multi-upload [{self.__str__()}]")
         if verbose:
             print(self)
 
