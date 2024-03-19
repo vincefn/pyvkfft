@@ -1,3 +1,8 @@
+Version 2024.1.2.post0 (2024-03-19)
+-----------------------------
+* Fix nvcc search in setup.py without a CUDA_HOME type
+  environment variable under linux.
+
 Version 2024.1.2 (2024-02-17)
 -----------------------------
 * Fix conda installation with specified ``cuda-version``,
