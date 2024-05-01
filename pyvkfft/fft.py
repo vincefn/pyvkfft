@@ -12,7 +12,7 @@ __all__ = ['fftn', 'ifftn', 'rfftn', 'irfftn', 'dctn', 'idctn', 'dstn', 'idstn',
 from enum import Enum
 from functools import lru_cache
 import numpy as np
-from .base import complex32
+from .base import complex32, strides_nonzero
 from . import config
 
 try:
@@ -64,15 +64,18 @@ def _prepare_transform(src, dest, cl_queue, cuda_stream, r2c=False, r2c_odd=Fals
         output will be the int ptr.
     """
     backend = Backend.UNKNOWN
-    fastidx = np.argmin(src.strides)  # fast axis is the last only for C-ordered arrays
-    if fastidx == src.ndim - 1:
+    # fast axis is the last only for C-ordered arrays
+    # We don't use np.argmin(src.strides) because of special cases
+    # with axis size=1
+    fast_axis = src.ndim - 1 - np.argmin(strides_nonzero(src.strides)[::-1])
+    if fast_axis == src.ndim - 1:
         order = 'C'
     else:
         order = 'F'
     if r2c:
         if src.dtype in [np.float16, np.float32, np.float64]:
             sh = list(src.shape)
-            sh[fastidx] = sh[fastidx] // 2 + 1
+            sh[fast_axis] = sh[fast_axis] // 2 + 1
             dtype = np.complex64
             if src.dtype == np.float16:
                 dtype = complex32
@@ -80,11 +83,11 @@ def _prepare_transform(src, dest, cl_queue, cuda_stream, r2c=False, r2c_odd=Fals
                 dtype = np.complex128
         else:
             sh = list(src.shape)
-            sh[fastidx] = (sh[fastidx] - 1) * 2
+            sh[fast_axis] = (sh[fast_axis] - 1) * 2
             if r2c_odd:
                 # This is only true for an out-of-place transform,
                 # but sh is only used if dest is None
-                sh[fastidx] += 1
+                sh[fast_axis] += 1
             dtype = np.float32
             if src.dtype == complex32:
                 dtype = np.float16

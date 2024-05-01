@@ -1,3 +1,10 @@
+Version 2024.1.3 (2024-03-19)
+-----------------------------
+* Correct handling of arrays where some axes
+  have a length of 1 [https://github.com/vincefn/pyvkfft/issues/34],
+  with a number of corner cases for R2C where the
+  fast axis must be transformed.
+
 Version 2024.1.2.post0 (2024-03-19)
 -----------------------------
 * Fix nvcc search in setup.py without a CUDA_HOME type

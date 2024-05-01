@@ -17,7 +17,7 @@ import atexit
 import psutil
 import numpy as np
 from numpy.fft import fftn, ifftn, rfftn, irfftn
-from pyvkfft.base import primes
+from pyvkfft.base import primes, strides_nonzero
 
 try:
     # We prefer scipy over numpy for fft, and we can also test dct
@@ -251,6 +251,11 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
     if dct or dst:
         if norm != 1:
             raise RuntimeError("test_accuracy: only norm=1 can be used with dct or dst")
+
+    # Need the fast axis for R2C (last for 'C' order, first for 'F')
+    # Careful with special cases of axes with size 1, where stride does not increase or is 0...
+    fast_axis = 0 if order == 'F' else ndims - 1
+
     if r2c:
         r2c_odd = shape[-1] % 2 == 1 if order == 'C' else shape[0] % 2 == 1
         r2c_inplace_pad = 1 if r2c_odd else 2
@@ -264,10 +269,7 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
                 shape[0] += r2c_inplace_pad
         else:
             shapec = list(shape)
-            if order == 'C':
-                shapec[-1] = shapec[-1] // 2 + 1
-            else:
-                shapec[0] = shapec[0] // 2 + 1
+            shapec[fast_axis] = shapec[fast_axis] // 2 + 1
             shapec = tuple(shapec)
     else:
         r2c_odd = None
@@ -324,17 +326,15 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
         d_gpu = to_gpu(d0)
 
     if axes is None:
-        axes_numpy = list(range(ndims))[-ndim:]
+        axes_numpy = list(range(ndims))[-ndim:] if order == 'C' else list(range(ndim))
     else:
         # Make sure axes indices are >0
         axes_numpy = [ax if ax >= 0 else ndims + ax for ax in axes]
 
-    # Need the fast axis for R2C (last for 'C' order, first for 'F')
-    fast_axis = np.argmin(d0.strides)
-
     if r2c:
         if fast_axis not in axes_numpy:
-            raise RuntimeError("The fast axis must be transformed for R2C")
+            raise RuntimeError(f"The fast axis must be transformed for R2C: "
+                               f"fast axis={fast_axis}, axes_numpy={axes_numpy}")
 
         # For R2C, we need the same fast axis as on the GPU, or the
         # half-hermitian result won't look the same
@@ -406,6 +406,9 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
     if inplace and r2c:
         assert d1_gpu.dtype == dtype, "The array type is incorrect after an inplace FFT"
 
+    if r2c and d.shape != d1_gpu.shape:
+        raise RuntimeError(f"Shape mismatch after the R2C FFT: shape={shape} shapec={shapec} "
+                           f"order={order} axes={axes} axes_numpy={axes_numpy} ndim={ndim}")
     n2, ni = l2(d, d1_gpu.get()), li(d, d1_gpu.get())
 
     src_unchanged_fft = np.all(np.equal(d_gpu.get(), d0))
@@ -471,7 +474,7 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
             d0n = d0.astype(np.clongdouble)
         else:
             d0n = d0
-        if (np.argmin(d0.strides) != d0.ndim - 1) and order == 'C':
+        if (np.argmin(strides_nonzero(d0.strides)[::-1]) != 0) and order == 'C':
             # np.fft.rfftn can change the fast axis
             d0 = np.asarray(d0, order='C')
     if order != 'C':

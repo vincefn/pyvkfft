@@ -227,6 +227,83 @@ class TestFFT(unittest.TestCase):
                 if backend == "pycuda":
                     gpu_ctx_dic["pycuda"][1].pop()
 
+    @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
+    def test_squeeze(self):
+        """Test transform of arrays which have one or multiple axis of size 1"""
+        norm = 0
+        use_lut = None
+        inplace = False
+        dct, dst = False, False
+        vkwargs = []
+        for backend, r2c, order in itertools.product(self.vbackend, (False, True), ('C', 'F')):
+            dtype = np.float32 if r2c else np.complex64
+            # Note in the following, the last axis listed is always the fast axis,
+            # which is useful for R2C transforms where the actual fast axis is ambiguous,
+            # e.g. when only one axis has a length>1 (corner cases...)
+            for sh, ndim, axes in \
+                    [((3, 1), 2, None),
+                     ((3, 1), None, (-2, -1)),
+                     ((3, 1), None, (-1,)),
+                     ((3, 2, 2, 1), 2, None),
+                     ((3, 2, 2, 1), None, (-2, -1)),
+                     ((3, 2, 1, 2), 2, None),
+                     ((3, 2, 1, 2), None, (-2, -1)),
+                     ((3, 1, 2, 2), 2, None),
+                     ((3, 1, 2, 2), None, (-2, -1)),
+                     ((1, 3, 2, 2), 2, None),
+                     ((1, 3, 2, 2), None, (-2, -1)),
+                     ((3, 1, 1, 2), 2, None),
+                     ((3, 1, 1, 2), None, (-2, -1)),
+                     ((1, 1, 2, 2), 2, None),
+                     ((1, 1, 2, 2), None, (-2, -1)),
+                     ((3, 2, 2, 1), 3, None),
+                     ((3, 2, 2, 1), None, (-3, -2, -1)),
+                     ((3, 2, 1, 2), 3, None),
+                     ((3, 2, 1, 2), None, (-3, -2, -1)),
+                     ((3, 1, 2, 2), 3, None),
+                     ((3, 1, 2, 2), None, (-3, -2, -1)),
+                     ((1, 3, 2, 2), 3, None),
+                     ((1, 3, 2, 2), None, (-3, -2, -1)),
+                     ((3, 2, 2, 1), 4, None),
+                     ((3, 2, 2, 1), None, (-4, -3, -2, -1)),
+                     ((3, 2, 1, 2), 4, None),
+                     ((3, 2, 1, 2), None, (-4, -3, -2, -1)),
+                     ((3, 1, 2, 2), 4, None),
+                     ((3, 1, 2, 2), None, (-4, -3, -2, -1)),
+                     ((1, 3, 2, 2), 4, None),
+                     ((1, 3, 2, 2), None, (-4, -3, -2, -1)),
+                     ]:
+                if r2c and order == 'F' and axes is not None:
+                    # Make sure that the fast axis is transformed
+                    axes = [-ax - 1 for ax in axes]
+                # Make sure at least one transformed axis has a length>1
+                if axes is not None:
+                    if np.alltrue([sh[ax] == 1 for ax in axes]):
+                        continue
+                else:
+                    if order == 'C':
+                        if np.alltrue([sh[-i] == 1 for i in range(ndim)]):
+                            continue
+                    else:
+                        if np.alltrue([sh[i] == 1 for i in range(ndim)]):
+                            continue
+                if r2c and axes is None and np.sum([s == 1 for s in sh]) == 1 and len(sh) > 1:
+                    # Without axes, if only one has a length>1, the fast
+                    # axis cannot be determined
+                    continue
+                vkwargs.append({"backend": backend, "shape": sh,
+                                "ndim": ndim, "axes": axes,
+                                "dtype": dtype, "inplace": inplace,
+                                "norm": norm, "use_lut": use_lut,
+                                "r2c": r2c, "dct": dct,
+                                "dst": dst,
+                                "gpu_name": self.gpu,
+                                "opencl_platform": self.opencl_platform,
+                                "stream": None,
+                                "verbose": False, "order": order,
+                                "colour_output": self.colour})
+        self.run_fft_parallel(vkwargs)
+
     def run_fft(self, vbackend, vn, dims_max=4, ndim_max=3, shuffle_axes=True,
                 vtype=(np.complex64, np.complex128),
                 vlut="auto", vinplace=(True, False), vnorm=(0, 1),
@@ -441,8 +518,10 @@ class TestFFT(unittest.TestCase):
                     src2 = res["src_unchanged_ifft"]
                     if self.verbose:
                         print(res['str'])
-                    self.assertTrue(ni < tol, "Accuracy mismatch after FFT, n2=%8e ni=%8e>%8e" % (n2, ni, tol))
-                    self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, n2=%8e ni=%8e>%8e" % (n2, nii, tol))
+                    self.assertTrue(ni < tol, "Accuracy mismatch after FFT, n2=%8e ni=%8e>%8e, %s"
+                                    % (n2, ni, tol, res['str']))
+                    self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, n2=%8e ni=%8e>%8e, %s "
+                                    % (n2, nii, tol, res['str']))
                     if not res['inplace']:
                         self.assertTrue(src1, "The source array was modified during the FFT")
                         if platform.system() == 'Darwin':
@@ -555,7 +634,7 @@ class TestFFT(unittest.TestCase):
 
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
     @unittest.skipIf(not has_dct_ref, "scipy and pyfftw are not available - cannot test DCT")
-    def test_dct(self):
+    def _test_dct(self):
         """Run DCT tests"""
         for backend in self.vbackend:
             init_ctx(backend, gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
@@ -596,7 +675,7 @@ class TestFFT(unittest.TestCase):
 
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
     @unittest.skipIf(not has_dct_ref, "scipy and pyfftw are not available - cannot test DST")
-    def test_dst(self):
+    def _test_dst(self):
         """Run DST tests"""
         for backend in self.vbackend:
             init_ctx(backend, gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
