@@ -278,14 +278,14 @@ class TestFFT(unittest.TestCase):
                     axes = [-ax - 1 for ax in axes]
                 # Make sure at least one transformed axis has a length>1
                 if axes is not None:
-                    if np.alltrue([sh[ax] == 1 for ax in axes]):
+                    if np.all([sh[ax] == 1 for ax in axes]):
                         continue
                 else:
                     if order == 'C':
-                        if np.alltrue([sh[-i] == 1 for i in range(ndim)]):
+                        if np.all([sh[-i] == 1 for i in range(ndim)]):
                             continue
                     else:
-                        if np.alltrue([sh[i] == 1 for i in range(ndim)]):
+                        if np.all([sh[i] == 1 for i in range(ndim)]):
                             continue
                 if r2c and axes is None and np.sum([s == 1 for s in sh]) == 1 and len(sh) > 1:
                     # Without axes, if only one has a length>1, the fast

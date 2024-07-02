@@ -655,4 +655,4 @@ def exhaustive_test(backend, vn, ndim, dtype, inplace, norm, use_lut, r2c=False,
                 vres.append(res)
     if return_res:
         return vres
-    return np.alltrue(vok)
+    return np.all(vok)
