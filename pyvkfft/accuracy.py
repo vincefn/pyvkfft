@@ -292,10 +292,11 @@ def test_accuracy(backend, shape, ndim, axes, dtype, inplace, norm, use_lut,
         else:
             d0 = init_array.astype(dtype)
     else:
+        rng = np.random.default_rng(seed=None)
         if r2c or dct or dst:
-            d0 = np.random.uniform(-0.5, 0.5, shape).astype(dtypef)
+            d0 = rng.uniform(-0.5, 0.5, size=shape).astype(dtypef)
         else:
-            d0 = (np.random.uniform(-0.5, 0.5, shape) + 1j * np.random.uniform(-0.5, 0.5, shape)).astype(dtype)
+            d0 = (rng.uniform(-0.5, 0.5, size=shape) + 1j * rng.uniform(-0.5, 0.5, size=shape)).astype(dtype)
 
     if order != 'C':
         d0 = np.asarray(d0, order=order)

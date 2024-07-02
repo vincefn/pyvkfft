@@ -28,7 +28,8 @@ except ImportError:
         from scipy.misc import ascent
     except ImportError:
         def ascent():
-            return np.random.randint(0, 255, (512, 512))
+            rng = np.random.default_rng(seed=None)
+            return rng.integers(0, 255, size=(512, 512))
 
 from pyvkfft.version import __version__, vkfft_version, vkfft_git_version
 from pyvkfft.base import primes, radix_gen_n
@@ -360,6 +361,8 @@ class TestFFT(unittest.TestCase):
                   "   type      lut?    inplace?      norm  C/F  FFT: L2 error     Linf"
                   "       < max  (Linf/max) unchanged? iFFT: L2   Linf      < max"
                   "  (Linf/max) unchanged? buffer status")
+
+        rng = np.random.default_rng(seed=None)
         for backend in vbackend:
             # We assume the context was already initialised by the calling function
             # init_ctx(backend, gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
@@ -404,10 +407,10 @@ class TestFFT(unittest.TestCase):
 
                                 if not dry_run:
                                     if dtype in (np.float32, np.float64):
-                                        d0 = np.random.uniform(-0.5, 0.5, vsh[0]).astype(dtype)
+                                        d0 = rng.uniform(-0.5, 0.5, size=vsh[0]).astype(dtype)
                                     else:
-                                        d0 = (np.random.uniform(-0.5, 0.5, vsh[0])
-                                              + 1j * np.random.uniform(-0.5, 0.5, vsh[0])).astype(dtype)
+                                        d0 = (rng.uniform(-0.5, 0.5, size=vsh[0])
+                                              + 1j * rng.uniform(-0.5, 0.5, size=vsh[0])).astype(dtype)
                                 if vlut == "auto":
                                     if dtype in (np.float64, np.complex128):
                                         # By default, LUT is enabled for complex128, no need to test twice
@@ -719,6 +722,8 @@ class TestFFT(unittest.TestCase):
         """
         Test multiple FFT in // with different cuda streams.
         """
+        rng = np.random.default_rng(seed=None)
+
         for dtype in (np.complex64, np.complex128):
             with self.subTest(dtype=np.dtype(dtype)):
                 init_ctx("pycuda", gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
@@ -727,7 +732,7 @@ class TestFFT(unittest.TestCase):
                 else:
                     rtol = 1e-12
                 sh = (256, 256)
-                d = (np.random.uniform(-0.5, 0.5, sh) + 1j * np.random.uniform(-0.5, 0.5, sh)).astype(dtype)
+                d = (rng.uniform(-0.5, 0.5, size=sh) + 1j * rng.uniform(-0.5, 0.5, size=sh)).astype(dtype)
                 n_streams = 5
                 vd = []
                 vapp = []
@@ -761,6 +766,7 @@ class TestFFT(unittest.TestCase):
         # Disable warning
         old_warning = pyvkfft.config.WARN_OPENCL_QUEUE_MISMATCH
         pyvkfft.config.WARN_OPENCL_QUEUE_MISMATCH = False
+        rng = np.random.default_rng(seed=None)
         for dtype in vtype:
             with self.subTest(dtype=np.dtype(dtype)):
                 init_ctx("pyopencl", gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
@@ -770,7 +776,7 @@ class TestFFT(unittest.TestCase):
                 else:
                     rtol = 1e-12
                 sh = (256, 256)
-                d = (np.random.uniform(-0.5, 0.5, sh) + 1j * np.random.uniform(-0.5, 0.5, sh)).astype(dtype)
+                d = (rng.uniform(-0.5, 0.5, size=sh) + 1j * rng.uniform(-0.5, 0.5, size=sh)).astype(dtype)
                 n_queues = 5
                 vd = []
                 vapp = []
@@ -1042,11 +1048,12 @@ class TestFFTSystematic(unittest.TestCase):
             return
         # Generate the list of configurations as kwargs for test_accuracy()
         vkwargs = []
+        rng = np.random.default_rng(seed=None)
         for backend in self.vbackend:
             for s in self.vshape:
                 if self.fast_random is not None and len(vkwargs):
                     # Randomly skip tests to go faster
-                    if np.random.uniform(0, 100) > self.fast_random:
+                    if rng.uniform(0, 100) > self.fast_random:
                         continue
                 kwargs = {"backend": backend, "shape": s, "ndim": len(s), "axes": self.axes,
                           "dtype": self.dtype, "inplace": self.inplace, "norm": self.norm, "use_lut": self.lut,
