@@ -387,7 +387,7 @@ def calc_transform_axes(shape, axes=None, ndim=None, strides=None):
         # Try with shape=(3,1), F and C-ordered as a corner case...
         s0 = strides_nonzero(strides)
         reorder_shape, reorder_axes = False, False
-        if not np.alltrue([s0[i] >= s0[i + 1] for i in range(n - 1)]):
+        if not np.all([s0[i] >= s0[i + 1] for i in range(n - 1)]):
             # Array is F-ordered, need to reorder shape & axes
             if axes is None:
                 # Using ndim, so axes1 is already OK
@@ -408,7 +408,7 @@ def calc_transform_axes(shape, axes=None, ndim=None, strides=None):
     for i in axes1:
         skip_axis[i] = False
 
-    if np.alltrue([shape1[ax] == 1 for ax in axes1]):
+    if np.all([shape1[ax] == 1 for ax in axes1]):
         raise RuntimeError(f"No axis is actually transformed: shape={shape} ndim={ndim} "
                            f"axes={axes} strides={strides} vkfft_shape={shape1} "
                            f"vkfft_axes={axes1} vkfft_skip={skip_axis}")
@@ -601,7 +601,7 @@ class VkFFTApp:
                 self.fast_axis = axes[-1]
             else:
                 s0 = strides_nonzero(strides)
-                if not np.alltrue([s0[i] >= s0[i + 1] for i in range(len(shape) - 1)]):
+                if not np.all([s0[i] >= s0[i + 1] for i in range(len(shape) - 1)]):
                     # F-ordered array
                     self.fast_axis = 0
         if r2c and axes is not None:
