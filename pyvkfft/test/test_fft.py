@@ -637,7 +637,7 @@ class TestFFT(unittest.TestCase):
 
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
     @unittest.skipIf(not has_dct_ref, "scipy and pyfftw are not available - cannot test DCT")
-    def _test_dct(self):
+    def test_dct(self):
         """Run DCT tests"""
         for backend in self.vbackend:
             init_ctx(backend, gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
@@ -678,7 +678,7 @@ class TestFFT(unittest.TestCase):
 
     @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
     @unittest.skipIf(not has_dct_ref, "scipy and pyfftw are not available - cannot test DST")
-    def _test_dst(self):
+    def test_dst(self):
         """Run DST tests"""
         for backend in self.vbackend:
             init_ctx(backend, gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
