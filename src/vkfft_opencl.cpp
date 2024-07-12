@@ -254,9 +254,9 @@ int fft(VkFFTApplication* app, void *in, void *out, void* queue, void* kernel)
 
   // Modify the original app only to avoid allocating
   // new buffer pointers in memory
-  *(app->configuration.buffer) = (cl_mem)out;
-  *(app->configuration.inputBuffer) = (cl_mem)in;
-  *(app->configuration.outputBuffer) = (cl_mem)out;
+  *((void**)app->configuration.buffer) = (cl_mem)out;
+  *((void**)app->configuration.inputBuffer) = (cl_mem)in;
+  *((void**)app->configuration.outputBuffer) = (cl_mem)out;
   app->configuration.commandQueue = &q;
 
   VkFFTLaunchParams par = {};
@@ -267,7 +267,7 @@ int fft(VkFFTApplication* app, void *in, void *out, void* queue, void* kernel)
 
   if(app->configuration.performConvolution)
   {
-    *(app->configuration.kernel) = (cl_mem)kernel;
+    *((void**)app->configuration.kernel) = (cl_mem)kernel;
     par.kernel = app->configuration.kernel;
   }
 
@@ -280,9 +280,9 @@ int ifft(VkFFTApplication* app, void *in, void *out, void* queue)
 
   // Modify the original app only to avoid allocating
   // new buffer pointers in memory
-  *(app->configuration.buffer) = (cl_mem)out;
-  *(app->configuration.inputBuffer) = (cl_mem)in;
-  *(app->configuration.outputBuffer) = (cl_mem)out;
+  *((void**)app->configuration.buffer) = (cl_mem)out;
+  *((void**)app->configuration.inputBuffer) = (cl_mem)in;
+  *((void**)app->configuration.outputBuffer) = (cl_mem)out;
   app->configuration.commandQueue = &q;
 
   VkFFTLaunchParams par = {};
@@ -315,19 +315,19 @@ void free_config(VkFFTConfiguration *config)
   free(config->device);
   free(config->context);
   // Only frees the pointer to the buffer pointer, not the buffer itself.
-  free(config->buffer);
-  free(config->bufferSize);
+  free((cl_mem*)config->buffer);
+  free((cl_mem*)config->bufferSize);
 
-  if((config->outputBuffer != NULL) && (config->buffer != config->outputBuffer)) free(config->outputBuffer);
+  if((config->outputBuffer != NULL) && (config->buffer != config->outputBuffer)) free((cl_mem*)config->outputBuffer);
   if((config->inputBuffer != NULL) && (config->buffer != config->inputBuffer)
-     && (config->outputBuffer != config->inputBuffer)) free(config->inputBuffer);
+     && (config->outputBuffer != config->inputBuffer)) free((cl_mem*)config->inputBuffer);
 
   if((config->inputBufferSize != NULL) && (config->inputBufferSize != config->bufferSize))
-    free(config->inputBufferSize);
+    free((cl_mem*)config->inputBufferSize);
   if((config->outputBufferSize != NULL) && (config->outputBufferSize != config->bufferSize)
-     && (config->outputBufferSize != config->inputBufferSize)) free(config->outputBufferSize);
+     && (config->outputBufferSize != config->inputBufferSize)) free((cl_mem*)config->outputBufferSize);
 
-  if((config->kernel != NULL) && config->performConvolution) free(config->kernel);
+  if((config->kernel != NULL) && config->performConvolution) free((cl_mem*)config->kernel);
 
   free(config);
 }

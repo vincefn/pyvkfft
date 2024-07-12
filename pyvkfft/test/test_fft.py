@@ -28,7 +28,8 @@ except ImportError:
         from scipy.misc import ascent
     except ImportError:
         def ascent():
-            return np.random.randint(0, 255, (512, 512))
+            rng = np.random.default_rng(seed=None)
+            return rng.integers(0, 255, size=(512, 512))
 
 from pyvkfft.version import __version__, vkfft_version, vkfft_git_version
 from pyvkfft.base import primes, radix_gen_n, primes_str
@@ -227,6 +228,83 @@ class TestFFT(unittest.TestCase):
                 if backend == "pycuda":
                     gpu_ctx_dic["pycuda"][1].pop()
 
+    @unittest.skipIf(not (has_pycuda or has_cupy or has_pyopencl), "No OpenCL/CUDA backend is available")
+    def test_squeeze(self):
+        """Test transform of arrays which have one or multiple axis of size 1"""
+        norm = 0
+        use_lut = None
+        inplace = False
+        dct, dst = False, False
+        vkwargs = []
+        for backend, r2c, order in itertools.product(self.vbackend, (False, True), ('C', 'F')):
+            dtype = np.float32 if r2c else np.complex64
+            # Note in the following, the last axis listed is always the fast axis,
+            # which is useful for R2C transforms where the actual fast axis is ambiguous,
+            # e.g. when only one axis has a length>1 (corner cases...)
+            for sh, ndim, axes in \
+                    [((3, 1), 2, None),
+                     ((3, 1), None, (-2, -1)),
+                     ((3, 1), None, (-1,)),
+                     ((3, 2, 2, 1), 2, None),
+                     ((3, 2, 2, 1), None, (-2, -1)),
+                     ((3, 2, 1, 2), 2, None),
+                     ((3, 2, 1, 2), None, (-2, -1)),
+                     ((3, 1, 2, 2), 2, None),
+                     ((3, 1, 2, 2), None, (-2, -1)),
+                     ((1, 3, 2, 2), 2, None),
+                     ((1, 3, 2, 2), None, (-2, -1)),
+                     ((3, 1, 1, 2), 2, None),
+                     ((3, 1, 1, 2), None, (-2, -1)),
+                     ((1, 1, 2, 2), 2, None),
+                     ((1, 1, 2, 2), None, (-2, -1)),
+                     ((3, 2, 2, 1), 3, None),
+                     ((3, 2, 2, 1), None, (-3, -2, -1)),
+                     ((3, 2, 1, 2), 3, None),
+                     ((3, 2, 1, 2), None, (-3, -2, -1)),
+                     ((3, 1, 2, 2), 3, None),
+                     ((3, 1, 2, 2), None, (-3, -2, -1)),
+                     ((1, 3, 2, 2), 3, None),
+                     ((1, 3, 2, 2), None, (-3, -2, -1)),
+                     ((3, 2, 2, 1), 4, None),
+                     ((3, 2, 2, 1), None, (-4, -3, -2, -1)),
+                     ((3, 2, 1, 2), 4, None),
+                     ((3, 2, 1, 2), None, (-4, -3, -2, -1)),
+                     ((3, 1, 2, 2), 4, None),
+                     ((3, 1, 2, 2), None, (-4, -3, -2, -1)),
+                     ((1, 3, 2, 2), 4, None),
+                     ((1, 3, 2, 2), None, (-4, -3, -2, -1)),
+                     ]:
+                if r2c and order == 'F' and axes is not None:
+                    # Make sure that the fast axis is transformed
+                    axes = [-ax - 1 for ax in axes]
+                # Make sure at least one transformed axis has a length>1
+                if axes is not None:
+                    if np.all([sh[ax] == 1 for ax in axes]):
+                        continue
+                else:
+                    if order == 'C':
+                        if np.all([sh[-i] == 1 for i in range(ndim)]):
+                            continue
+                    else:
+                        if np.all([sh[i] == 1 for i in range(ndim)]):
+                            continue
+                if r2c and axes is None and np.sum([s == 1 for s in sh]) == 1 and len(sh) > 1:
+                    # Without axes, if only one has a length>1, the fast
+                    # axis cannot be determined
+                    continue
+                vkwargs.append({"backend": backend, "shape": sh,
+                                "ndim": ndim, "axes": axes,
+                                "dtype": dtype, "inplace": inplace,
+                                "norm": norm, "use_lut": use_lut,
+                                "r2c": r2c, "dct": dct,
+                                "dst": dst,
+                                "gpu_name": self.gpu,
+                                "opencl_platform": self.opencl_platform,
+                                "stream": None,
+                                "verbose": False, "order": order,
+                                "colour_output": self.colour})
+        self.run_fft_parallel(vkwargs)
+
     def run_fft(self, vbackend, vn, dims_max=4, ndim_max=3, shuffle_axes=True,
                 vtype=(np.complex64, np.complex128),
                 vlut="auto", vinplace=(True, False), vnorm=(0, 1),
@@ -283,6 +361,8 @@ class TestFFT(unittest.TestCase):
                   "   type      lut?    inplace?      norm  C/F  FFT: L2 error     Linf"
                   "       < max  (Linf/max) unchanged? iFFT: L2   Linf      < max"
                   "  (Linf/max) unchanged? buffer status")
+
+        rng = np.random.default_rng(seed=None)
         for backend in vbackend:
             # We assume the context was already initialised by the calling function
             # init_ctx(backend, gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
@@ -327,10 +407,10 @@ class TestFFT(unittest.TestCase):
 
                                 if not dry_run:
                                     if dtype in (np.float32, np.float64):
-                                        d0 = np.random.uniform(-0.5, 0.5, vsh[0]).astype(dtype)
+                                        d0 = rng.uniform(-0.5, 0.5, size=vsh[0]).astype(dtype)
                                     else:
-                                        d0 = (np.random.uniform(-0.5, 0.5, vsh[0])
-                                              + 1j * np.random.uniform(-0.5, 0.5, vsh[0])).astype(dtype)
+                                        d0 = (rng.uniform(-0.5, 0.5, size=vsh[0])
+                                              + 1j * rng.uniform(-0.5, 0.5, size=vsh[0])).astype(dtype)
                                 if vlut == "auto":
                                     if dtype in (np.float64, np.complex128):
                                         # By default, LUT is enabled for complex128, no need to test twice
@@ -441,8 +521,10 @@ class TestFFT(unittest.TestCase):
                     src2 = res["src_unchanged_ifft"]
                     if self.verbose:
                         print(res['str'])
-                    self.assertTrue(ni < tol, "Accuracy mismatch after FFT, n2=%8e ni=%8e>%8e" % (n2, ni, tol))
-                    self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, n2=%8e ni=%8e>%8e" % (n2, nii, tol))
+                    self.assertTrue(ni < tol, "Accuracy mismatch after FFT, n2=%8e ni=%8e>%8e, %s"
+                                    % (n2, ni, tol, res['str']))
+                    self.assertTrue(nii < tol, "Accuracy mismatch after iFFT, n2=%8e ni=%8e>%8e, %s "
+                                    % (n2, nii, tol, res['str']))
                     if not res['inplace']:
                         self.assertTrue(src1, "The source array was modified during the FFT")
                         if platform.system() == 'Darwin':
@@ -775,7 +857,7 @@ class TestFFT(unittest.TestCase):
                 # Somehow
                 if r2c and not inplace:
                     ga1 = da.get()
-                np.savez_compressed(f"test_{transform}_{ndim}D.npz", ga0=ga0, ga1=ga1)
+                # np.savez_compressed(f"test_{transform}_{ndim}D.npz", ga0=ga0, ga1=ga1)
 
                 # Compare results
                 if r2c and inplace:
@@ -788,6 +870,8 @@ class TestFFT(unittest.TestCase):
         """
         Test multiple FFT in // with different cuda streams.
         """
+        rng = np.random.default_rng(seed=None)
+
         for dtype in (np.complex64, np.complex128):
             with self.subTest(dtype=np.dtype(dtype)):
                 init_ctx("pycuda", gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
@@ -796,7 +880,7 @@ class TestFFT(unittest.TestCase):
                 else:
                     rtol = 1e-12
                 sh = (256, 256)
-                d = (np.random.uniform(-0.5, 0.5, sh) + 1j * np.random.uniform(-0.5, 0.5, sh)).astype(dtype)
+                d = (rng.uniform(-0.5, 0.5, size=sh) + 1j * rng.uniform(-0.5, 0.5, size=sh)).astype(dtype)
                 n_streams = 5
                 vd = []
                 vapp = []
@@ -830,6 +914,7 @@ class TestFFT(unittest.TestCase):
         # Disable warning
         old_warning = pyvkfft.config.WARN_OPENCL_QUEUE_MISMATCH
         pyvkfft.config.WARN_OPENCL_QUEUE_MISMATCH = False
+        rng = np.random.default_rng(seed=None)
         for dtype in vtype:
             with self.subTest(dtype=np.dtype(dtype)):
                 init_ctx("pyopencl", gpu_name=self.gpu, opencl_platform=self.opencl_platform, verbose=False)
@@ -839,7 +924,7 @@ class TestFFT(unittest.TestCase):
                 else:
                     rtol = 1e-12
                 sh = (256, 256)
-                d = (np.random.uniform(-0.5, 0.5, sh) + 1j * np.random.uniform(-0.5, 0.5, sh)).astype(dtype)
+                d = (rng.uniform(-0.5, 0.5, size=sh) + 1j * rng.uniform(-0.5, 0.5, size=sh)).astype(dtype)
                 n_queues = 5
                 vd = []
                 vapp = []
@@ -1112,11 +1197,12 @@ class TestFFTSystematic(unittest.TestCase):
             return
         # Generate the list of configurations as kwargs for test_accuracy()
         vkwargs = []
+        rng = np.random.default_rng(seed=None)
         for backend in self.vbackend:
             for s in self.vshape:
                 if self.fast_random is not None and len(vkwargs):
                     # Randomly skip tests to go faster
-                    if np.random.uniform(0, 100) > self.fast_random:
+                    if rng.uniform(0, 100) > self.fast_random:
                         continue
                 kwargs = {"backend": backend, "shape": s, "ndim": len(s), "axes": self.axes,
                           "dtype": self.dtype, "inplace": self.inplace, "norm": self.norm, "use_lut": self.lut,

@@ -57,7 +57,7 @@ def locate_cuda():
                 break
     if nvcc is None:
         # Search the PATH for NVCC
-        nvcc = find_in_path('nvcc.exe', os.environ['PATH'])
+        nvcc = find_in_path(app_name, os.environ['PATH'])
         if nvcc is not None:
             home = os.path.dirname(os.path.dirname(nvcc))
         else:

@@ -210,10 +210,15 @@ class VkFFTApp(VkFFTAppBase):
         self.app = _vkfft_opencl.init_app(self.config, queue.int_ptr, ctypes.byref(res),
                                           ctypes.byref(tmp_buffer_nbytes),
                                           use_bluestein_fft, num_axis_upload)
-
-        check_vkfft_result(res, shape, dtype, ndim, inplace, norm, r2c, dct, dst, axes, "opencl:%s:%s" %
-                           (queue.device.platform.name, queue.device.name))
-
+        try:
+            check_vkfft_result(res, shape=shape, dtype=dtype, ndim=ndim, inplace=inplace, norm=norm,
+                               r2c=r2c, dct=dct, dst=dst, axes=axes,
+                               backend="opencl:%s:%s" % (queue.device.platform.name, queue.device.name),
+                               strides=self.strides0,
+                               vkfft_shape=self.shape, vkfft_skip=self.skip_axis, vkfft_nbatch=self.n_batch)
+        except Exception as ex:
+            print("clVkFFTApp error:", shape, strides, dtype, ndim, axes, self.shape, self.skip_axis)
+            raise ex
         if self.app is None:
             raise RuntimeError("Error creating VkFFTApplication. Was the OpenCL context properly initialised ?")
 
@@ -362,7 +367,10 @@ class VkFFTApp(VkFFTAppBase):
             res = _vkfft_opencl.fft(self.app, int(src.data.int_ptr), int(src.data.int_ptr),
                                     int(queue.int_ptr), int(conv_k_ptr))
             check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
-                               self.dct, self.dst, backend="opencl")
+                               self.dct, self.dst,
+                               backend="opencl:%s:%s" % (queue.device.platform.name, queue.device.name),
+                               strides=self.strides0, vkfft_shape=self.shape,
+                               vkfft_skip=self.skip_axis, vkfft_nbatch=self.n_batch)
             if self.norm == "ortho":
                 src *= self._get_fft_scale(norm=0)
             if self.r2c and not self._convolve:
@@ -377,11 +385,19 @@ class VkFFTApp(VkFFTAppBase):
             elif src.data.int_ptr == dest.data.int_ptr:
                 raise RuntimeError("VkFFTApp.fft: dest and src are identical but this is an out-of-place transform")
             if self.r2c and not self._convolve:
-                assert (dest.size == src.size // src.shape[self.fast_axis] * (src.shape[self.fast_axis] // 2 + 1))
+                tmp = src.size // src.shape[self.fast_axis] * (src.shape[self.fast_axis] // 2 + 1)
+                if dest.size != tmp:
+                    raise RuntimeError(f"VkFFTApp.fft the destination array size ({dest.size}) is not "
+                                       f"equal to the expected one ({tmp}) for an R2C transform "
+                                       f"[fast axis={self.fast_axis}, src shape={src.shape}, "
+                                       f"axes={self.axes0}, strides={src.strides}]")
             res = _vkfft_opencl.fft(self.app, int(src.data.int_ptr), int(dest.data.int_ptr),
                                     int(queue.int_ptr), int(conv_k_ptr))
             check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
-                               self.dct, self.dst, backend="opencl")
+                               self.dct, self.dst,
+                               backend="opencl:%s:%s" % (queue.device.platform.name, queue.device.name),
+                               strides=self.strides0, vkfft_shape=self.shape,
+                               vkfft_skip=self.skip_axis, vkfft_nbatch=self.n_batch)
             if self.norm == "ortho":
                 dest *= self._get_fft_scale(norm=0)
             return dest
@@ -445,7 +461,10 @@ class VkFFTApp(VkFFTAppBase):
                     raise RuntimeError("VkFFTApp.fft: dest!=src but this is an inplace transform")
             res = _vkfft_opencl.ifft(self.app, int(src.data.int_ptr), int(src.data.int_ptr), int(queue.int_ptr))
             check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
-                               self.dct, self.dst, backend="opencl")
+                               self.dct, self.dst,
+                               backend="opencl:%s:%s" % (queue.device.platform.name, queue.device.name),
+                               strides=self.strides0, vkfft_shape=self.shape,
+                               vkfft_skip=self.skip_axis, vkfft_nbatch=self.n_batch)
             if self.norm == "ortho":
                 src *= self._get_ifft_scale(norm=0)
             if self.r2c:
@@ -469,7 +488,10 @@ class VkFFTApp(VkFFTAppBase):
                 res = _vkfft_opencl.ifft(self.app, int(src.data.int_ptr), int(dest.data.int_ptr),
                                          int(queue.int_ptr))
             check_vkfft_result(res, src.shape, src.dtype, self.ndim, self.inplace, self.norm, self.r2c,
-                               self.dct, self.dst, backend="opencl")
+                               self.dct, self.dst,
+                               backend="opencl:%s:%s" % (queue.device.platform.name, queue.device.name),
+                               strides=self.strides0, vkfft_shape=self.shape,
+                               vkfft_skip=self.skip_axis, vkfft_nbatch=self.n_batch)
             if self.norm == "ortho":
                 dest *= self._get_ifft_scale(norm=0)
             return dest

@@ -300,9 +300,9 @@ int fft(VkFFTApplication* app, void *in, void *out, void *kernel)
 {
   // Modify the original app only to avoid allocating
   // new buffer pointers in memory
-  *(app->configuration.buffer) = out;
-  *(app->configuration.inputBuffer) = in;
-  *(app->configuration.outputBuffer) = out;
+  *((void**)app->configuration.buffer) = out;
+  *((void**)app->configuration.inputBuffer) = in;
+  *((void**)app->configuration.outputBuffer) = out;
 
   VkFFTLaunchParams par = {};
   par.buffer =  app->configuration.buffer;
@@ -311,7 +311,7 @@ int fft(VkFFTApplication* app, void *in, void *out, void *kernel)
 
   if(app->configuration.performConvolution)
   {
-    *(app->configuration.kernel) = kernel;
+    *((void**)app->configuration.kernel) = kernel;
     par.kernel = app->configuration.kernel;
   }
 
@@ -322,9 +322,9 @@ int ifft(VkFFTApplication* app, void *in, void *out)
 {
   // Modify the original app only to avoid allocating
   // new buffer pointers in memory
-  *(app->configuration.buffer) = out;
-  *(app->configuration.inputBuffer) = in;
-  *(app->configuration.outputBuffer) = out;
+  *((void**)app->configuration.buffer) = out;
+  *((void**)app->configuration.inputBuffer) = in;
+  *((void**)app->configuration.outputBuffer) = out;
 
   VkFFTLaunchParams par = {};
   par.buffer =  app->configuration.buffer;
@@ -353,19 +353,19 @@ void free_config(VkFFTConfiguration *config)
 {
   free(config->device);
   // Only frees the pointer to the buffer pointer, not the buffer itself.
-  free(config->buffer);
-  free(config->bufferSize);
+  free((void*)config->buffer);
+  free((void*)config->bufferSize);
 
-  if((config->outputBuffer != NULL) && (config->buffer != config->outputBuffer)) free(config->outputBuffer);
+  if((config->outputBuffer != NULL) && (config->buffer != config->outputBuffer)) free((void*)config->outputBuffer);
   if((config->inputBuffer != NULL) && (config->buffer != config->inputBuffer)
-     && (config->outputBuffer != config->inputBuffer)) free(config->inputBuffer);
+     && (config->outputBuffer != config->inputBuffer)) free((void*)config->inputBuffer);
 
   if((config->inputBufferSize != NULL) && (config->inputBufferSize != config->bufferSize))
-    free(config->inputBufferSize);
+    free((void*)config->inputBufferSize);
   if((config->outputBufferSize != NULL) && (config->outputBufferSize != config->bufferSize)
-     && (config->outputBufferSize != config->inputBufferSize)) free(config->outputBufferSize);
+     && (config->outputBufferSize != config->inputBufferSize)) free((void*)config->outputBufferSize);
 
-  if((config->kernel != NULL) && config->performConvolution) free(config->kernel);
+  if((config->kernel != NULL) && config->performConvolution) free((void*)config->kernel);
 
   if(config->stream != 0) free(config->stream);
   free(config);

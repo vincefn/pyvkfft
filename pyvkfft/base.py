@@ -324,6 +324,32 @@ def radix_gen_n(nmax, max_size, radix, ndim=None, even=False, exclude_one=True, 
     return v
 
 
+def strides_nonzero(strides):
+    """
+    Fix the strides for an array, if one is zero it should be set to the
+    smallest stride between the next and previous nonzero stride.
+    """
+    if strides is None or np.isscalar(strides):
+        return strides
+    n = len(strides)
+    strides = list(strides)
+    for i in range(n):
+        s = strides[i]
+        if s == 0:
+            # use the maximum previous or next nonzero stride
+            m1, m2 = 0, 0
+            for ii in range(i + 1, n - 1):
+                if strides[ii] > 0:
+                    m1 = strides[ii]
+                    break
+            for ii in range(i - 1, -1, -1):
+                if strides[ii] > 0:
+                    m2 = strides[ii]
+                    break
+            strides[i] = min(m1, m2)
+    return strides
+
+
 def calc_transform_axes(shape, axes=None, ndim=None, strides=None):
     """ Compute the final shape of the array to be passed
     to VkFFT, and the axes for which the transform should
@@ -351,6 +377,7 @@ def calc_transform_axes(shape, axes=None, ndim=None, strides=None):
     """
     # reverse order to have list as (nx, ny, nz,...)
     shape1 = list(reversed(list(shape)))
+    n = len(shape)
     if np.isscalar(axes):
         axes = [axes]
     if ndim is None:
@@ -359,27 +386,50 @@ def calc_transform_axes(shape, axes=None, ndim=None, strides=None):
             axes = list(range(ndim1))
     else:
         ndim1 = ndim
-        if axes is None:
-            axes = list(range(-1, -ndim - 1, -1))
-        else:
+        if axes is not None:
             if ndim1 != len(axes):
                 raise RuntimeError("The number of transform axes does not match ndim:", axes, ndim)
 
-    if strides is not None and len(shape) > 1:
-        idx = np.argsort(strides)[::-1]
-        if not np.all((idx[1:] - idx[:-1]) > 0):
-            # Array is not C-ordered, need to move axes
-            idxend = -len(idx) + idx
-            # print("Re-ordering:", shape1, np.take(shape1, idx), "axes:", axes, [idxend[i] for i in axes])
-            shape1 = np.take(shape1, idx).tolist()
-            axes = [idxend[i] for i in axes]
+    # Axes with VkFFT order
+    if axes is not None:
+        axes1 = [n - 1 - ax if ax >= 0 else -ax - 1 for ax in axes]
+    else:
+        # will be modified to take fastest axes if F-ordered
+        axes1 = list(range(ndim1))
+
+    if strides is not None and n > 1:
+        # The fast axis must come first for VkFFT.
+        # Careful with the special case of axes with size 1 (stride does not increase or is 0...)
+        # Try with shape=(3,1), F and C-ordered as a corner case...
+        s0 = strides_nonzero(strides)
+        reorder_shape, reorder_axes = False, False
+        if not np.all([s0[i] >= s0[i + 1] for i in range(n - 1)]):
+            # Array is F-ordered, need to reorder shape & axes
+            if axes is None:
+                # Using ndim, so axes1 is already OK
+                reorder_shape = True
+            else:
+                reorder_shape, reorder_axes = True, True
+        elif axes is not None and (np.sum([s > 1 for s in shape]) == 1):
+            # Case from hell: e.g. shape=(3,1). Strides won't help, so use axes
+            if axes1[-1] == n - 1:  # same as axes[-1]==0
+                reorder_shape, reorder_axes = True, True
+        if reorder_shape:
+            shape1 = shape1[::-1]
+        if reorder_axes:
+            axes1 = [n - 1 - ax if ax >= 0 else -ax - 1 for ax in axes1]
+
+    # List of non-transformed axes
+    skip_axis = [True] * len(shape1)
+    for i in axes1:
+        skip_axis[i] = False
+
+    if np.all([shape1[ax] == 1 for ax in axes1]):
+        raise RuntimeError(f"No axis is actually transformed: shape={shape} ndim={ndim} "
+                           f"axes={axes} strides={strides} vkfft_shape={shape1} "
+                           f"vkfft_axes={axes1} vkfft_skip={skip_axis}")
 
     # Collapse non-transform axes when possible
-    skip_axis = [True] * len(shape1)
-    for i in axes:
-        skip_axis[i] = False
-    skip_axis = list(reversed(skip_axis))  # numpy (z,y,x) to vkfft (x,y,z) order
-    # print(shape1, skip_axis, axes)
     i = 0
     while i <= len(shape1) - 2:
         if skip_axis[i] and skip_axis[i + 1]:
@@ -401,16 +451,16 @@ def calc_transform_axes(shape, axes=None, ndim=None, strides=None):
         # Axes beyond ndim are marked skipped
         skip_axis[i] = True
 
-    # # Axes beyond ndim are taken into account only through n_batch (?)
-    # shape1 = shape1[:ndim1]
-    # skip_axis = skip_axis[:ndim1]
+    if axes is None:
+        # Return the actual axes transformed
+        axes = [n - 1 - ax if ax >= 0 else -ax - 1 for ax in axes1]
 
-    # print(shape, axes, ndim, strides, "->", shape1, skip_axis)
     return shape1, n_batch, skip_axis, ndim1, axes
 
 
 def check_vkfft_result(res, shape=None, dtype=None, ndim=None, inplace=None,
-                       norm=None, r2c=None, dct=None, dst=None, axes=None, backend=None):
+                       norm=None, r2c=None, dct=None, dst=None, axes=None, backend=None,
+                       strides=None, vkfft_shape=None, vkfft_skip=None, vkfft_nbatch=None):
     """
     Check VkFFTResult code.
 
@@ -425,6 +475,10 @@ def check_vkfft_result(res, shape=None, dtype=None, ndim=None, inplace=None,
     :param dst: False, 1, 2, 3 or 4
     :param axes: transform axes
     :param backend: the backend
+    :param strides: the array strides
+    :param vkfft_shape: the shape passed to VkFFT
+    :param vkfft_skip: the skipped axis list passed to VkFFT
+    :param vkfft_nbatch: VkFFT batch parameter
     :raises RuntimeError: if res != 0
     """
     if isinstance(res, ctypes.c_int):
@@ -453,12 +507,23 @@ def check_vkfft_result(res, shape=None, dtype=None, ndim=None, inplace=None,
             s += str(dtype) + " "
         if axes is not None:
             s += str(axes).replace(" ", "") + " "
+        if strides is not None:
+            s += "strides=" + str(strides).replace(" ", "") + " "
         if ndim is not None:
             s += "%dD " % ndim
         if inplace:
             s += "inplace "
         if norm:
             s += "norm=%s " % str(norm)
+        if vkfft_shape is not None or vkfft_skip is not None or vkfft_nbatch is not None:
+            s += "[VkFFT:"
+            if vkfft_shape is not None:
+                s += " shape= " + str(vkfft_shape).replace(" ", "")
+            if vkfft_skip is not None:
+                s += " skip=" + str([int(sk) for sk in vkfft_skip]).replace(" ", "")
+            if vkfft_nbatch is not None:
+                s += f" nbatch={vkfft_nbatch}"
+            s += "] "
         if backend is not None:
             s += "[%s]" % backend
         try:
@@ -563,7 +628,19 @@ class VkFFTApp:
             raise RuntimeError("R2C, DCT and DST are mutually exclusive")
         if (r2c or dct or dst) and dtype not in [np.float16, np.float32, np.float64]:
             raise RuntimeError("R2C, DST or DCT selected but input type is not real")
-        self.fast_axis = len(shape) - 1 if strides is None else np.argmin(strides)
+        self.fast_axis = len(shape) - 1  # default for C-ordered if strides is None
+        if strides is not None:
+            # Getting the real fast axis can be tricky. Lots of corner cases,
+            # as the stride can be zero for axes of size 1...
+            if axes is not None and np.sum([sh > 1 for sh in shape]) == 1:
+                # Strides won't help, so use the last transformed axis listed
+                # as fast axis-following numpy convention
+                self.fast_axis = axes[-1]
+            else:
+                s0 = strides_nonzero(strides)
+                if not np.all([s0[i] >= s0[i + 1] for i in range(len(shape) - 1)]):
+                    # F-ordered array
+                    self.fast_axis = 0
         if r2c and axes is not None:
             if self.fast_axis not in axes and -len(shape) + self.fast_axis not in axes:
                 raise RuntimeError(f"the fast axis must be transformed for R2C"
