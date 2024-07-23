@@ -1,3 +1,7 @@
+Version 2024.1.4 (2024-07-23)
+-----------------------------
+* support numpy >=2.0
+
 Version 2024.1.3 (2024-03-19)
 -----------------------------
 * Correct handling of arrays where some axes
@@ -5,7 +9,7 @@ Version 2024.1.3 (2024-03-19)
   with a number of corner cases for R2C where the
   fast axis must be transformed.
 
-Version 2024.1.2.post0 (2024-03-19)
+Version 2024.1.2.post0 (2024-05-01)
 -----------------------------
 * Fix nvcc search in setup.py without a CUDA_HOME type
   environment variable under linux.
