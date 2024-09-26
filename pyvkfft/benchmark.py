@@ -22,12 +22,25 @@ from itertools import permutations
 from time import localtime, strftime
 import numpy as np
 import matplotlib.pyplot as plt
+from numexpr import nthreads
+
 from pyvkfft.version import vkfft_version, vkfft_git_version
 from pyvkfft.base import primes
 
+try:
+    from cpuinfo import get_cpu_info
+except ImportError:
+    get_cpu_info = None
+
+
+def get_cpu_name():
+    if get_cpu_info is None:
+        return "CPU"
+    d = get_cpu_info()
+    return f"{d['brand_raw']}"
+
 
 # test for GPU packages in parallel process (slower but cleaner)
-
 
 def _test_pyvkfft_cuda(q):
     try:
@@ -614,6 +627,93 @@ def bench_gpyfft(sh, precision='single', ndim=1, nb_repeat=3, nb_loop=1, gpu_nam
         results = q.get(timeout=10)
     except:
         results = {'dt': 0, 'gbps': 0, 'gpu_name_real': None, 'platform_name_real': None}
+    p.join()
+    return results
+
+
+def _bench_scipy(q, sh, precision='single', ndim=1, nb_repeat=3, nb_loop=1, nthreads=None):
+    from scipy.fft import fftn, ifftn
+    dtype = np.complex128 if precision == 'double' else np.complex64
+    gpu_name_real = get_cpu_name()
+    # Adjust the batch size for CPU calculations (10-50x slower)
+    sh = list(sh)
+    sh[0] = max(1, sh[0] // 10)
+    d = np.random.uniform(0, 1, sh).astype(dtype)
+    dt = 0
+    ax = list(range(len(sh)))[-ndim:]
+    for i in range(nb_repeat):
+        t0 = timeit.default_timer()
+        for ii in range(nb_loop):
+            a = fftn(d, axes=ax, overwrite_x=True, workers=nthreads)
+            a = ifftn(d, axes=ax, overwrite_x=True, workers=nthreads)
+        dt1 = (timeit.default_timer() - t0) / nb_loop
+        if dt == 0:
+            dt = dt1
+        elif dt1 < dt:
+            dt = dt1
+    gbps = d.nbytes * ndim * 2 * 2 / dt / 1024 ** 3
+    results = {'dt': dt, 'gbps': gbps, 'gpu_name_real': gpu_name_real}
+    if q is None:
+        return results
+    else:
+        q.put(results)
+
+
+def bench_scipy(sh, precision='single', ndim=1, nb_repeat=3, nb_loop=1, nthreads=None, serial=False):
+    if serial:
+        return _bench_scipy(None, sh, precision, ndim, nb_repeat, nb_loop, nthreads)
+    q = Queue()
+    p = Process(target=_bench_scipy, args=(q, sh, precision, ndim, nb_repeat, nb_loop, nthreads))
+    p.start()
+    try:
+        results = q.get(timeout=10)
+    except:
+        results = {'dt': 0, 'gbps': 0, 'gpu_name_real': 'CPU'}
+    p.join()
+    return results
+
+
+def _bench_pyfftw(q, sh, precision='single', ndim=1, nb_repeat=3, nb_loop=1, nthreads=None):
+    from pyfftw.builders import fftn, ifftn
+
+    dtype = np.complex128 if precision == 'double' else np.complex64
+    gpu_name_real = get_cpu_name()
+    # Adjust the batch size for CPU calculations (10-50x slower)
+    sh = list(sh)
+    sh[0] = max(1, sh[0] // 10)
+    d = np.random.uniform(0, 1, sh).astype(dtype)
+    dt = 0
+    ax = list(range(len(sh)))[-ndim:]
+    t1 = fftn(d, axes=ax, overwrite_input=True, planner_effort='FFTW_MEASURE', threads=nthreads)
+    t2 = ifftn(d, axes=ax, overwrite_input=True, planner_effort='FFTW_MEASURE', threads=nthreads)
+    for i in range(nb_repeat):
+        t0 = timeit.default_timer()
+        for ii in range(nb_loop):
+            a = t1(d)
+            a = t2(d)
+        dt1 = (timeit.default_timer() - t0) / nb_loop
+        if dt == 0:
+            dt = dt1
+        elif dt1 < dt:
+            dt = dt1
+    gbps = d.nbytes * ndim * 2 * 2 / dt / 1024 ** 3
+    results = {'dt': dt, 'gbps': gbps, 'gpu_name_real': gpu_name_real}
+    if q is None:
+        return results
+    else:
+        q.put(results)
+
+
+def bench_pyfftw(sh, precision='single', ndim=1, nb_repeat=3, nb_loop=1, nthreads=None, serial=False):
+    if serial:
+        return _bench_pyfftw(None, sh, precision, ndim, nb_repeat, nb_loop, nthreads)
+    q = Queue()
+    p = Process(target=_bench_pyfftw, args=(q, sh, precision, ndim, nb_repeat, nb_loop, nthreads))
+    p.start()
+    try:
+        results = q.get(timeout=10)
+    except:
+        results = {'dt': 0, 'gbps': 0, 'gpu_name_real': 'CPU'}
     p.join()
     return results
 
