@@ -279,32 +279,20 @@ VkFFTApplication* init_app(const VkFFTConfiguration* config, int *res,
 
 int fft(VkFFTApplication* app, void *in, void *out)
 {
-  // Modify the original app only to avoid allocating
-  // new buffer pointers in memory
-  *(app->configuration.buffer) = out;
-  *(app->configuration.inputBuffer) = in;
-  *(app->configuration.outputBuffer) = out;
-
   VkFFTLaunchParams par = {};
-  par.buffer =  app->configuration.buffer;
-  par.inputBuffer = app->configuration.inputBuffer;
-  par.outputBuffer = app->configuration.outputBuffer;
+  par.buffer = (void* const*)&out;
+  if(in)par.inputBuffer = (void* const*)&in;
+  par.outputBuffer = (void* const*)&out;
 
   return VkFFTAppend(app, -1, &par);
 }
 
 int ifft(VkFFTApplication* app, void *in, void *out)
 {
-  // Modify the original app only to avoid allocating
-  // new buffer pointers in memory
-  *(app->configuration.buffer) = out;
-  *(app->configuration.inputBuffer) = in;
-  *(app->configuration.outputBuffer) = out;
-
   VkFFTLaunchParams par = {};
-  par.buffer =  app->configuration.buffer;
-  par.inputBuffer = app->configuration.inputBuffer;
-  par.outputBuffer = app->configuration.outputBuffer;
+  par.buffer = (void* const*)&out;
+  if(in)par.inputBuffer = (void* const*)&in;
+  par.outputBuffer = (void* const*)&out;
 
   return VkFFTAppend(app, 1, &par);
 }
@@ -328,12 +316,12 @@ void free_config(VkFFTConfiguration *config)
 {
   free(config->device);
   // Only frees the pointer to the buffer pointer, not the buffer itself.
-  free(config->buffer);
+  free((void*)config->buffer);
   free(config->bufferSize);
 
-  if((config->outputBuffer != NULL) && (config->buffer != config->outputBuffer)) free(config->outputBuffer);
+  if((config->outputBuffer != NULL) && (config->buffer != config->outputBuffer)) free((void*)config->outputBuffer);
   if((config->inputBuffer != NULL) && (config->buffer != config->inputBuffer)
-     && (config->outputBuffer != config->inputBuffer)) free(config->inputBuffer);
+     && (config->outputBuffer != config->inputBuffer)) free((void*)config->inputBuffer);
 
   if((config->inputBufferSize != NULL) && (config->inputBufferSize != config->bufferSize))
     free(config->inputBufferSize);
