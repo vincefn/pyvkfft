@@ -22,7 +22,6 @@ from itertools import permutations
 from time import localtime, strftime
 import numpy as np
 import matplotlib.pyplot as plt
-from numexpr import nthreads
 
 from pyvkfft.version import vkfft_version, vkfft_git_version
 from pyvkfft.base import primes
