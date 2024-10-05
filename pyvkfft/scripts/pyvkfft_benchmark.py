@@ -17,20 +17,21 @@ from datetime import datetime
 import socket
 import sqlite3
 from pyvkfft.benchmark import test_gpyfft, test_skcuda, test_pyvkfft_opencl, test_pyvkfft_cuda, test_cupy, \
-    bench_gpyfft, bench_skcuda, bench_pyvkfft_cuda, bench_pyvkfft_opencl, bench_cupy
+    bench_gpyfft, bench_skcuda, bench_pyvkfft_cuda, bench_pyvkfft_opencl, bench_cupy, bench_scipy, bench_pyfftw
 from pyvkfft.base import radix_gen_n, primes
 from pyvkfft.version import __version__, vkfft_version
 
 
 class BenchConfig:
     def __init__(self, transform: str, shape, ndim: int, inplace: bool = True, precision: str = 'single',
-                 nb_loop=1):
+                 nb_loop=1, nthreads=None):
         self.transform = transform
         self.shape = shape
         self.ndim = ndim
         self.inplace = inplace
         self.precision = precision
         self.nb_loop = nb_loop
+        self.nthreads = nthreads
 
     def __str__(self):
         return f"{self.transform}_{'x'.join([str(i) for i in self.shape])}_{self.ndim}D_" \
@@ -263,7 +264,8 @@ def run_test(config, args):
     # Separate parameters for auto-tuning coalescedMemory, aimThreads and warpSize
     vargs = vars(args)
     tune_config = {'backend': {'cuda': 'pycuda', 'opencl': 'pyopencl', 'cupy': 'cupy',
-                               'skcuda': 'skcuda', 'gpyfft': 'gpyfft'}[backend]}
+                               'skcuda': 'skcuda', 'gpyfft': 'gpyfft',
+                               'scipy': 'scipy', 'pyfftw': 'pyfftw'}[backend]}
     for k in ['coalescedMemory', 'aimThreads', 'warpSize']:
         if len(vargs[k]) > 1:
             tune_config[k] = vargs[k]
@@ -320,6 +322,14 @@ def run_test(config, args):
             platform_name_real = res['platform_name_real']
         elif backend == 'cupy':
             res = bench_cupy(sh, precision, ndim, nb_repeat, nb_loop, gpu_name, serial=args.serial)
+            gbps = res['gbps']
+            gpu_name_real = res['gpu_name_real']
+        elif backend == 'scipy':
+            res = bench_scipy(sh, precision, ndim, nb_repeat, nb_loop, c.nthreads, serial=args.serial)
+            gbps = res['gbps']
+            gpu_name_real = res['gpu_name_real']
+        elif backend == 'pyfftw':
+            res = bench_pyfftw(sh, precision, ndim, nb_repeat, nb_loop, c.nthreads, serial=args.serial)
             gbps = res['gbps']
             gpu_name_real = res['gpu_name_real']
         if gpu_name_real is None or gbps == 0:
@@ -443,13 +453,14 @@ def make_parser():
     desc = "Run pyvkfft benchmark tests. This is pretty slow as each test runs " \
            "in a separate process (including the GPU initialisation) - this is done to avoid " \
            "any context a memory issues when performing a large number of tests. " \
-           "This can also be used to compare results with cufft (scikit-cuda or cupy) and gpyfft. " \
-           ""
+           "This can also be used to compare results with cufft (scikit-cuda or cupy), gpyfft, " \
+           "scipy and pyfftw (if available)."
 
     parser = argparse.ArgumentParser(prog='pyvkfft-benchmark', epilog=epilog,
                                      description=desc,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--backend', action='store', choices=['cuda', 'opencl', 'gpyfft', 'skcuda', 'cupy'],
+    parser.add_argument('--backend', action='store',
+                        choices=['cuda', 'opencl', 'gpyfft', 'skcuda', 'cupy', 'numpy', 'scipy', 'pyfftw'],
                         default='opencl', help="FFT backend to use, 'cuda' and 'opencl' will "
                                                "use pyvkfft with the corresponding language.")
     parser.add_argument('--precision', action='store', choices=['single', 'double'],
@@ -501,7 +512,7 @@ def make_parser():
                         default=[2, 256])
     sysgrp.add_argument('--range-mb', action='store', nargs=2, type=int,
                         help="Range of array sizes in MBytes. This is combined with --range to"
-                             "find the actual range to use.",
+                             "find the actual range to use (default: max=128MB).",
                         default=[0, 128])
     sysgrp.add_argument('--minsize-mb', action='store', type=int, default=100,
                         help="Minimal size (in MB) of the transformed array to ensure a precise "
@@ -515,6 +526,9 @@ def make_parser():
                              "test of 512x512, the batch number is 100. Use 1 to disable "
                              "batch, or any other number to use a fixed batch size.",
                         default=-1)
+    sysgrp.add_argument('--nthreads', action='store', type=int,
+                        help="Number of threads/workers for CPU transforms",
+                        default=1)
     sysgrp.add_argument('--r2c', action='store_true',
                         help="Test real-to-complex transform (default is c2c)")
     sysgrp.add_argument('--dct', action='store', default=False, type=int,
@@ -589,6 +603,20 @@ def main():
         raise RuntimeError("--r2c, --dct and --dst are nor supported for gpyfft or skcuda backends")
     if args.systematic:
         transform = 'r2c' if args.r2c else f'dct{args.dct}' if args.dct else f'dst{args.dst}' if args.dst else 'c2c'
+        if args.backend in ['numpy', 'scipy', 'pyfftw'] and transform != 'c2c':
+            raise RuntimeError("Only c2c transforms are allowed for numpy, scipy and pyfftw")
+        if args.backend in ['numpy', 'scipy', 'pyfftw'] and args.inplace:
+            raise RuntimeError("Inplace transforms are not allowed for scipy and pyfftw")
+        if args.backend == 'scipy':
+            try:
+                import scipy
+            except ImportError:
+                raise RuntimeError("scipy is not available")
+        if args.backend == 'pyfftw':
+            try:
+                import pyfftw
+            except ImportError:
+                raise RuntimeError("pyfftw is not available")
         config = []
         for ndim in args.ndim:
             size_min_max = np.array(args.range_mb) * 1024 ** 2
@@ -596,6 +624,8 @@ def main():
                 size_min_max //= 16
             else:
                 size_min_max //= 8
+            if args.r2c or args.dct or args.dst:
+                size_min_max //= 2
             size_min_max = np.round(size_min_max ** (1 / ndim)).astype(int)
 
             if args.bluestein:
@@ -621,6 +651,9 @@ def main():
                                           inverted=args.bluestein,
                                           r2r=args.dct if args.dct else args.dst),
                               dtype=int).flatten()
+            # Warn what is limiting the size
+            print(f"Generated range: {vshape.min()}-{vshape.max()} "
+                  f"[--range max={args.range[1]}, --range-mb gives n<={size_min_max[1]}]")
             # Number of loops * batch size to transform at least 100 MB
             s = 8
             if args.precision == 'double':
@@ -632,14 +665,15 @@ def main():
             nb = args.minsize_mb * 1024 ** 2 / (vshape ** ndim * 8)
 
             if args.nbatch == -1:
-                nloop, nbatch =  np.ones(len(vshape), dtype=int), nb.astype(int)
+                nloop, nbatch = np.ones(len(vshape), dtype=int), nb.astype(int)
             else:
                 nbatch = np.ones(len(vshape), dtype=int) * args.nbatch
                 nloop = nb.astype(int) / nbatch
             nbatch = np.maximum(1, nbatch).astype(int)
             nloop = np.minimum(1024, np.maximum(1, nloop)).astype(int)
             config += [BenchConfig(transform, [b] + [n] * ndim, ndim, inplace=args.inplace,
-                                   precision=args.precision, nb_loop=nl)
+                                   precision=args.precision, nb_loop=nl,
+                                   nthreads=args.nthreads)
                        for b, n, nl in zip(nbatch, vshape, nloop)]
     else:
         config = default_config

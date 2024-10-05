@@ -298,16 +298,10 @@ VkFFTApplication* init_app(const VkFFTConfiguration* config, int *res,
 
 int fft(VkFFTApplication* app, void *in, void *out, void *kernel)
 {
-  // Modify the original app only to avoid allocating
-  // new buffer pointers in memory
-  *((void**)app->configuration.buffer) = out;
-  *((void**)app->configuration.inputBuffer) = in;
-  *((void**)app->configuration.outputBuffer) = out;
-
   VkFFTLaunchParams par = {};
-  par.buffer =  app->configuration.buffer;
-  par.inputBuffer = app->configuration.inputBuffer;
-  par.outputBuffer = app->configuration.outputBuffer;
+  par.buffer = (void* const*)&out;
+  if(in)par.inputBuffer = (void* const*)&in;
+  par.outputBuffer = (void* const*)&out;
 
   if(app->configuration.performConvolution)
   {
@@ -320,16 +314,10 @@ int fft(VkFFTApplication* app, void *in, void *out, void *kernel)
 
 int ifft(VkFFTApplication* app, void *in, void *out)
 {
-  // Modify the original app only to avoid allocating
-  // new buffer pointers in memory
-  *((void**)app->configuration.buffer) = out;
-  *((void**)app->configuration.inputBuffer) = in;
-  *((void**)app->configuration.outputBuffer) = out;
-
   VkFFTLaunchParams par = {};
-  par.buffer =  app->configuration.buffer;
-  par.inputBuffer = app->configuration.inputBuffer;
-  par.outputBuffer = app->configuration.outputBuffer;
+  par.buffer = (void* const*)&out;
+  if(in)par.inputBuffer = (void* const*)&in;
+  par.outputBuffer = (void* const*)&out;
 
   return VkFFTAppend(app, 1, &par);
 }
@@ -354,7 +342,7 @@ void free_config(VkFFTConfiguration *config)
   free(config->device);
   // Only frees the pointer to the buffer pointer, not the buffer itself.
   free((void*)config->buffer);
-  free((void*)config->bufferSize);
+  free(config->bufferSize);
 
   if((config->outputBuffer != NULL) && (config->buffer != config->outputBuffer)) free((void*)config->outputBuffer);
   if((config->inputBuffer != NULL) && (config->buffer != config->inputBuffer)
