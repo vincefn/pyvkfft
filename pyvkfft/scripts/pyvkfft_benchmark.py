@@ -349,8 +349,15 @@ def run_test(config, args):
         if db:
             if first:
                 if type(db) != str:
+                    tmp = ""
+                    if 'coalescedMemory' in tune_config:
+                        tmp += '-coalmem'
+                    if 'aimThreads' in tune_config:
+                        tmp += '-threads'
+                    if 'warpSize' in tune_config:
+                        tmp += '-warp'
                     db = f"pyvkfft{__version__}-{vkfft_version()}-" \
-                         f"{g.replace(' ', '_')}-{backend}-{c.transform}-" \
+                         f"{g.replace(' ', '_')}-{backend}-{c.transform}{tmp}-" \
                          f"{datetime.now().strftime('%Y_%m_%d_%Hh_%Mm_%Ss')}-benchmark.sql"
 
                 hostname = socket.gethostname()
