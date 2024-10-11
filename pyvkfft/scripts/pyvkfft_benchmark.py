@@ -68,6 +68,7 @@ def plot_benchmark(*sql_files):
     vgpu = []
     vbackend = []
     vopt = []
+    transform = "c2c"
     for ndim in (1, 2, 3):
         for src in sql_files:
             dbc0 = sqlite3.connect(src).cursor()
@@ -77,6 +78,7 @@ def plot_benchmark(*sql_files):
             config = {col[0]: r[i] for i, col in enumerate(dbc0.description)}
             gpu = config['gpu']
             clplat = config['platform']
+            transform = config['transform']
             if gpu not in vgpu:
                 vgpu.append(gpu)
             if config['backend'] not in vbackend:
@@ -114,9 +116,9 @@ def plot_benchmark(*sql_files):
                 vlength = [int(r[ish].split('x')[-1]) for r in res]
                 platgpu = f'{clplat}:{gpu}' if len(clplat) else gpu
                 if config['backend'] in ['skcuda', 'cupy', 'gpyfft']:
-                    k = f"{config['backend']}[{platgpu}]"
+                    k = f"{config['backend']}[{platgpu}]-{transform}"
                 else:
-                    k = f"VkFFT.{config['backend']} {vkfft_ver}[{platgpu}]"
+                    k = f"VkFFT.{config['backend']} {vkfft_ver}[{platgpu}]-{transform}"
                     if config['warpSize'] != -1:
                         if config['warpSize'] == -99:
                             k += f"-warp=auto"
@@ -157,7 +159,7 @@ def plot_benchmark(*sql_files):
     vgpu.sort()
     vbackend.sort()
     vopt.sort()
-    str_config = ",".join(vgpu) + f"-{','.join(vbackend)}"
+    str_config = ",".join(vgpu) + f"-{','.join(vbackend)}-{transform}"
     if len(vopt):
         str_opt = "-" + "_".join(vopt)
     else:
@@ -348,7 +350,7 @@ def run_test(config, args):
             if first:
                 if type(db) != str:
                     db = f"pyvkfft{__version__}-{vkfft_version()}-" \
-                         f"{g.replace(' ', '_')}-{backend}-" \
+                         f"{g.replace(' ', '_')}-{backend}-{c.transform}-" \
                          f"{datetime.now().strftime('%Y_%m_%d_%Hh_%Mm_%Ss')}-benchmark.sql"
 
                 hostname = socket.gethostname()
