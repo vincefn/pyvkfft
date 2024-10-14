@@ -106,11 +106,19 @@ def plot_benchmark(*sql_files):
                 igbps = vk.index('gbps')
                 vgbps = [r[igbps] for r in res]
 
-                ialgo = vk.index('algo')
-                valgo = [r[ialgo] for r in res]
+                if 'algo' in vk:
+                    ialgo = vk.index('algo')
+                    valgo = [r[ialgo] for r in res]
+                else:
+                    # For older benchmarks (pyvkfft<2024)
+                    valgo = 'r' * ndim
 
-                iup = vk.index('nb_upload')
-                vup = [r[iup] for r in res]
+                if 'nb_upload' in vk:
+                    iup = vk.index('nb_upload')
+                    vup = [r[iup] for r in res]
+                else:
+                    # For older benchmarks (pyvkfft<2024)
+                    vup = [1] * ndim
 
                 ish = vk.index('shape')
                 vlength = [int(r[ish].split('x')[-1]) for r in res]
@@ -198,10 +206,10 @@ def plot_benchmark(*sql_files):
             if backend in ['cuda', 'opencl']:
                 vfill = np.array(['B' if 'B' in a else 'R' if 'R' in a else 'r' for a in v['algo']])
             elif backend in ['gpyfft']:
-                vfill = ['r'] * len(vprim)
+                vfill = np.array(['r'] * len(vprim))
             else:
                 # cufft (cupy, skcuda)
-                vfill = ['B' if xx <= 7 else 'r' for xx in vprim]
+                vfill = np.array(['B' if xx <= 7 else 'r' for xx in vprim])
             if one_backend:
                 # Plot separately Bluestein, Rader and radix
                 for algo in ['r', 'B', 'R']:
