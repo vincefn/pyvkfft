@@ -1,0 +1,8 @@
+Debug file.
+make_config: 0000021ADC900070 
+0000021ABD5EA310, 0000021ADD19A590
+256000 2 1 1, FFTdim: 2
+2048008
+2048000
+
+ End of debug file.

@@ -1,0 +1,42 @@
+#version 450
+#extension GL_EXT_scalar_block_layout : enable
+layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2 ) in;
+#define complex64_t vec2
+
+
+layout(std430, binding = 0) uniform params_t{
+    int Nf;
+    int Nb;
+    float dt;
+    float wL;
+} params_d;
+
+
+layout(std430, binding = 2) readonly buffer SSBO1 {
+   complex64_t data_LDM_FT_d[];
+};
+
+layout(std430, binding = 3) writeonly buffer SSBO2 {
+   complex64_t spectrum_FT_d[];
+};
+
+
+void main() {
+
+    const float pi = 3.141592653589793f;
+    
+	uint k = gl_GlobalInvocationID.x;
+
+	if (k >= params_d.Nf) return;
+ 
+    int sx = 1;
+    int si = params_d.Nf;
+
+    float x = k / (params_d.Nf * params_d.dt);    
+    float mul = exp( - pi * x * params_d.wL );
+    
+    for (int i=0; i < params_d.Nb; i++){
+        spectrum_FT_d[k*sx + i*si] = data_LDM_FT_d[k*sx + i*si] * mul;
+    }
+    
+}

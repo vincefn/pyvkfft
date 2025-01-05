@@ -174,7 +174,7 @@ int get_buf_size(VkBuffer buffer, VkDevice* dev){
     
 };
 
-
+ofstream myfile;
 
 VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
                                 VkBuffer buffer, VkBuffer buffer_out, 
@@ -190,6 +190,13 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
                                 const int warpSize, const long* grouped_batch)
 {
   VkFFTConfiguration *config = new VkFFTConfiguration({});
+  
+
+  myfile.open ("outputtt.txt");
+  myfile << "Debug file.\n";
+  
+  
+  
   config->FFTdim = fftdim;
   for(int i=0; i<VKFFT_MAX_FFT_DIMENSIONS; i++) config->size[i] = size[i];
   config->numberBatches = n_batch;
@@ -265,6 +272,7 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
     {
       psizein = new uint64_t;
       *psizein = (uint64_t)(s * precision);
+      config->isInputFormatted = 0;
       config->inverseReturnToInputBuffer = 1;
 	  config->inputBufferStride[0] = size[0];
       for(int i=1; i<VKFFT_MAX_FFT_DIMENSIONS; i++)
@@ -300,12 +308,18 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
   {
     config->buffer = pbuf;
   }
+  cout << "Hello everyone! Please get yourself comfortable while the Config is being made!\n";
 
-  /*
-  cout << "make_config: "<<config<<" "<<endl<< config->buffer<<", "<< *(config->buffer)<<", "
-       << config->size[0] << " " << config->size[1] << " " << config->size[2] << " "<< config->FFTdim
-       << " " << *(config->bufferSize) << endl;
-  */
+  myfile << "make_config: "<<config<<" "<<endl
+       << config->buffer<<", "<< *(config->buffer)<< endl
+       << size[0] << " " << size[1] << " " << size[2] << " " << size[3]<< ", FFTdim: " << config->FFTdim << endl
+       << *(config->bufferSize) << endl 
+       << *(config->inputBufferSize) << endl;
+  
+  
+  myfile << "\n End of debug file.\n";
+  myfile.close();
+
   return config;
 }
 
