@@ -1,6 +1,6 @@
 
-import sys
-sys.path.append('..')
+from sys import path
+path.append('..')
 import os
 
 from vulkan_compute_lib import GPUApplication, GPUArray, GPUStruct
@@ -12,7 +12,6 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 from ctypes import Structure, c_float, c_int
 from time import perf_counter
-import vulkan as vk
 
 L = lambda t, w: 2 / (w * np.pi) * 1 / (1 + 4 * (t / w) ** 2)
 L_FT = lambda f, w: np.exp(-np.pi * np.abs(f) * w)
@@ -45,7 +44,7 @@ def mock_spectrum(Nt, Nl, m=1):
 
 
 t_max = 100.0
-Nt = 25600
+Nt = 256
 Nt = next_fast_len_even(Nt)
 print("Nt = {:d}".format(Nt))
 t_arr = np.linspace(0, t_max, Nt)
@@ -81,18 +80,7 @@ I_arr_FT = np.fft.rfft(I_arr).real
 # Init Vulkan
 shader_path = os.path.dirname(__file__)
 app = GPUApplication(deviceID=1, path=shader_path)
-app.print_memory_properties()
 
-props_device = vk.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
-props_host = vk.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | vk.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-props_mixed = props_device | props_host
-
-if (memtype := app.findMemoryType3(31, props_mixed)) < 0:
-    memtype = (app.findMemoryType3(31, props_device),
-               app.findMemoryType3(31, props_host))
-
-print(memtype)
-sys.exit()
 
 app.params_d = GPUStruct.fromStruct(params_h, binding=0)
 ##app.I_arr_d = GPUArray.fromArr(I_arr, binding=1)
@@ -105,16 +93,10 @@ app.I_arr_d.setData(I_arr)
 
 app.command_list = [
     # app.cmdAddTimestamp("start"),
-    app.cmdClearBuffer(app.I_arr_FT_d, timestamp=False),
-    # app.cmdFillLDM((init_h.N_lines // N_tpb + 1, 1, 1), threads, timestamp=True),
-    # app.cmdClearBuffer(app.S_klm_FT_d, timestamp=True),
-    app.cmdFFT(app.I_arr_d, app.I_arr_FT_d, timestamp=False),
-    # app.cmdClearBuffer(app.spectrum_FT_d, timestamp=True),
-    #app.cmdApplyTestLineshape(
-    #    (Nf * Nb // Ntpb + 1, 1, 1), threads, timestamp=True
-    #),
-    # app.cmdClearBuffer(app.spectrum_d, timestamp=True),
-    #app.cmdIFFT(app.I_arr_FT_d, app.res_d, timestamp=True),
+    app.cmdClearBuffer(app.I_arr_FT_d),
+    app.cmdFFT(app.I_arr_d, app.I_arr_FT_d),
+    app.cmdApplyTestLineshape((Nf * Nb // Ntpb + 1, 1, 1), threads ),
+    app.cmdIFFT(app.I_arr_FT_d, app.res_d),
 ]
 app.writeCommandBuffer()
 
@@ -122,34 +104,40 @@ app.writeCommandBuffer()
 
 def update(val):
     Nb = sN.val
+    wL = sw.val
 
+    lineshape_FT = L_FT(f_arr, wL)
+    
     # Shuffle mock spectral lines:
 ##    I_arr = mock_spectrum(Nt, Nl, m=Nb)
 ##    app.I_arr_d.reshape((Nb, Nt))
 ##    app.I_arr_d.setData(I_arr)
 
     # Recalc ref
-    res_ref = np.zeros((Nb_max, Nf), dtype=np.float32)
-    I_arr_FT = np.fft.rfft(I_arr[:Nb,:]).real
-    res_ref[:Nb] = I_arr_FT[:Nb]
+    res_ref = np.zeros((Nb_max, Nt), dtype=np.float32)
+    I_arr_FT = np.fft.rfft(I_arr[:Nb,:])
+    res_ref[:Nb] = np.fft.irfft(I_arr_FT * lineshape_FT[np.newaxis,:])
 
     # Recalc gpu
     params_h.Nb = Nb
     app.params_d.setData(params_h)
     
-
+    app.I_arr_d.reshape((Nb, Nf))
     app.I_arr_FT_d.reshape((Nb, Nf))
-
-    #app.freeCommandBuffer()
+    app.res_FT_d.reshape((Nb, Nf))
+    app.res_d.reshape((Nb, Nt))
+    
+    app.I_arr_d.setData(I_arr[:Nb,:])
+    
+    app.freeCommandBuffer()
     app.writeCommandBuffer()
 
 
     
     t0 = perf_counter()
-    print('running command buffer...')
     app.run()
     
-    res_gpu = app.I_arr_FT_d.getData().real
+    res_gpu = app.I_arr_d.getData().real
     #print(res_gpu.shape)
     t1 = perf_counter()
 
@@ -157,10 +145,10 @@ def update(val):
     
     for i in range(Nb_max):        
         lines_ref[i].set_ydata(res_ref[i])
-        if i < Nb:
-            lines_gpu[i].set_ydata(res_gpu[i])
-        else:
-            lines_gpu[i].set_ydata(np.zeros(Nf))
+##        if i < Nb:
+##            lines_gpu[i].set_ydata(res_gpu[i])
+##        else:
+##            lines_gpu[i].set_ydata(np.zeros(Nt))
     fig.canvas.draw_idle()
 
 
@@ -169,13 +157,13 @@ fig, ax = plt.subplots()
 plt.subplots_adjust(left=0.25, bottom=0.25)
 
 ax.axhline(0, c="k", lw=1, alpha=0.5)
-lines_ref = ax.plot(f_arr, np.zeros((Nb_max, Nf), dtype=np.float32).real.T, '-', lw=1)
-lines_gpu = ax.plot(f_arr, np.zeros((Nb_max, Nf), dtype=np.float32).real.T, '.', lw=1)
+lines_ref = ax.plot(t_arr, np.zeros((Nb_max, Nt), dtype=np.float32).real.T, '-', lw=1)
+lines_gpu = ax.plot(t_arr, np.zeros((Nb_max, Nt), dtype=np.float32).real.T, '.', lw=1)
 
 axN = plt.axes([0.25, 0.1, 0.65, 0.03])
 axw = plt.axes([0.25, 0.05, 0.65, 0.03])
 sN = Slider(axN, "N batch", 1, Nb_max, valstep=1, valinit=Nb)
-sw = Slider(axw, "randomize", 1, Nb_max, valstep=1, valinit=Nb)
+sw = Slider(axw, "randomize", 0.0, 0.2, valinit=w0)
 
 update(Nb)
 ax.relim()
