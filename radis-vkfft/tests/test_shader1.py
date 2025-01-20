@@ -105,12 +105,6 @@ app.spectrum_FT_d = GPUBuffer(S_k_FT.nbytes, binding=5)
 app.spectrum_d = GPUBuffer(I_arr.nbytes, binding=6)
 
 # initalize data:
-app.database_d.initStagingBuffer(32*1024*1024)
-app.database_d.copyToBuffer(database)
-
-database2 = np.zeros_like(database)
-app.database_d.copyFromBuffer(database2)
-
 app.init_params_d.initStagingBuffer()
 init_params_h = app.init_params_d.getHostStructPtr(init_params_t)
 init_params_h.Nt = Nt
@@ -122,12 +116,15 @@ app.init_params_d.transferStagingBuffer(direction='H2D')
 app.iter_params_d.initStagingBuffer()
 iter_params_h = app.iter_params_d.getHostStructPtr(iter_params_t)
 
+app.database_d.initStagingBuffer(32*1024*1024)
+app.database_d.copyToBuffer(database)
+
 app.spectrum_d.initStagingBuffer()
 
 app.command_list = [
-    app.iter_params_d.cmdTransferStagingBuffer('H2D'),
+    app.iter_params_d.cmdTransferStagingBuffer(direction='H2D'),
     app.cmdTestShader1((Nt // Ntpb + 1, 1, 1), threads),
-    app.spectrum_d.cmdTransferStagingBuffer('D2H'),
+    app.spectrum_d.cmdTransferStagingBuffer(direction='D2H'),
 ]
 app.writeCommandBuffer()
 

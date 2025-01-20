@@ -18,19 +18,22 @@ L_FT = lambda f, w: np.exp(-np.pi * np.abs(f) * w)
 
 class init_params_t(Structure):
     _fields_ = [
+        ("Nl", c_int),
         ("Nt", c_int),
         ("Nf", c_int),
         ("Nw", c_int),
-        ("Nl", c_int),
+
+        ("t_min", c_float),
+        ("dt",    c_float),
+        ("w_min", c_float),
+        ("dxw",   c_float),
     ]
 
 class iter_params_t(Structure):
     _fields_ = [
-        ("A", c_int),
-        ("B", c_int),
-        ("C", c_int),
-        #("dt", c_float),
-        #("wL", c_float),
+        ("a", c_float),
+        ("b", c_float),
+        ("c", c_float),
     ]
 
 
@@ -58,11 +61,11 @@ print("Nt = {:d}".format(Nt))
 t_arr = np.linspace(t_min, t_max, Nt)
 dt = t_arr[1]
 
-f_arr = rfftfreq(Nt, dt)
-Nf = len(f_arr)
+#f_arr = rfftfreq(Nt, dt)
+#Nf = len(f_arr)
 
-#Nf = Nt//2 + 1
-#f_arr = np.arange(Nf) / (Nf * dt)
+Nf = Nt//2 + 1
+f_arr = np.arange(Nf) / (2 * Nf * dt)
 
 print(Nf)
 
@@ -145,16 +148,17 @@ print('Done! {:.3f}'.format((tc1-tc0)*1e3))
 #%% GPU vulkan
 shader_path = os.path.dirname(__file__)
 app = GPUApplication(deviceID=0, path=shader_path)
-app.print_memory_properties()
+#app.print_memory_properties()
 
-app.init_params_d = GPUBuffer(sizeof(init_params_t), binding=0)
-app.iter_params_d = GPUBuffer(sizeof(iter_params_t), binding=1)
+I_arr2 = np.zeros(Nt, dtype=np.int32)
+
+app.init_params_d = GPUBuffer(sizeof(init_params_t), uniform=True, binding=0)
+app.iter_params_d = GPUBuffer(sizeof(iter_params_t), uniform=True, binding=1)
 app.database_d = GPUBuffer(database.nbytes, binding=2)
 app.S_kl_d = GPUBuffer(S_kl.nbytes, binding=3)
 app.S_kl_FT_d = GPUBuffer(S_kl_FT.nbytes, binding=4)
 app.spectrum_FT_d = GPUBuffer(I_k_FT.nbytes, binding=5)
-app.spectrum_d = GPUBuffer(I_arr1.nbytes, binding=6)
-### Copy data d2h
+app.spectrum_d = GPUBuffer(I_arr2.nbytes, binding=6)
 
 
 # initalize data:
@@ -163,41 +167,45 @@ app.database_d.copyToBuffer(database)
 
 app.init_params_d.initStagingBuffer()
 init_params_h = app.init_params_d.getHostStructPtr(init_params_t)
+init_params_h.Nl = Nl
 init_params_h.Nt = Nt
 init_params_h.Nf = Nf
 init_params_h.Nw = Nw
-init_params_h.Nl = Nl
+init_params_h.t_min = t_min
+init_params_h.dt = dt
+init_params_h.w_min = w_min
+init_params_h.dw = dxw
 app.init_params_d.transferStagingBuffer(direction='H2D')
 
 app.iter_params_d.initStagingBuffer()
 iter_params_h = app.iter_params_d.getHostStructPtr(iter_params_t)
 
+app.spectrum_d.initStagingBuffer()
+
 app.command_list = [
     app.iter_params_d.cmdTransferStagingBuffer('H2D'),
-    app.cmdTestShader1(Nt // N_tpb + 1, 1, 1), threads),
+    app.cmdClearBuffer(app.S_kl_d),
+    app.cmdTestFillLDM((Nl // Ntpb + 1, 1, 1), threads),
+    app.cmdClearBuffer(app.S_kl_FT_d),
+    app.cmdFFT(app.S_kl_d, app.S_kl_FT_d),
+    app.cmdClearBuffer(app.spectrum_FT_d),
+    app.cmdTestApplyLineshapes((Nf // Ntpb + 1, 1, 1), threads),
+    app.cmdClearBuffer(app.spectrum_d),
+    app.cmdIFFT(app.spectrum_FT_d, app.spectrum_d), 
     app.spectrum_d.cmdTransferStagingBuffer('D2H'),
-
-    #app.cmdFillLDM((init_h.N_lines // N_tpb + 1, 1, 1), threads, timestamp=True),
-    # app.cmdClearBuffer(app.S_klm_FT_d, timestamp=True),
-    #app.cmdFFT(app.I_arr_d, app.I_arr_FT_d, timestamp=True),
-    # app.cmdClearBuffer(app.spectrum_FT_d, timestamp=True),
-    #app.cmdApplyTestLineshape(
-    #    (Nf * Nb // Ntpb + 1, 1, 1), threads, timestamp=True
-    #),
-    # app.cmdClearBuffer(app.spectrum_d, timestamp=True),
-    #app.cmdIFFT(app.I_arr_FT_d, app.res_d, timestamp=True),
 ]
 app.writeCommandBuffer()
 
 
 # iteration:
 
-iter_params_h.A = 2
-iter_params_h.B = 100
-iter_params_h.C = 1
+iter_params_h.a = 1000.0
+iter_params_h.b = 100.0
+iter_params_h.c = 1.0
 app.run()
-print(spectrum)
+app.spectrum_d.toArray(I_arr2)
 
+plt.plot(t_arr, I_arr2, 'r-.')
 
 
 

@@ -1,0 +1,88 @@
+#version 450
+#extension GL_EXT_scalar_block_layout : enable
+layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2 ) in;
+layout (constant_id = 3) const int HAS_ATOMIC_ADD_FLOAT = 0; //this value is updated by the host code
+#define float_atomic_t uint
+
+
+#ifdef VULKAN
+#define atomicAddFloatX(MEM, INDATA)      \
+{                                         \
+    uint expected_mem = MEM;              \
+    uint new_mem = floatBitsToUint(uintBitsToFloat(MEM) + INDATA); \
+    uint returned_mem = atomicCompSwap(MEM, expected_mem, new_mem); \
+    while(returned_mem != expected_mem){ \
+         expected_mem = returned_mem; \
+         new_mem = floatBitsToUint(uintBitsToFloat(expected_mem) + INDATA); \
+         returned_mem = atomicCompSwap(MEM, expected_mem, new_mem); \
+    } \
+}
+#endif
+
+layout(std430, binding = 0) uniform initData{
+    
+	int Nl;
+	int Nt;
+	int Nf;
+	int Nw;
+	
+	float t_min;
+	float dt;
+	float w_min;
+	float dxw;
+	
+} init_d;
+
+layout(std430, binding = 1) uniform iterData{
+    float a;
+	float b;
+	float c;
+} iter_d;
+
+layout(std430, binding = 2) readonly buffer database_SSBO {
+   float database_d[];
+};
+
+layout(std430, binding = 3) buffer SSBO1 {
+  float_atomic_t S_kl_d[];
+};
+
+
+void main() {
+
+	uint i = gl_GlobalInvocationID.x;
+
+	if (i >= init_d.Nl) return;
+
+    float I0 = database_d[i + 0*init_d.Nl];
+    float t0 = database_d[i + 1*init_d.Nl];
+    float w0 = database_d[i + 2*init_d.Nl];
+   
+    float k = (t0 - init_d.t_min) / init_d.dt;
+    int k0 = int(k);
+    int k1 = k0 + 1;
+    float a1k = k - float(k0);
+	float a0k = 1.0 - a1k;
+    
+	if ((k0 < 0) || (k1 >= init_d.Nt)) return;
+
+	float l = (log(w0) - log(init_d.w_min))/init_d.dxw;
+	int l0 = int(l);
+	int l1 = l0 + 1;
+	float a1l = l - float(l0);
+	float a0l = 1.0 - a1l;
+
+	float a00 = a0l * a0k;
+	float a01 = a0l * a1k;
+	float a10 = a1l * a0k;
+	float a11 = a1l * a1k;
+
+	int sk = 1;
+    int sl = init_d.Nt;
+    
+    atomicAddFloatX(S_kl_d[l0*sl + k0*sk], a00 * I0);
+    atomicAddFloatX(S_kl_d[l0*sl + k1*sk], a01 * I0);
+    atomicAddFloatX(S_kl_d[l1*sl + k0*sk], a10 * I0);
+    atomicAddFloatX(S_kl_d[l1*sl + k1*sk], a11 * I0);
+
+}

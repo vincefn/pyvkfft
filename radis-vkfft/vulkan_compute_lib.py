@@ -825,7 +825,7 @@ class GPUApplication(object):
     def cmdClearBuffer(self, buffer_obj, timestamp=False):
         def func(self, buffer_obj, timestamp=False):
             vk.vkCmdFillBuffer(
-                self._commandBuffer, buffer_obj._buffer, 0, buffer_obj.nbytes, 0
+                self._commandBuffer, buffer_obj._buffer, 0, buffer_obj._bufferSize, 0
             )
             if timestamp == True:
                 self.cmdAddTimestamp("clearBuffer").writeCommand()

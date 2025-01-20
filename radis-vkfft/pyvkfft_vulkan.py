@@ -72,8 +72,8 @@ def prepare_fft(arr_in, arr_out=None, ndim=1, norm=1, compute_app=None, tune=Fal
         inplace = False
 
     return VkFFTApp(
-        arr_in.shape,
-        arr_in.dtype,
+        arr_in.shape #TODOOO,
+        arr_in.dtype #TODOOO,
         buffer_src=arr_in._buffer,
         buffer_dst=arr_out._buffer,
         physical_device=compute_app._physicalDevice,
@@ -85,7 +85,7 @@ def prepare_fft(arr_in, arr_out=None, ndim=1, norm=1, compute_app=None, tune=Fal
         inplace=inplace,
         norm=norm,
         r2c=True,
-        strides=arr_in.strides,
+        strides=arr_in.strides #TODOOO,
         tune_config=tune_config,
     )
 
