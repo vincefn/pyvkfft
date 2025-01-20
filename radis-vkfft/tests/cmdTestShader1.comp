@@ -33,9 +33,8 @@ void main() {
     
 	uint k = gl_GlobalInvocationID.x;
 
-	//if (k >= init_d.Nt) return;    
-	if (k >= 10) return;    
+	if (k >= init_d.Nt) return;    
 	
-	spectrum_d[k] = int(k) + iter_d.A + int(database_d[0]*100); //iter_d.A * k + iter_d.B;
+	spectrum_d[k] = int(k) + iter_d.A; //iter_d.A * k + iter_d.B;
 
 }

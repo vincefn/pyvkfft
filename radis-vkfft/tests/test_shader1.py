@@ -96,8 +96,8 @@ shader_path = os.path.dirname(__file__)
 app = GPUApplication(deviceID=0, path=shader_path)
 #app.print_memory_properties()
 
-app.init_params_d = GPUBuffer(sizeof(init_params_t), binding=0)
-app.iter_params_d = GPUBuffer(sizeof(iter_params_t), binding=1)
+app.init_params_d = GPUBuffer(sizeof(init_params_t), uniform=True, binding=0)
+app.iter_params_d = GPUBuffer(sizeof(iter_params_t), uniform=True, binding=1)
 app.database_d = GPUBuffer(database.nbytes, binding=2)
 app.S_kl_d = GPUBuffer(S_kl.nbytes, binding=3)
 app.S_kl_FT_d = GPUBuffer(S_kl_FT.nbytes, binding=4)
@@ -132,33 +132,17 @@ app.command_list = [
 app.writeCommandBuffer()
 
 # iteration:
-iter_params_h.A = 2
+iter_params_h.A = 2000
 iter_params_h.B = 100
 iter_params_h.C = 1
 
-init_arr = np.zeros(4, dtype=np.int32)
-iter_arr = np.zeros(3, dtype=np.int32)
-
-
-#init_arr[:] = [Nt,Nf,Nw,Nl]
-# iter_arr[:] = [3,  101,  2]
-
-app.init_params_d.copyFromBuffer(init_arr)
-app.iter_params_d.copyFromBuffer(iter_arr)
-
-#app.init_params_d.copyToBuffer(init_arr)
-#app.iter_params_d.copyToBuffer(iter_arr)
-
-print(init_arr)
-print(iter_arr)
-
-
 app.run()
-
-#app.spectrum_d.copyFromBuffer(I_arr)
-
 app.spectrum_d.toArray(I_arr)
+print(I_arr[:20])
 
+iter_params_h.A = 3000
+app.run()
+app.spectrum_d.toArray(I_arr)
 print(I_arr[:20])
 
 
