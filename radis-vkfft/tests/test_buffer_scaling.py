@@ -43,7 +43,7 @@ def mock_spectrum(Nt, Nl, m=1):
     return I_arr
 
 
-
+device_id = 2
 t_max = 100.0
 Nt = 25600
 Nt = next_fast_len_even(Nt)
@@ -80,7 +80,7 @@ I_arr_FT = np.fft.rfft(I_arr).real
 
 # Init Vulkan
 shader_path = os.path.dirname(__file__)
-app = GPUApplication(deviceID=1, path=shader_path)
+app = GPUApplication(deviceID=device_id, path=shader_path)
 app.print_memory_properties()
 
 props_device = vk.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT

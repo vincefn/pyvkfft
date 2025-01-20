@@ -35,6 +35,7 @@ buf_dev2.initStagingBuffer(32*1024*1024)
 
 
 print('Copying data... ')
+print(arr)
 t0 = perf_counter()
 buf_dev.copyToBuffer(arr)
 t1 = perf_counter()

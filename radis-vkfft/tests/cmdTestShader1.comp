@@ -1,0 +1,41 @@
+#version 450
+#extension GL_EXT_scalar_block_layout : enable
+layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2 ) in;
+#define complex64_t vec2
+
+
+layout(std430, binding = 0) uniform initData{
+    int Nt;
+    int Nf;
+    int Nw;
+    int Nl;
+} init_d;
+
+layout(std430, binding = 1) uniform iterData{
+    int A;
+    int B;
+	int C;
+} iter_d;
+
+
+layout(std430, binding = 2) readonly buffer SSBO1 {
+   float database_d[];
+};
+
+layout(std430, binding = 6) writeonly buffer SSBO2 {
+   int spectrum_d[];
+};
+
+
+void main() {
+
+    const float pi = 3.141592653589793f;
+    
+	uint k = gl_GlobalInvocationID.x;
+
+	//if (k >= init_d.Nt) return;    
+	if (k >= 10) return;    
+	
+	spectrum_d[k] = int(k) + iter_d.A + int(database_d[0]*100); //iter_d.A * k + iter_d.B;
+
+}

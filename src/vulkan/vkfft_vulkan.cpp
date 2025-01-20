@@ -272,7 +272,7 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
     {
       psizein = new uint64_t;
       *psizein = (uint64_t)(s * precision);
-      config->isInputFormatted = 0;
+      //config->isInputFormatted = 0;
       config->inverseReturnToInputBuffer = 1;
 	  config->inputBufferStride[0] = size[0];
       for(int i=1; i<VKFFT_MAX_FFT_DIMENSIONS; i++)

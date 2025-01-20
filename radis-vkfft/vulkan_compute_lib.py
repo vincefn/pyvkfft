@@ -443,7 +443,9 @@ class GPUApplication(object):
             if (type.heapIndex != heap_id) or (not memoryTypeBits&(1<<i)):
                 continue
         
-            if type.propertyFlags & kind == kind:
+            # If memtype has all requested flags (and possibly others), return
+            if (type.propertyFlags & kind) == kind:
+                # print(i, type.propertyFlags, kind)
                 return i
 
         return -1
@@ -731,7 +733,7 @@ class GPUApplication(object):
             vk.vkDestroyBuffer(self._device, buffer, None)
             return None, None, index
         
-        print('memtype found:', index)
+        #print('memtype found:', index)
 
         allocateInfo = vk.VkMemoryAllocateInfo(
             sType=vk.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -1008,26 +1010,27 @@ class GPUBuffer:
     def copyToBuffer(self, arr):
         data_size = arr.nbytes
         
-        copy_region = vk.VkBufferCopy(srcOffset=0, dstOffset=0, size=self._stagingBufferSize)
+        #copy_region = vk.VkBufferCopy(srcOffset=0, dstOffset=0, size=self._stagingBufferSize)
         offset = 0
         while offset < data_size:
         
             copy_size = min(self._stagingBufferSize, data_size - offset) 
+            self.fromArray(arr, offset=offset, copy_size=copy_size)
+            # ctypes.memmove(ctypes.c_void_p(self._hostPtr), arr.ctypes.data + offset, copy_size)
+            self.transferStagingBuffer(dstOffset=offset, size=copy_size, direction='H2D')
             
-            ctypes.memmove(ctypes.c_void_p(self._hostPtr), arr.ctypes.data + offset, copy_size)
-        
-            if not self._combined:
+            # if not self._combined:
                 
-                copy_region.dstOffset = offset
-                copy_region.size=copy_size
-                self.app.oneTimeCommand(vk.vkCmdCopyBuffer,
-                    srcBuffer=self._stagingBuffer,
-                    dstBuffer=self._buffer,
-                    regionCount=1,
-                    pRegions=[copy_region],
-                    )  
+                # copy_region.dstOffset = offset
+                # copy_region.size=copy_size
+                # self.app.oneTimeCommand(vk.vkCmdCopyBuffer,
+                    # srcBuffer=self._stagingBuffer,
+                    # dstBuffer=self._buffer,
+                    # regionCount=1,
+                    # pRegions=[copy_region],
+                    # )  
                 
-            offset += self._stagingBufferSize  
+            offset += copy_size 
 
 
     def copyFromBuffer(self, arr):
@@ -1039,20 +1042,123 @@ class GPUBuffer:
         
             copy_size = min(self._stagingBufferSize, data_size - offset) 
             
-            if not self._combined:
+            self.transferStagingBuffer(srcOffset=offset, size=copy_size, direction='H2D')
+            
+            # if not self._combined:
                     
-                copy_region.srcOffset = offset
-                copy_region.size=copy_size
-                self.app.oneTimeCommand(vk.vkCmdCopyBuffer,
-                    srcBuffer=self._buffer,
-                    dstBuffer=self._stagingBuffer,
-                    regionCount=1,
-                    pRegions=[copy_region],
-                    )  
+                # copy_region.srcOffset = offset
+                # copy_region.size=copy_size
+                # self.app.oneTimeCommand(vk.vkCmdCopyBuffer,
+                    # srcBuffer=self._buffer,
+                    # dstBuffer=self._stagingBuffer,
+                    # regionCount=1,
+                    # pRegions=[copy_region],
+                    # )  
+                    
+            self.toArray(arr, offset=offset, copy_size=copy_size)
+            # ctypes.memmove(arr.ctypes.data + offset, ctypes.c_void_p(self._hostPtr),  copy_size)
 
-            ctypes.memmove(arr.ctypes.data + offset, ctypes.c_void_p(self._hostPtr),  copy_size)
+            offset += copy_size
+    
+    def fromArray(self, arr, offset=0, copy_size=None):
+        if copy_size is None:
+            copy_size = arr.nbytes
+        ctypes.memmove(ctypes.c_void_p(self._hostPtr), arr.ctypes.data + offset, copy_size)
+        return offset + copy_size
+            
 
-            offset += self._stagingBufferSize  
+    def toArray(self, arr, offset=0, copy_size=None):
+        if copy_size is None:
+            copy_size = arr.nbytes
+        ctypes.memmove(arr.ctypes.data + offset, ctypes.c_void_p(self._hostPtr),  copy_size)
+
+
+    # def transferStagingBufferNow(self, **kwargs):
+        # kwargs['now'] = True
+        # self.transferStagingBuffer(**kwargs)
+
+    
+    def transferStagingBuffer(self, srcOffset=0, dstOffset=0, size=None, direction='H2D', transfer_now=True):
+        
+        if self._combined:
+            return
+            
+        if direction == 'H2D':
+            srcBuffer = self._stagingBuffer
+            dstBuffer = self._buffer
+            
+        elif direction == 'D2H':
+            srcBuffer = self._buffer
+            dstBuffer = self._stagingBuffer
+        
+        else:
+            return
+       
+        if size is None:
+            size = self._stagingBufferSize     
+        
+        copy_region = vk.VkBufferCopy(srcOffset=srcOffset, dstOffset=dstOffset, size=size)
+        
+        if transfer_now:    
+            self.app.oneTimeCommand(
+                vk.vkCmdCopyBuffer,
+                srcBuffer=srcBuffer,
+                dstBuffer=dstBuffer,
+                regionCount=1,
+                pRegions=[copy_region],
+                )  
+
+        else:
+            vk.vkCmdCopyBuffer(
+                self.app._commandBuffer, 
+                srcBuffer=srcBuffer, 
+                dstBuffer=dstBuffer,
+                regionCount=1,
+                pRegions=[copy_region])
+
+        
+    def cmdTransferStagingBuffer(self, srcOffset=0, dstOffset=0, size=None, direction='H2D'):
+        #TODO: add timestamp , timestamp=False
+        return GPUCommand(self.transferStagingBuffer, [], { "srcOffset":srcOffset, 
+                                                            "dstOffset":dstOffset, 
+                                                            "size":size, 
+                                                            "direction":direction,
+                                                            "transfer_now":False})
+
+
+
+ 
+ 
+    # def copyNowH2D(self, srcOffset=0, dstOffset=0, size=1):
+    
+        # if self._combined:
+            # return 
+        
+        # copy_region = vk.VkBufferCopy(srcOffset=srcOffset, dstOffset=dstOffset, size=size)
+        
+        # self.app.oneTimeCommand(vk.vkCmdCopyBuffer,
+            # srcBuffer=self._stagingBuffer,
+            # dstBuffer=self._buffer,
+            # regionCount=1,
+            # pRegions=[copy_region],
+            # ) 
+            
+    # def copyNowD2H(self, srcOffset=0, dstOffset=0, size=1):
+        
+                    
+        # if self._combined:
+            # return
+        
+        # copy_region = vk.VkBufferCopy(srcOffset=srcOffset, dstOffset=dstOffset, size=size)
+                
+        # self.app.oneTimeCommand(vk.vkCmdCopyBuffer,
+            # srcBuffer=self._buffer,
+            # dstBuffer=self._stagingBuffer,
+            # regionCount=1,
+            # pRegions=[copy_region],
+            # )  
+
+
     
     def getHostStructPtr(self, struct):
         self._structPtr = ctypes.cast(self._hostPtr, ctypes.POINTER(struct))
