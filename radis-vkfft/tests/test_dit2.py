@@ -55,7 +55,7 @@ def mock_spectrum(Nl, t_min=0.0, t_max=1.0, w_min=0.0, w_max=1.0):
 
 t_min = 0.0
 t_max = 100.0
-Nt = 3001
+Nt = 300001
 Nt = next_fast_len_even(Nt)
 print("Nt = {:d}".format(Nt))
 t_arr = np.linspace(t_min, t_max, Nt)
@@ -98,49 +98,56 @@ print('Done! {:.3f}'.format((tc1-tc0)*1e3))
 
 
 #%% CPU DIT method:
+def spectrum_dit(a):
+    k_arr = (database[1] - t_min) / dt
+    k0_arr = k_arr.astype(np.int32)
+    k1_arr = k0_arr + 1
+    a1k_arr = k_arr - k0_arr
+    a0k_arr = 1 - a1k_arr
+
+    l_arr = (np.log(database[2]) - np.log(w_min)) / dxw
+    l0_arr = l_arr.astype(np.int32)
+    l1_arr = l0_arr + 1
+    a1l_arr = l_arr - l0_arr
+    a0l_arr = 1 - a1l_arr
+
+    a00_arr = a0l_arr * a0k_arr
+    a01_arr = a0l_arr * a1k_arr
+    a10_arr = a1l_arr * a0k_arr
+    a11_arr = a1l_arr * a1k_arr
+
+    S_kl = np.zeros((Nw, Nt), dtype=np.float32)
+
+    np.add.at(S_kl, (l0_arr, k0_arr), database[0] * a00_arr)
+    np.add.at(S_kl, (l0_arr, k1_arr), database[0] * a01_arr)
+    np.add.at(S_kl, (l1_arr, k0_arr), database[0] * a10_arr)
+    np.add.at(S_kl, (l1_arr, k1_arr), database[0] * a11_arr)
+    #print('Done!')
+
+    #print('Applying lineshape... ', end='')
+    I_arr1 = np.zeros(Nt, dtype=np.float32)
+    spectrum_FT = np.zeros(Nf, dtype=np.complex64)
+    S_kl_FT = np.fft.rfft(S_kl)
+    for l in range(Nw):
+        w_l = (1+a)*w_min*np.exp(l*dxw)
+
+        #S_k_FT = np.fft.rfft(S_kl[l])
+        S_k_FT = S_kl_FT[l]
+        #ls = L(t_arr - t_min - Nt/2*dt, w_l)
+        #ls_FT = np.fft.rfft(np.fft.fftshift(ls))
+        ls_FT = L_FT(f_arr, w_l)/dt
+        I_k_FT = S_k_FT * ls_FT
+        spectrum_FT += I_k_FT
+        #I_arr1 += np.fft.irfft(I_k_FT)
+        #I_arr1 += np.convolve(S_kl[l], ls, 'same')
+
+    return np.fft.irfft(spectrum_FT)
+
+
 # lineshape distribution:
 print('Distributing... ', end='')
 tc0 = perf_counter()
-k_arr = (database[1] - t_min) / dt
-k0_arr = k_arr.astype(np.int32)
-k1_arr = k0_arr + 1
-a1k_arr = k_arr - k0_arr
-a0k_arr = 1 - a1k_arr
-
-l_arr = (np.log(database[2]) - np.log(w_min)) / dxw
-l0_arr = l_arr.astype(np.int32)
-l1_arr = l0_arr + 1
-a1l_arr = l_arr - l0_arr
-a0l_arr = 1 - a1l_arr
-
-a00_arr = a0l_arr * a0k_arr
-a01_arr = a0l_arr * a1k_arr
-a10_arr = a1l_arr * a0k_arr
-a11_arr = a1l_arr * a1k_arr
-
-S_kl = np.zeros((Nw, Nt), dtype=np.float32)
-
-np.add.at(S_kl, (l0_arr, k0_arr), database[0] * a00_arr)
-np.add.at(S_kl, (l0_arr, k1_arr), database[0] * a01_arr)
-np.add.at(S_kl, (l1_arr, k0_arr), database[0] * a10_arr)
-np.add.at(S_kl, (l1_arr, k1_arr), database[0] * a11_arr)
-#print('Done!')
-
-#print('Applying lineshape... ', end='')
-I_arr1 = np.zeros(Nt, dtype=np.float32)
-S_kl_FT = np.fft.rfft(S_kl)
-for l in range(Nw):
-    w_l = w_min*np.exp(l*dxw)
-
-    #S_k_FT = np.fft.rfft(S_kl[l])
-    S_k_FT = S_kl_FT[l]
-    #ls = L(t_arr - t_min - Nt/2*dt, w_l)
-    #ls_FT = np.fft.rfft(np.fft.fftshift(ls))
-    ls_FT = L_FT(f_arr, w_l)/dt
-    I_k_FT = S_k_FT * ls_FT
-    I_arr1 += np.fft.irfft(I_k_FT)
-    #I_arr1 += np.convolve(S_kl[l], ls, 'same')
-
+I_arr1 = spectrum_dit(0.0)
 tc1 = perf_counter()
 print('Done! {:.3f}'.format((tc1-tc0)*1e3))
 
@@ -149,24 +156,19 @@ print('Done! {:.3f}'.format((tc1-tc0)*1e3))
 shader_path = os.path.dirname(__file__)
 app = GPUApplication(deviceID=0, path=shader_path)
 #app.print_memory_properties()
-
-I_arr2 = np.zeros(Nt, dtype=np.int32)
+I_arr2 = np.zeros(Nt, dtype=np.float32)
 
 app.init_params_d = GPUBuffer(sizeof(init_params_t), uniform=True, binding=0)
 app.iter_params_d = GPUBuffer(sizeof(iter_params_t), uniform=True, binding=1)
 app.database_d = GPUBuffer(database.nbytes, binding=2)
-#app.database2_d = GPUBuffer(database.nbytes, binding=3)
-
-
-app.S_kl_d = GPUBuffer(S_kl.nbytes, binding=3)
-app.S_kl_FT_d = GPUBuffer(S_kl_FT.nbytes, binding=4)
-app.spectrum_FT_d = GPUBuffer(I_k_FT.nbytes, binding=5)
-app.spectrum_d = GPUBuffer(I_arr2.nbytes, binding=6)
+app.S_kl_d = GPUBuffer((Nw+1)*Nt*4, binding=3)
+app.S_kl_FT_d = GPUBuffer((Nw+1)*Nf*8, binding=4)
+app.spectrum_FT_d = GPUBuffer(Nf*8, binding=5)
+app.spectrum_d = GPUBuffer(Nt*4, binding=6)
 
 
 # initalize data:
 app.database_d.initStagingBuffer()
-#app.database2_d.initStagingBuffer()
 app.database_d.copyToBuffer(database)
 
 app.init_params_d.initStagingBuffer()
@@ -176,15 +178,14 @@ init_params_h.Nt = Nt
 init_params_h.Nf = Nf
 init_params_h.Nw = Nw
 init_params_h.t_min = t_min
-init_params_h.dt = dt
+init_params_h.dt    = dt
 init_params_h.w_min = w_min
-init_params_h.dxw = dxw
+init_params_h.dxw   = dxw
 app.init_params_d.transferStagingBuffer(direction='H2D')
 
 app.iter_params_d.initStagingBuffer()
 iter_params_h = app.iter_params_d.getHostStructPtr(iter_params_t)
 
-app.S_kl_d.initStagingBuffer()
 app.S_kl_d.setFFTShape((Nw,Nt), np.float32)
 app.S_kl_FT_d.setFFTShape((Nw,Nf), np.complex64)
 app.spectrum_FT_d.setFFTShape(Nf, np.complex64)
@@ -193,36 +194,53 @@ app.spectrum_d.setFFTShape(Nt, np.float32)
 app.spectrum_d.initStagingBuffer()
 
 app.command_list = [
-    app.iter_params_d.cmdTransferStagingBuffer('H2D'),
+    app.init_params_d.cmdTransferStagingBuffer('H2D'),
     app.cmdClearBuffer(app.S_kl_d),
     app.cmdTestFillLDM((Nl // Ntpb + 1, 1, 1), threads),
-    #app.cmdClearBuffer(app.S_kl_FT_d),
-    #app.cmdFFT(app.S_kl_d, app.S_kl_FT_d),
-    #app.cmdClearBuffer(app.spectrum_FT_d),
-    #app.cmdTestApplyLineshapes((Nf // Ntpb + 1, 1, 1), threads),
-    #app.cmdClearBuffer(app.spectrum_d),
-    #app.cmdIFFT(app.spectrum_FT_d, app.spectrum_d), 
-    #app.spectrum_d.cmdTransferStagingBuffer('D2H'),
+    app.cmdFFT(app.S_kl_d, app.S_kl_FT_d),
+    app.cmdTestApplyLineshapes((Nf // Ntpb + 1, 1, 1), threads),
+    app.cmdIFFT(app.spectrum_FT_d, app.spectrum_d), 
+    app.spectrum_d.cmdTransferStagingBuffer('D2H'),
 ]
 app.writeCommandBuffer()
 
 
 # iteration:
-
-iter_params_h.a = 1000.0
-iter_params_h.b = 100.0
-iter_params_h.c = 1.0
+iter_params_h.a = 0.0
 app.run()
 app.spectrum_d.toArray(I_arr2)
 
-S_kl2 = np.zeros_like(S_kl)
-app.S_kl_d.copyFromBuffer(S_kl2)
-plt.plot(S_kl.T)
-plt.plot(S_kl2.T,'k--')
+fig, ax = plt.subplots()
+plt.subplots_adjust(left=0.25, bottom=0.25)
+
+
+#ax.plot(t_arr, I_arr0)
+p1, = ax.plot(t_arr, I_arr1,)
+p2, = ax.plot(t_arr, I_arr2, 'k--')
+
+axw = plt.axes([0.25, 0.1, 0.65, 0.03])
+sw = Slider(axw, "a", -1.0, 2.0, valinit=0.0)
+
+def update(val):
+    a = sw.val
+
+    t0 = perf_counter()
+    I_arr1 = spectrum_dit(a)
+    t1 = perf_counter()
+    iter_params_h.a = a
+    app.run()
+    app.spectrum_d.toArray(I_arr2)
+    t2 = perf_counter()
+
+    ax.set_title('CPU: {:.1f} ms - GPU: {:.1f} ms'.format((t1-t0)*1e3, (t2-t1)*1e3))
+    p1.set_ydata(I_arr1)
+    p2.set_ydata(I_arr2)
+    
+    fig.canvas.draw_idle()
+
+sw.on_changed(update)
+
 plt.show()
-# plt.plot(t_arr, I_arr2, 'r-.')
-
-
 
 
 

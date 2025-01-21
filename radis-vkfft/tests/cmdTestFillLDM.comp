@@ -43,6 +43,11 @@ layout(std430, binding = 2) readonly buffer database_SSBO {
    float database_d[];
 };
 
+// layout(std430, binding = 3) buffer SSBO1 {
+  // float S_kl_d[];
+// };
+
+
 layout(std430, binding = 3) buffer SSBO1 {
   float_atomic_t S_kl_d[];
 };
@@ -80,6 +85,11 @@ void main() {
 	int sk = 1;
     int sl = init_d.Nt;
     
+	
+	// S_kl_d[i + 0*init_d.Nl] = a00;
+	// S_kl_d[i + 1*init_d.Nl] = a01;
+	// S_kl_d[i + 2*init_d.Nl] = a10;
+	
     atomicAddFloatX(S_kl_d[l0*sl + k0*sk], a00 * I0);
     atomicAddFloatX(S_kl_d[l0*sl + k1*sk], a01 * I0);
     atomicAddFloatX(S_kl_d[l1*sl + k0*sk], a10 * I0);

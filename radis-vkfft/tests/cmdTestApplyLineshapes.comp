@@ -46,15 +46,14 @@ void main() {
     complex64_t res = complex64_t(0.0, 0.0);
     
 	float x = k / (2.0 * init_d.Nf * init_d.dt);
-
+	
 	int sk = 1;
-	int sl = init_d.Nt;
+	int sl = init_d.Nf;
 
     for (int l=0; l < init_d.Nw; l++){
-		w_l = init_d.w_min * exp(l*init_d.dxw);
+		w_l = (1.0 + iter_d.a) * init_d.w_min * exp(l*init_d.dxw);
 		mul = exp(-pi * x * w_l) / init_d.dt;
 		res += S_kl_FT_d[l*sl + k*sk] * mul;
-	
     }
 	spectrum_FT_d[k] = res;
 }
