@@ -94,7 +94,7 @@ I_arr = np.zeros(Nt, dtype=np.int32)
 #%% GPU vulkan
 shader_path = os.path.dirname(__file__)
 app = GPUApplication(deviceID=0, path=shader_path)
-#app.print_memory_properties()
+app.print_memory_properties()
 
 app.init_params_d = GPUBuffer(sizeof(init_params_t), uniform=True, binding=0)
 app.iter_params_d = GPUBuffer(sizeof(iter_params_t), uniform=True, binding=1)

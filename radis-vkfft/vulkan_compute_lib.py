@@ -111,7 +111,8 @@ class GPUApplication(object):
         shader_fnames = [f for f in os.listdir(self._shaderPath) if f[-3:] == "spv"]
         for shader_fname in shader_fnames:
             fun_name = shader_fname.split(".")[0]  # TODO: do this with os.path.basename
-            named_shader = partial(self.schedule_shader, shader_fname)
+            #named_shader = staticmethod(partial(self.schedule_shader, shader_fname))
+            named_shader = staticmethod(partial(self.schedule_shader, shader_fname))
             setattr(self.__class__, fun_name, named_shader)
 
     def schedule_shader(
@@ -1094,8 +1095,21 @@ class GPUBuffer:
                                                             "transfer_now":False})
 
 
-
+    def setFFTShape(self, shape, dtype=np.float32, order='c'):
+        self.shape = np.atleast_1d(shape)
+        self.dtype = np.dtype(dtype)
+        self.itemsize = self.dtype.itemsize
  
+        # calc strides:
+        strides = np.zeros_like(self.shape)
+        strides[0] = 1  # TODO: Check this, should maybe be sshape[-1]=1; shape[:-1] = self.shape[:-1]??
+        strides[1:] = self.shape[:-1]
+        strides *= self.itemsize
+
+        if order == "c":
+            self.strides = np.multiply.accumulate(strides[::-1])[::-1]
+        else:
+            self.strides = np.multiply.accumulate(strides)
  
     # def copyNowH2D(self, srcOffset=0, dstOffset=0, size=1):
     

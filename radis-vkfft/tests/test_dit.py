@@ -180,19 +180,25 @@ app.init_params_d.transferStagingBuffer(direction='H2D')
 app.iter_params_d.initStagingBuffer()
 iter_params_h = app.iter_params_d.getHostStructPtr(iter_params_t)
 
+app.S_kl_d.initStagingBuffer()
+app.S_kl_d.setFFTShape((Nw,Nt), np.float32)
+app.S_kl_FT_d.setFFTShape((Nw,Nf), np.complex64)
+app.spectrum_FT_d.setFFTShape(Nf, np.complex64)
+app.spectrum_d.setFFTShape(Nt, np.float32)
+
 app.spectrum_d.initStagingBuffer()
 
 app.command_list = [
     app.iter_params_d.cmdTransferStagingBuffer('H2D'),
     app.cmdClearBuffer(app.S_kl_d),
     app.cmdTestFillLDM((Nl // Ntpb + 1, 1, 1), threads),
-    app.cmdClearBuffer(app.S_kl_FT_d),
-    app.cmdFFT(app.S_kl_d, app.S_kl_FT_d),
-    app.cmdClearBuffer(app.spectrum_FT_d),
-    app.cmdTestApplyLineshapes((Nf // Ntpb + 1, 1, 1), threads),
-    app.cmdClearBuffer(app.spectrum_d),
-    app.cmdIFFT(app.spectrum_FT_d, app.spectrum_d), 
-    app.spectrum_d.cmdTransferStagingBuffer('D2H'),
+    #app.cmdClearBuffer(app.S_kl_FT_d),
+    #app.cmdFFT(app.S_kl_d, app.S_kl_FT_d),
+    #app.cmdClearBuffer(app.spectrum_FT_d),
+    #app.cmdTestApplyLineshapes((Nf // Ntpb + 1, 1, 1), threads),
+    #app.cmdClearBuffer(app.spectrum_d),
+    #app.cmdIFFT(app.spectrum_FT_d, app.spectrum_d), 
+    #app.spectrum_d.cmdTransferStagingBuffer('D2H'),
 ]
 app.writeCommandBuffer()
 
@@ -203,9 +209,18 @@ iter_params_h.a = 1000.0
 iter_params_h.b = 100.0
 iter_params_h.c = 1.0
 app.run()
+
+S_kl2 = np.zeros_like(S_kl)
+app.S_kl_d.copyFromBuffer(S_kl2)
+
+plt.plot(S_kl[0])
+plt.plot(S_kl2[0],'k--')
+
+
+
 app.spectrum_d.toArray(I_arr2)
 
-plt.plot(t_arr, I_arr2, 'r-.')
+# plt.plot(t_arr, I_arr2, 'r-.')
 
 
 
@@ -236,9 +251,9 @@ plt.plot(t_arr, I_arr2, 'r-.')
 
 
 #%% Plotting:
-plt.plot(t_arr, I_arr0)
-plt.plot(t_arr, I_arr1, 'k--')
-plt.show()
+# plt.plot(t_arr, I_arr0)
+# plt.plot(t_arr, I_arr1, 'k--')
+# plt.show()
 
 ##I_arr_FT = np.fft.rfft(I_arr)
 ##
