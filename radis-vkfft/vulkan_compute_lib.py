@@ -33,10 +33,13 @@ class GPUApplication(object):
         # self._deviceID = deviceID
         self._shaderPath = path
         self._fftApps = {}
+        self._descriptorSetInitialized = False
+
 
         self._computeShaderModules = []
         self._descriptorPools = []
         self._descriptorSetLayouts = []
+        self._descriptorSets = []
         self._pipelineLayouts = []
         self._pipelines = []
 
@@ -135,24 +138,18 @@ class GPUApplication(object):
 
             shader_fpath = os.path.join(self._shaderPath, shader_fname)
 
-            # Descriptor set:
-            descriptorSetLayout = self.createDescriptorSetLayout()
-            descriptorPool = self.createDescriptorPool()
-            descriptorSet = self.createDescriptorSet(descriptorPool, descriptorSetLayout)
-
             # Compute Pipeline:
             pipeline, pipelineLayout, computeShaderModule = self.createComputePipeline(
-                shader_fpath, local_workgroup, descriptorSetLayout
+                shader_fpath, local_workgroup, self._descriptorSetLayouts[0]
             )
             self.bindAndDispatch(
-                global_workgroup, descriptorSet, pipeline, pipelineLayout
+                global_workgroup, self._descriptorSets[0], pipeline, pipelineLayout
             )
             if sync:
                 self.sync()
 
             self._computeShaderModules.append(computeShaderModule)
-            self._descriptorPools.append(descriptorPool)
-            self._descriptorSetLayouts.append(descriptorSetLayout)
+            
             self._pipelineLayouts.append(pipelineLayout)
             self._pipelines.append(pipeline)
 
@@ -498,8 +495,29 @@ class GPUApplication(object):
         self._commandBuffer, self._oneTimeCommandBuffer = vk.vkAllocateCommandBuffers(
             self._device, commandBufferAllocateInfo
         )
+        
+        
+
+
+    def initDescriptorSet(self):
+        # Descriptor set:
+        descriptorSetLayout = self.createDescriptorSetLayout()
+        descriptorPool = self.createDescriptorPool()
+        descriptorSet = self.createDescriptorSet(descriptorPool, descriptorSetLayout)
+
+        self._descriptorPools.append(descriptorPool)
+        self._descriptorSetLayouts.append(descriptorSetLayout)
+        self._descriptorSets.append(descriptorSet)
+        
+        self._descriptorSetInitialized = True
+
 
     def writeCommandBuffer(self):
+
+        if not self._descriptorSetInitialized:
+            self.initDescriptorSet()
+            
+        self.updateDescriptorSet(self._descriptorSets[0])
 
         # Now we shall start recording commands into the newly allocated command buffer.
         beginInfo = vk.VkCommandBufferBeginInfo(
@@ -578,10 +596,11 @@ class GPUApplication(object):
         descriptorSet = vk.vkAllocateDescriptorSets(
             self._device, descriptorSetAllocateInfo
         )[0]
+        
+        return descriptorSet
 
-        # Next, we need to connect our actual storage buffer with the descrptor.
-        # We use vkUpdateDescriptorSets() to update the descriptor set.
 
+    def updateDescriptorSet(self, descriptorSet):
         writeDescriptorSets = [
             vk.VkWriteDescriptorSet(
                 sType=vk.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -597,16 +616,13 @@ class GPUApplication(object):
             )
             for bufferObject in self._bufferObjects
         ]
-        # print('\nMaking new descriptor:')
-        # for bufferObject in self._bufferObjects:
-            # print(bufferObject.name, bufferObject._bufferSize, bufferObject.shape)
 
 
         # perform the update of the descriptor set.
         vk.vkUpdateDescriptorSets(
             self._device, len(writeDescriptorSets), writeDescriptorSets, 0, None
         )
-        return descriptorSet
+        
 
     def createComputePipeline(
         self, shaderFileName, localWorkGroup, descriptorSetLayout
@@ -685,6 +701,7 @@ class GPUApplication(object):
             raise Exception("Could not create compute pipeline")
 
         return pipeline, pipelineLayout, computeShaderModule
+
 
     def bindAndDispatch(self, globalWorkGroup, descriptorSet, pipeline, pipelineLayout):
         # We need to bind a pipeline, AND a descriptor set before we dispatch.
@@ -1134,12 +1151,22 @@ class GPUBuffer:
                     
     
     def resize_buffer(self, nbytes):
-        print('resizing buffer from',self._bufferSize, 'to',nbytes)
+        #print('resizing buffer from',self._bufferSize, 'to',nbytes)
         # Destroy all FFT apps that reference this buffer:
         for key in [*self.app._fftApps.keys()]:
             if id(self) in key:
                 self.app._fftApps.pop(key)
-        
+
+            # if id(self) == key[0]:
+                # fftApp = self.app._fftApps[key]
+                # fftApp.shape = arr_in.shape,
+                # fftApp.buffer_src = arr_in._buffer,
+                # fftApp.strides = arr_in.strides,
+            
+            # elif id(self) == key[1]:
+                # fftApp = self.app._fftApps[key]
+                # fftApp.buffer_dst=arr_out._buffer,
+      
         self.free()
         self._bufferSize = nbytes
         self.init_buffer()
@@ -1262,7 +1289,7 @@ class GPUArray(GPUBuffer):
         # It is up to the user to call init_buffer() again now
     
     def resize_buffer(self, nbytes):
-        print('resizing buffer from',self._bufferSize, 'to',nbytes)
+        #print('resizing buffer from',self._bufferSize, 'to',nbytes)
         # Destroy all FFT apps that reference this buffer:
         for key in [*self.app._fftApps.keys()]:
             if id(self) in key:

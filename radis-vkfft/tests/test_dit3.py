@@ -235,22 +235,28 @@ Nw_i = Nw
 def update(val):
     global Nw_i
     
+
+    a = sw.val
+
+    t0 = perf_counter()
+    I_arr1 = spectrum_dit(a)
+    t1 = perf_counter()
+
     if sNw.val != Nw_i:
-        print('new val', sNw.val)
+        #print('new val', sNw.val)
         Nw_i = sNw.val
         dxw_i = np.log(w_max / w_min) / (Nw_i - 1)
         iter_params_h.Nw = Nw_i
         iter_params_h.dxw = dxw_i
         app.S_kl_d.setFFTShape((Nw_i+1, Nt))
         app.S_kl_FT_d.setFFTShape((Nw_i+1, Nf))
+        #app.updateDescriptorSet(app._descriptorSets[0])
+
         app.freeCommandBuffer()
         app.writeCommandBuffer()
         
-    a = sw.val
 
-    t0 = perf_counter()
-    I_arr1 = spectrum_dit(a)
-    t1 = perf_counter()
+    
     iter_params_h.a = a
     app.run()
     app.spectrum_d.toArray(I_arr2)
