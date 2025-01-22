@@ -977,7 +977,7 @@ class GPUBuffer:
         self._isInitialized = True
     
     
-    def initStagingBuffer(self, chunksize=1024*1024):
+    def initStagingBuffer(self, chunksize=None):
         
         if not self._isInitialized:
             print('buffer {self._name} not initialized! First execute self.init_buffer()!')
@@ -991,8 +991,9 @@ class GPUBuffer:
             self._stagingBufferMemory = self._bufferMemory
     
         else:
-            self._stagingBufferSize = self._bufferSize if chunksize is None else chunksize
-            
+            chunksize = (self._bufferSize if chunksize is None else chunksize)
+            self._stagingBufferSize = chunksize  
+                
             self._stagingBuffer, self._stagingBufferMemory, _  = self.app.createBuffer(self._stagingBufferSize, 
             kind=vk.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | vk.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
             descriptorType = self._descriptorType,
@@ -1014,7 +1015,7 @@ class GPUBuffer:
         while offset < data_size:
             copy_size = min(self._stagingBufferSize, data_size - offset) 
             self.fromArray(arr, offset=offset, copy_size=copy_size)
-            self.transferStagingBuffer(dstOffset=offset, size=copy_size, direction='H2D')
+            self.transferStagingBuffer(direction='H2D', dstOffset=offset, size=copy_size)
             offset += copy_size 
 
 
@@ -1023,7 +1024,7 @@ class GPUBuffer:
         offset = 0
         while offset < data_size:
             copy_size = min(self._stagingBufferSize, data_size - offset) 
-            self.transferStagingBuffer(srcOffset=offset, size=copy_size, direction='D2H')
+            self.transferStagingBuffer(direction='D2H', srcOffset=offset, size=copy_size)
             self.toArray(arr, offset=offset, copy_size=copy_size)
             offset += copy_size
 
@@ -1047,7 +1048,7 @@ class GPUBuffer:
         # self.transferStagingBuffer(**kwargs)
 
     
-    def transferStagingBuffer(self, srcOffset=0, dstOffset=0, size=None, direction='H2D', transfer_now=True):
+    def transferStagingBuffer(self, direction='H2D', srcOffset=0, dstOffset=0, size=None, transfer_now=True):
         
         if self._combined:
             return
@@ -1086,12 +1087,12 @@ class GPUBuffer:
                 pRegions=[copy_region])
 
         
-    def cmdTransferStagingBuffer(self, srcOffset=0, dstOffset=0, size=None, direction='H2D'):
+    def cmdTransferStagingBuffer(self, direction='H2D', srcOffset=0, dstOffset=0, size=None):
         #TODO: add timestamp , timestamp=False
-        return GPUCommand(self.transferStagingBuffer, [], { "srcOffset":srcOffset, 
+        return GPUCommand(self.transferStagingBuffer, [], { "direction":direction,
+                                                            "srcOffset":srcOffset, 
                                                             "dstOffset":dstOffset, 
                                                             "size":size, 
-                                                            "direction":direction,
                                                             "transfer_now":False})
 
 

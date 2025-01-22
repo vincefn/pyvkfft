@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 from ctypes import Structure, c_float, c_int, sizeof
 from time import perf_counter
+import sys
 
 L = lambda t, w: 2 / (w * np.pi) * 1 / (1 + 4 * (t / w) ** 2)
 L_FT = lambda f, w: np.exp(-np.pi * np.abs(f) * w)
@@ -153,11 +154,13 @@ print('Done! {:.3f}'.format((tc1-tc0)*1e3))
 
 
 #%% GPU vulkan
+print('GPU start...')
 shader_path = os.path.dirname(__file__)
-app = GPUApplication(deviceID=0, path=shader_path)
+app = GPUApplication(deviceID=1, path=shader_path)
 #app.print_memory_properties()
 I_arr2 = np.zeros(Nt, dtype=np.float32)
 
+print('Initializing buffers... ', end='')
 app.init_params_d = GPUBuffer(sizeof(init_params_t), uniform=True, binding=0)
 app.iter_params_d = GPUBuffer(sizeof(iter_params_t), uniform=True, binding=1)
 app.database_d = GPUBuffer(database.nbytes, binding=2)
@@ -165,14 +168,22 @@ app.S_kl_d = GPUBuffer((Nw+1)*Nt*4, binding=3)
 app.S_kl_FT_d = GPUBuffer((Nw+1)*Nf*8, binding=4)
 app.spectrum_FT_d = GPUBuffer(Nf*8, binding=5)
 app.spectrum_d = GPUBuffer(Nt*4, binding=6)
-
+print('Done!')
 
 # initalize data:
+print('Initialzing database staging buffer... ', end='')
 app.database_d.initStagingBuffer()
+print('Done!')
+print('Copying data to device... ', end='')
 app.database_d.copyToBuffer(database)
-
+print('Done!')
+print('Initalizing init_params staging buffer... ', end='')
 app.init_params_d.initStagingBuffer()
+print('Done!')
+print('Getting host ptr... ', end='')
 init_params_h = app.init_params_d.getHostStructPtr(init_params_t)
+print('Done!')
+print('Setting params... ', end='')
 init_params_h.Nl = Nl
 init_params_h.Nt = Nt
 init_params_h.Nf = Nf
@@ -181,21 +192,28 @@ init_params_h.t_min = t_min
 init_params_h.dt    = dt
 init_params_h.w_min = w_min
 init_params_h.dxw   = dxw
+print('Done!')
+print('Transferring staging buffer... ', end='')
 app.init_params_d.transferStagingBuffer(direction='H2D')
-
+print('Done!')
+print('Initializing iter_params staging buffer... ', end='')
 app.iter_params_d.initStagingBuffer()
+print('Done!')
+print('Getting host ptr... ', end='')
 iter_params_h = app.iter_params_d.getHostStructPtr(iter_params_t)
+print('Done!')
+print('Setting FFT shapes... ', end='')
 app.S_kl_d.setFFTShape((Nw+1,Nt), np.float32)
 app.S_kl_FT_d.setFFTShape((Nw+1,Nf), np.complex64)
 app.spectrum_FT_d.setFFTShape(Nf, np.complex64)
 app.spectrum_d.setFFTShape(Nt, np.float32)
-
+print('Done!')
 #app.S_kl_FT_d.initStagingBuffer()
 
 app.spectrum_d.initStagingBuffer()
 
 app.command_list = [
-    app.init_params_d.cmdTransferStagingBuffer('H2D'),
+    app.iter_params_d.cmdTransferStagingBuffer('H2D'),
     app.cmdClearBuffer(app.S_kl_d),
     app.cmdTestFillLDM((Nl // Ntpb + 1, 1, 1), threads),
     app.cmdFFT(app.S_kl_d, app.S_kl_FT_d),
