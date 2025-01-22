@@ -8,19 +8,19 @@ layout(std430, binding = 0) uniform initData{
 	int Nl;
 	int Nt;
 	int Nf;
-	int Nw;
 	
 	float t_min;
 	float dt;
 	float w_min;
-	float dxw;
-	
+
 } init_d;
 
 layout(std430, binding = 1) uniform iterData{
+    
     float a;
-	float b;
-	float c;
+	int Nw;
+	float dxw;
+
 } iter_d;
 
 
@@ -39,7 +39,7 @@ void main() {
 
 	uint k = gl_GlobalInvocationID.x;
 
-	if (k >= init_d.Nf) return; //TODO: should be init_d.N_v_FT?
+	if (k >= init_d.Nf) return;
 
 	float w_l = 0.0;
     float mul = 0.0;
@@ -50,8 +50,8 @@ void main() {
 	int sk = 1;
 	int sl = init_d.Nf;
 
-    for (int l=0; l < init_d.Nw; l++){
-		w_l = (1.0 + iter_d.a) * init_d.w_min * exp(l*init_d.dxw);
+    for (int l=0; l < iter_d.Nw; l++){
+		w_l = (1.0 + iter_d.a) * init_d.w_min * exp(l*iter_d.dxw);
 		mul = exp(-pi * x * w_l) / init_d.dt;
 		res += S_kl_FT_d[l*sl + k*sk] * mul;
     }

@@ -49,6 +49,7 @@ class GPUApplication(object):
         self._enabledLayers = []
         self._enabledExtensions = []
 
+        self._submitInfo = None
         self._queue = None
         self._queueFamilyIndex = -1
         self._memHeapList = []
@@ -596,6 +597,10 @@ class GPUApplication(object):
             )
             for bufferObject in self._bufferObjects
         ]
+        # print('\nMaking new descriptor:')
+        # for bufferObject in self._bufferObjects:
+            # print(bufferObject.name, bufferObject._bufferSize, bufferObject.shape)
+
 
         # perform the update of the descriptor set.
         vk.vkUpdateDescriptorSets(
@@ -759,14 +764,15 @@ class GPUApplication(object):
 
     def runCommandBuffer(self):
         # Now we shall finally submit the recorded command buffer to a queue.
-        submitInfo = vk.VkSubmitInfo(
-            sType=vk.VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            commandBufferCount=1,  # submit a single command buffer
-            pCommandBuffers=[self._commandBuffer],  # the command buffer to submit.
-        )
+        if self._submitInfo is None:
+            self._submitInfo = vk.VkSubmitInfo(
+                sType=vk.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                commandBufferCount=1,  # submit a single command buffer
+                pCommandBuffers=[self._commandBuffer],  # the command buffer to submit.
+            )
 
         # We submit the command buffer on the queue, at the same time giving a fence.
-        vk.vkQueueSubmit(self._queue, 1, submitInfo, self._fence)
+        vk.vkQueueSubmit(self._queue, 1, self._submitInfo, self._fence)
 
         # The command will not have finished executing until the fence is signalled.
         # So we wait here.
@@ -932,6 +938,7 @@ class GPUBuffer:
         self._delayedSetDataList = []
         
         self.name = ''
+        self.shape = None
         self.app = app
         if self.app is not None:
             self.init_buffer()
@@ -1096,10 +1103,18 @@ class GPUBuffer:
                                                             "transfer_now":False})
 
 
-    def setFFTShape(self, shape, dtype=np.float32, order='c'):
+    def setFFTShape(self, shape, dtype=None, order='c', grow_only=True):
         self.shape = np.atleast_1d(shape)
-        self.dtype = np.dtype(dtype)
+
+        if dtype is not None:
+           self.dtype = np.dtype(dtype)
+
+        elif self.dtype is None:
+            print('You must set `dtype` keyword the first time!!')
+            return
+            
         self.itemsize = self.dtype.itemsize
+        
  
         # calc strides:
         strides = np.zeros_like(self.shape)
@@ -1111,7 +1126,24 @@ class GPUBuffer:
             self.strides = np.multiply.accumulate(strides[::-1])[::-1]
         else:
             self.strides = np.multiply.accumulate(strides)
- 
+        
+        
+        new_size = np.prod(self.shape) * self.itemsize
+        if  new_size > self._bufferSize or (not grow_only and new_size != self._bufferSize):
+            self.resize_buffer(new_size)
+                    
+    
+    def resize_buffer(self, nbytes):
+        print('resizing buffer from',self._bufferSize, 'to',nbytes)
+        # Destroy all FFT apps that reference this buffer:
+        for key in [*self.app._fftApps.keys()]:
+            if id(self) in key:
+                self.app._fftApps.pop(key)
+        
+        self.free()
+        self._bufferSize = nbytes
+        self.init_buffer()
+        
     # def copyNowH2D(self, srcOffset=0, dstOffset=0, size=1):
     
         # if self._combined:
@@ -1153,13 +1185,15 @@ class GPUBuffer:
             vargs = self._delayedSetDataList.pop(0)
             self.setData(*vargs) #TODO: Does not currently include kwargs!!!
 
-    def free(self):
+    def free(self): #TODO: is this up to date?
         self._isInitialized = False
         #self._bufferSize = 0
-        if self._pmappedMemory:
-            vk.vkUnmapMemory(self._device, self._bufferMemory)
-            self._pmappedMemory = None
-            self._hostPtr = None
+        
+        # if self._pmappedMemory:
+            # vk.vkUnmapMemory(self._device, self._bufferMemory)
+            # self._pmappedMemory = None
+            # self._hostPtr = None
+        
         if self._buffer:
             vk.vkDestroyBuffer(self._device, self._buffer, None)
         if self._bufferMemory:

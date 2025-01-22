@@ -22,19 +22,17 @@ class init_params_t(Structure):
         ("Nl", c_int),
         ("Nt", c_int),
         ("Nf", c_int),
-        ("Nw", c_int),
 
         ("t_min", c_float),
         ("dt",    c_float),
         ("w_min", c_float),
-        ("dxw",   c_float),
     ]
 
 class iter_params_t(Structure):
     _fields_ = [
         ("a", c_float),
-        ("b", c_float),
-        ("c", c_float),
+        ("Nw", c_int),
+        ("dxw",   c_float),
     ]
 
 
@@ -82,7 +80,6 @@ w_min = 0.1
 w_max = 3.0
 dw = (w_max - w_min) / (Nw - 1)
 dxw = np.log(w_max / w_min) / (Nw - 1)
-
 
 
 I0_arr, t0_arr, w0_arr = mock_spectrum(Nl, t_min=t_min, t_max=t_max, w_min=w_min, w_max=w_max)
@@ -160,7 +157,6 @@ app = GPUApplication(deviceID=1, path=shader_path)
 #app.print_memory_properties()
 I_arr2 = np.zeros(Nt, dtype=np.float32)
 
-print('Initializing buffers... ', end='')
 app.init_params_d = GPUBuffer(sizeof(init_params_t), uniform=True, binding=0)
 app.iter_params_d = GPUBuffer(sizeof(iter_params_t), uniform=True, binding=1)
 app.database_d = GPUBuffer(database.nbytes, binding=2)
@@ -168,46 +164,31 @@ app.S_kl_d = GPUBuffer((Nw+1)*Nt*4, binding=3)
 app.S_kl_FT_d = GPUBuffer((Nw+1)*Nf*8, binding=4)
 app.spectrum_FT_d = GPUBuffer(Nf*8, binding=5)
 app.spectrum_d = GPUBuffer(Nt*4, binding=6)
-print('Done!')
 
 # initalize data:
-print('Initialzing database staging buffer... ', end='')
 app.database_d.initStagingBuffer()
-print('Done!')
-print('Copying data to device... ', end='')
 app.database_d.copyToBuffer(database)
-print('Done!')
-print('Initalizing init_params staging buffer... ', end='')
+
 app.init_params_d.initStagingBuffer()
-print('Done!')
-print('Getting host ptr... ', end='')
 init_params_h = app.init_params_d.getHostStructPtr(init_params_t)
-print('Done!')
-print('Setting params... ', end='')
 init_params_h.Nl = Nl
 init_params_h.Nt = Nt
 init_params_h.Nf = Nf
-init_params_h.Nw = Nw
 init_params_h.t_min = t_min
 init_params_h.dt    = dt
 init_params_h.w_min = w_min
-init_params_h.dxw   = dxw
-print('Done!')
-print('Transferring staging buffer... ', end='')
-app.init_params_d.transferStagingBuffer(direction='H2D')
-print('Done!')
-print('Initializing iter_params staging buffer... ', end='')
+app.init_params_d.transferStagingBuffer('H2D')
+
 app.iter_params_d.initStagingBuffer()
-print('Done!')
-print('Getting host ptr... ', end='')
 iter_params_h = app.iter_params_d.getHostStructPtr(iter_params_t)
-print('Done!')
-print('Setting FFT shapes... ', end='')
+iter_params_h.a = 0.0
+iter_params_h.Nw = Nw
+iter_params_h.dxw = dxw
+
 app.S_kl_d.setFFTShape((Nw+1,Nt), np.float32)
 app.S_kl_FT_d.setFFTShape((Nw+1,Nf), np.complex64)
 app.spectrum_FT_d.setFFTShape(Nf, np.complex64)
 app.spectrum_d.setFFTShape(Nt, np.float32)
-print('Done!')
 #app.S_kl_FT_d.initStagingBuffer()
 
 app.spectrum_d.initStagingBuffer()
@@ -225,7 +206,6 @@ app.writeCommandBuffer()
 
 
 # iteration:
-iter_params_h.a = 0.0
 app.run()
 app.spectrum_d.toArray(I_arr2)
 
@@ -245,10 +225,27 @@ plt.subplots_adjust(left=0.25, bottom=0.25)
 p1, = ax.plot(t_arr, I_arr1)
 p2, = ax.plot(t_arr, I_arr2, 'k--')
 
+axNw = plt.axes([0.25, 0.05, 0.65, 0.03])
+sNw = Slider(axNw, "Nw", 2, 20, valinit=Nw, valstep=1)
+
 axw = plt.axes([0.25, 0.1, 0.65, 0.03])
 sw = Slider(axw, "a", -1.0, 2.0, valinit=0.0)
 
+Nw_i = Nw
 def update(val):
+    global Nw_i
+    
+    if sNw.val != Nw_i:
+        print('new val', sNw.val)
+        Nw_i = sNw.val
+        dxw_i = np.log(w_max / w_min) / (Nw_i - 1)
+        iter_params_h.Nw = Nw_i
+        iter_params_h.dxw = dxw_i
+        app.S_kl_d.setFFTShape((Nw_i+1, Nt))
+        app.S_kl_FT_d.setFFTShape((Nw_i+1, Nf))
+        app.freeCommandBuffer()
+        app.writeCommandBuffer()
+        
     a = sw.val
 
     t0 = perf_counter()
@@ -266,6 +263,7 @@ def update(val):
     fig.canvas.draw_idle()
 
 sw.on_changed(update)
+sNw.on_changed(update)
 
 plt.show()
 
