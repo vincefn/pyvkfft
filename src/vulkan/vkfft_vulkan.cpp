@@ -66,14 +66,16 @@ LIBRARY_API VkFFTConfiguration* make_config(const long*, const size_t, VkBuffer,
                                 VkCommandPool*, VkFence*, uint64_t,
                                 const int, const size_t, const int, const int, const int, const int,
                                 const int, const int, const size_t, const long*,
-                                const int, const int, const int, const int, const int, const int, const int,
+                                const int, const int, const int, const int, const int, const int, const int, const int, 
                                 const long*);
 
 LIBRARY_API VkFFTApplication* init_app(const VkFFTConfiguration*, int*);
 
 LIBRARY_API int fft(VkFFTApplication* app, VkCommandBuffer* cmd_buffer, VkBuffer* in, VkBuffer* out);
+LIBRARY_API int ffto(VkFFTApplication* app, VkCommandBuffer* cmd_buffer, VkBuffer* in, VkBuffer* out, int offset_in, int offset_out);
 
 LIBRARY_API int ifft(VkFFTApplication* app, VkCommandBuffer* cmd_buffer, VkBuffer* in, VkBuffer* out);
+LIBRARY_API int iffto(VkFFTApplication* app, VkCommandBuffer* cmd_buffer, VkBuffer* in, VkBuffer* out, int offset_in, int offset_out);
 
 LIBRARY_API int copy_test(char *buf);
 
@@ -187,7 +189,7 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
                                 const int coalescedMemory, const int numSharedBanks,
                                 const int aimThreads, const int performBandwidthBoost,
                                 const int registerBoostNonPow2, const int registerBoost4Step,
-                                const int warpSize, const long* grouped_batch)
+                                const int warpSize, const int specifyOffset, const long* grouped_batch)
 {
   VkFFTConfiguration *config = new VkFFTConfiguration({});
   
@@ -206,6 +208,9 @@ VkFFTConfiguration* make_config(const long* size, const size_t fftdim,
   config->normalize = norm;
   config->performR2C = r2c;
   config->performDCT = dct;
+
+  if (specifyOffset>=0)
+    config->specifyOffsetsAtLaunch = specifyOffset;
 
   if(disableReorderFourStep>=0)
     config->disableReorderFourStep = disableReorderFourStep;
@@ -365,6 +370,26 @@ int fft(VkFFTApplication* app, VkCommandBuffer* cmd_buffer, VkBuffer* in, VkBuff
   return VkFFTAppend(app, -1, &par);
 }
 
+int ffto(VkFFTApplication* app, VkCommandBuffer* cmd_buffer, VkBuffer* in, VkBuffer* out, int offset_in, int offset_out)
+{
+
+  (app->configuration.buffer) = out;
+  (app->configuration.inputBuffer) = in;
+  //(app->configuration.outputBuffer) = out;
+
+  VkFFTLaunchParams par = {};
+  par.buffer =  app->configuration.buffer;
+  par.inputBuffer = app->configuration.inputBuffer;
+  par.bufferOffset = offset_out;
+  par.inputBufferOffset = offset_in;
+
+  //par.outputBuffer = app->configuration.outputBuffer;
+  par.commandBuffer = cmd_buffer;
+ 
+  return VkFFTAppend(app, -1, &par);
+}
+
+
 int ifft(VkFFTApplication* app, VkCommandBuffer* cmd_buffer,  VkBuffer* in, VkBuffer* out)
 {
 
@@ -380,6 +405,27 @@ int ifft(VkFFTApplication* app, VkCommandBuffer* cmd_buffer,  VkBuffer* in, VkBu
 
   return VkFFTAppend(app, 1, &par);
 }
+
+
+int iffto(VkFFTApplication* app, VkCommandBuffer* cmd_buffer,  VkBuffer* in, VkBuffer* out, int offset_in, int offset_out)
+{
+
+  (app->configuration.buffer) = out;
+  (app->configuration.inputBuffer) = in;
+  //(app->configuration.outputBuffer) = out;
+
+  VkFFTLaunchParams par = {};
+  par.buffer =  app->configuration.buffer;
+  par.inputBuffer = app->configuration.inputBuffer;
+  par.bufferOffset = offset_out;
+  par.inputBufferOffset = offset_in;
+
+  //par.outputBuffer = app->configuration.outputBuffer;
+  par.commandBuffer = cmd_buffer;
+
+  return VkFFTAppend(app, 1, &par);
+}
+
 
 /** Free memory allocated during make_config()
 *

@@ -197,9 +197,9 @@ app.command_list = [
     app.iter_params_d.cmdTransferStagingBuffer('H2D'),
     app.cmdClearBuffer(app.S_kl_d),
     app.cmdTestFillLDM((Nl // Ntpb + 1, 1, 1), threads),
-    app.cmdFFT(app.S_kl_d, app.S_kl_FT_d),
+    app.cmdFFT(app.S_kl_d, app.S_kl_FT_d, 0, 0),
     app.cmdTestApplyLineshapes((Nf // Ntpb + 1, 1, 1), threads),
-    app.cmdIFFT(app.spectrum_FT_d, app.spectrum_d), 
+    app.cmdIFFT(app.spectrum_FT_d, app.spectrum_d, 0, 0), 
     app.spectrum_d.cmdTransferStagingBuffer('D2H'),
 ]
 app.writeCommandBuffer()
