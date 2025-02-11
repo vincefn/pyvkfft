@@ -1227,155 +1227,155 @@ class GPUBuffer:
             vk.vkFreeMemory(self._device, self._bufferMemory, None)
         
 
-class GPUArray(GPUBuffer):
-    def __init__(
-        self, shape=(1,), dtype=np.int32, strides=None, binding=None, app=None, buffer_margin=0
-    ):
+# class GPUArray(GPUBuffer):
+    # def __init__(
+        # self, shape=(1,), dtype=np.int32, strides=None, binding=None, app=None, buffer_margin=0
+    # ):
     
-        self.dtype = np.dtype(dtype)
-        self.itemsize = self.dtype.itemsize
+        # self.dtype = np.dtype(dtype)
+        # self.itemsize = self.dtype.itemsize
     
-        self.shape = shape
-        self.size = int(np.prod(self.shape))
-        self.nbytes = self.size * self.itemsize
+        # self.shape = shape
+        # self.size = int(np.prod(self.shape))
+        # self.nbytes = self.size * self.itemsize
 
-        if strides is None:
-            self._calcStrides()
-        else:
-            self.strides = strides
+        # if strides is None:
+            # self._calcStrides()
+        # else:
+            # self.strides = strides
 
-        self._bufferMargin = buffer_margin
+        # self._bufferMargin = buffer_margin
 
-        super().__init__(
-            bufferSize=self.nbytes + buffer_margin,
-            uniform=False,
-            binding=binding,
-            app=app,
-        )
+        # super().__init__(
+            # bufferSize=self.nbytes + buffer_margin,
+            # uniform=False,
+            # binding=binding,
+            # app=app,
+        # )
 
-        self.refresh_array()
+        # self.refresh_array()
 
-    def refresh_array(self):
-        return
-        # self._arr = None
-        # if self._isInitialized:
-            # self._arr = np.frombuffer(self._pmappedMemory, dtype=self.dtype, count=self.size).reshape(
-                # self.shape
-            # )
+    # def refresh_array(self):
+        # return
+        # # self._arr = None
+        # # if self._isInitialized:
+            # # self._arr = np.frombuffer(self._pmappedMemory, dtype=self.dtype, count=self.size).reshape(
+                # # self.shape
+            # # )
 
-    def reshape(self, shape, strides=None, grow_only=True):
-        if shape == self.shape:
-            return
+    # def reshape(self, shape, strides=None, grow_only=True):
+        # if shape == self.shape:
+            # return
         
-        self.shape = shape
-        self.size = int(np.prod(self.shape))
-        self.nbytes = self.size * self.itemsize
+        # self.shape = shape
+        # self.size = int(np.prod(self.shape))
+        # self.nbytes = self.size * self.itemsize
 
-        if strides is None:
-            self._calcStrides()
-        else:
-            self.strides = strides
+        # if strides is None:
+            # self._calcStrides()
+        # else:
+            # self.strides = strides
         
-        new_size = self.nbytes + self._bufferMargin
-        if  new_size > self._bufferSize or (not grow_only and new_size != self._bufferSize):
-            self.resize_buffer(new_size)
+        # new_size = self.nbytes + self._bufferMargin
+        # if  new_size > self._bufferSize or (not grow_only and new_size != self._bufferSize):
+            # self.resize_buffer(new_size)
             
-        self.refresh_array()
+        # self.refresh_array()
         
    
-    def reset_buffer(self, nbytes=0):
-        self.free()
-        self._bufferSize = nbytes
-        # It is up to the user to call init_buffer() again now
+    # def reset_buffer(self, nbytes=0):
+        # self.free()
+        # self._bufferSize = nbytes
+        # # It is up to the user to call init_buffer() again now
     
-    def resize_buffer(self, nbytes):
-        #print('resizing buffer from',self._bufferSize, 'to',nbytes)
-        # Destroy all FFT apps that reference this buffer:
-        for key in [*self.app._fftApps.keys()]:
-            if id(self) in key:
-                self.app._fftApps.pop(key)
+    # def resize_buffer(self, nbytes):
+        # #print('resizing buffer from',self._bufferSize, 'to',nbytes)
+        # # Destroy all FFT apps that reference this buffer:
+        # for key in [*self.app._fftApps.keys()]:
+            # if id(self) in key:
+                # self.app._fftApps.pop(key)
         
-        self.free()
-        self._bufferSize = nbytes
-        self.init_buffer()
+        # self.free()
+        # self._bufferSize = nbytes
+        # self.init_buffer()
  
 
-    # def init_buffer(self):
-        # print('initializing buffer...', self.name)
-        # super().init_buffer()
-        # if self._arr is None:
-            # self.refresh_array()
+    # # def init_buffer(self):
+        # # print('initializing buffer...', self.name)
+        # # super().init_buffer()
+        # # if self._arr is None:
+            # # self.refresh_array()
             
             
-    # def free(self):
-        # self._arr = None
-        # super().free()
+    # # def free(self):
+        # # self._arr = None
+        # # super().free()
 
-    @staticmethod
-    def fromArr(arr, binding=None, app=None):
-        bufferObject = GPUArray(
-            arr.shape, arr.dtype, arr.strides, binding=binding, app=app
-        )
-        bufferObject.setData(arr)
-        return bufferObject
+    # @staticmethod
+    # def fromArr(arr, binding=None, app=None):
+        # bufferObject = GPUArray(
+            # arr.shape, arr.dtype, arr.strides, binding=binding, app=app
+        # )
+        # bufferObject.setData(arr)
+        # return bufferObject
 
-    def _calcStrides(self, order="c"):
+    # def _calcStrides(self, order="c"):
 
-        sshape = np.zeros_like(self.shape)
-        sshape[0] = 1  # TODO: Check this, should maybe be sshape[-1]=1; shape[:-1] = self.shape[:-1]??
-        sshape[1:] = self.shape[:-1]
-        sshape *= self.itemsize
+        # sshape = np.zeros_like(self.shape)
+        # sshape[0] = 1  # TODO: Check this, should maybe be sshape[-1]=1; shape[:-1] = self.shape[:-1]??
+        # sshape[1:] = self.shape[:-1]
+        # sshape *= self.itemsize
 
-        if order == "c":
-            self.strides = np.multiply.accumulate(sshape[::-1])[::-1]
-        else:
-            self.strides = np.multiply.accumulate(sshape)
+        # if order == "c":
+            # self.strides = np.multiply.accumulate(sshape[::-1])[::-1]
+        # else:
+            # self.strides = np.multiply.accumulate(sshape)
 
-    def setData(self, arr, byte_offset=0):
-        if self._isInitialized:
-            ctypes.memmove(
-                ctypes.c_void_p(self._hostPtr + byte_offset), arr.ctypes.data, arr.nbytes
-                # ctypes.c_void_p(self._arr.ctypes.data + byte_offset), arr.ctypes.data, arr.nbytes
-            )
-        else:
-            self._delayedSetDataList.append((arr, byte_offset))
+    # def setData(self, arr, byte_offset=0):
+        # if self._isInitialized:
+            # ctypes.memmove(
+                # ctypes.c_void_p(self._hostPtr + byte_offset), arr.ctypes.data, arr.nbytes
+                # # ctypes.c_void_p(self._arr.ctypes.data + byte_offset), arr.ctypes.data, arr.nbytes
+            # )
+        # else:
+            # self._delayedSetDataList.append((arr, byte_offset))
 
-        return arr.nbytes
+        # return arr.nbytes
 
-    def getData(self):
-        arr = np.zeros(self.shape, dtype=self.dtype)
-        ctypes.memmove(
-            arr.ctypes.data, ctypes.c_void_p(self._hostPtr), self.nbytes
-            )
-        return arr
+    # def getData(self):
+        # arr = np.zeros(self.shape, dtype=self.dtype)
+        # ctypes.memmove(
+            # arr.ctypes.data, ctypes.c_void_p(self._hostPtr), self.nbytes
+            # )
+        # return arr
         
-        # return self._arr
+        # # return self._arr
 
-class GPUStruct(GPUBuffer):
-    def __init__(self, bufferSize=0, binding=None, app=None):
-        super().__init__(bufferSize=bufferSize, uniform=True, binding=binding, app=app)
+# class GPUStruct(GPUBuffer):
+    # def __init__(self, bufferSize=0, binding=None, app=None):
+        # super().__init__(bufferSize=bufferSize, uniform=True, binding=binding, app=app)
 
-    def fromStruct(struct, binding=None, app=None):
-        bufferSize = ctypes.sizeof(struct)
-        bufferObject = GPUStruct(bufferSize=bufferSize, binding=binding, app=app)
-        bufferObject.setData(struct)
-        return bufferObject
+    # def fromStruct(struct, binding=None, app=None):
+        # bufferSize = ctypes.sizeof(struct)
+        # bufferObject = GPUStruct(bufferSize=bufferSize, binding=binding, app=app)
+        # bufferObject.setData(struct)
+        # return bufferObject
 
-    # def fromStruct(structPtr, binding=None, app=None):
-    # bufferSize = ffi.sizeof(structPtr[0])
-    # bufferObject = GPUStruct(bufferSize=bufferSize, binding=binding, app=app)
-    # bufferObject.setData(structPtr)
-    # return bufferObject
+    # # def fromStruct(structPtr, binding=None, app=None):
+    # # bufferSize = ffi.sizeof(structPtr[0])
+    # # bufferObject = GPUStruct(bufferSize=bufferSize, binding=binding, app=app)
+    # # bufferObject.setData(structPtr)
+    # # return bufferObject
 
-    # def setData(self, structPtr):
-    # ffi.memmove(self._pmappedMemory, structPtr, self._bufferSize)
+    # # def setData(self, structPtr):
+    # # ffi.memmove(self._pmappedMemory, structPtr, self._bufferSize)
 
-    def setData(self, struct):
-        if self._isInitialized:
-            ctypes.memmove(ctypes.c_void_p(self._hostPtr), ctypes.byref(struct), self._bufferSize)
-        else:
-            self._delayedSetDataList.append((struct,))
+    # def setData(self, struct):
+        # if self._isInitialized:
+            # ctypes.memmove(ctypes.c_void_p(self._hostPtr), ctypes.byref(struct), self._bufferSize)
+        # else:
+            # self._delayedSetDataList.append((struct,))
 
-    def getData(self):
-        # not implemented
-        pass
+    # def getData(self):
+        # # not implemented
+        # pass
