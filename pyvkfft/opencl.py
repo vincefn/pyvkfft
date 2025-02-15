@@ -178,9 +178,9 @@ class VkFFTApp(VkFFTAppBase):
         # Size of tmp buffer allocated by VkFFT - if any
         tmp_buffer_nbytes = ctypes.c_size_t(0)
         # 0 or 1 for each axis, only if the Bluestein algorithm is used
-        use_bluestein_fft = np.zeros(vkfft_max_fft_dimensions(), dtype=int)
+        use_bluestein_fft = np.zeros(vkfft_max_fft_dimensions(), dtype='long')
         # number of axis upload per dimension
-        num_axis_upload = np.zeros(vkfft_max_fft_dimensions(), dtype=int)
+        num_axis_upload = np.zeros(vkfft_max_fft_dimensions(), dtype='long')
 
         self.app = _vkfft_opencl.init_app(self.config, queue.int_ptr, ctypes.byref(res),
                                           ctypes.byref(tmp_buffer_nbytes),
@@ -220,13 +220,13 @@ class VkFFTApp(VkFFTAppBase):
             raise RuntimeError(f"Too many FFT dimensions after collapsing non-transform axes: "
                                f"{len(self.shape)}>{vkfft_max_fft_dimensions()}")
 
-        shape = np.ones(vkfft_max_fft_dimensions(), dtype=int)
+        shape = np.ones(vkfft_max_fft_dimensions(), dtype='long')
         shape[:len(self.shape)] = self.shape
 
-        skip = np.zeros(vkfft_max_fft_dimensions(), dtype=int)
+        skip = np.zeros(vkfft_max_fft_dimensions(), dtype='long')
         skip[:len(self.skip_axis)] = self.skip_axis
 
-        grouped_batch = np.empty(vkfft_max_fft_dimensions(), dtype=int)
+        grouped_batch = np.empty(vkfft_max_fft_dimensions(), dtype='long')
         grouped_batch.fill(-1)
         grouped_batch[:len(self.groupedBatch)] = self.groupedBatch
 
