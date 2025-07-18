@@ -81,7 +81,7 @@ def locate_cuda():
             libdir = pjoin(home, 'lib64')
         else:
             libdir = pjoin(home, 'lib')
-        extra_compile_args = ['-O3', '--ptxas-options=-v', '-std=c++11',
+        extra_compile_args = ['-O3', '--ptxas-options=-v', '-std=c++14',
                               '--compiler-options=-fPIC',
                               f'-DVKFFT_MAX_FFT_DIMENSIONS={VKFFT_MAX_FFT_DIMENSIONS}']
         extra_link_args = ['--shared', '-L%s' % libdir]
@@ -102,7 +102,7 @@ def locate_opencl():
     """
     include_dirs = ['src/VkFFT/vkFFT']
     library_dirs = []
-    extra_compile_args = ['-std=c++11', '-Wno-format-security',
+    extra_compile_args = ['-std=c++14', '-Wno-format-security',
                           f'-DVKFFT_MAX_FFT_DIMENSIONS={VKFFT_MAX_FFT_DIMENSIONS}']
     extra_link_args = None
     if platform.system() == 'Darwin':

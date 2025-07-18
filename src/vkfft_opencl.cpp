@@ -235,9 +235,9 @@ int fft(VkFFTApplication* app, void *in, void *out, void* queue)
 
   VkFFTLaunchParams par = {};
   par.commandQueue = &q;
-  par.buffer = (const cl_mem* )&out;
-  if(in)par.inputBuffer = (const cl_mem* )&in;
-  par.outputBuffer = (const cl_mem* )&out;
+  par.buffer = (cl_mem* )&out;
+  if(in)par.inputBuffer = (cl_mem* )&in;
+  par.outputBuffer = (cl_mem* )&out;
 
   return VkFFTAppend(app, -1, &par);
 }
@@ -248,9 +248,9 @@ int ifft(VkFFTApplication* app, void *in, void *out, void* queue)
 
   VkFFTLaunchParams par = {};
   par.commandQueue = &q;
-  par.buffer = (const cl_mem* )&out;
-  if(in)par.inputBuffer = (const cl_mem* )&in;
-  par.outputBuffer = (const cl_mem* )&out;
+  par.buffer = (cl_mem* )&out;
+  if(in)par.inputBuffer = (cl_mem* )&in;
+  par.outputBuffer = (cl_mem* )&out;
 
   return VkFFTAppend(app, 1, &par);
 }
