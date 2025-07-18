@@ -1,8 +1,9 @@
-Version XXX
------------
+Version 2025.1
+--------------
 * Fix numpy >=2.0 on windows, fixes https://github.com/vincefn/pyvkfft/issues/40
   [@markushuelsbusch, https://github.com/vincefn/pyvkfft/pull/41]
 * Add 'pyvkfft-test --quick' for a much faster test of basic functions
+* Fix compilation under linux (c++14) & macOS (const correctness)
 
 Version 2024.1.4 (2024-07-23)
 -----------------------------
