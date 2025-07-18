@@ -191,7 +191,7 @@ def name_next_file(pattern="pyvkfft-test%04d.html"):
 
 def make_parser():
     epilog = "Examples:\n" \
-             "   pyvkfft-test\n" \
+             "  pyvkfft-test\n" \
              "      the regular test which tries the fft interface, using parallel\n" \
              "      streams (for pycuda), and C2C/R2C/DCT/DST transforms for sizes N=15,17,30,34\n" \
              "      with 1D to 4 or 5D transforms, also N=808,2988,4200,13000,13001," \
@@ -206,6 +206,10 @@ def make_parser():
              "      The text output gives the N2 and Ninf (aka max) relative norm of\n" \
              "      the transform, with the ratio in () to the expected tolerance for\n" \
              "      both direct and inverse transforms.\n" \
+             "\n" \
+             "  pyvkfft-test --quick\n" \
+             "      Much faster version of the regular test, should only take a few\n" \
+             "      seconds instead of minutes or 10s of minutes.\n" \
              "\n" \
              "  pyvkfft-test --nproc 8 --gpu v100 --mailto_fail toto@pyvkfft.org\n" \
              "      same test, but using 8 parallel process to speed up, and use a GPU\n" \
@@ -285,6 +289,10 @@ def make_parser():
                         help="Perform a systematic accuracy test over a range of array sizes.\n"
                              "Without this argument a faster test (a few minutes) will be "
                              "performed with selected array sizes for all possible transforms.")
+    parser.add_argument('--quick', action='store_true',
+                        help="Only run a small subset of tests (c2c and r2c), with only "
+                             "1D and 2D inplace, no extra dimensions or skipped axes, "
+                             "no F-ordering and only single precision.")
     sysgrp = parser.add_argument_group("systematic", "Options for --systematic:")
     sysgrp.add_argument('--axes', action='store', nargs='*', type=int,
                         help="transform axes: x (fastest) is 1,"
@@ -479,6 +487,7 @@ def main():
         t.nproc = args.nproc[0]
         t.opencl_platform = args.opencl_platform
         t.vbackend = args.backend
+        t.quick = args.quick
         if args.backend is not None:
             # Remove tests depending on backend used
             test_cuda_stream = False
@@ -489,16 +498,22 @@ def main():
                 del t.test_pycuda_streams
             if 'pyopencl' not in args.backend:
                 del t.test_pyopencl_queues
-        if args.r2c or args.dct or args.dst or args.c2c:
+        if args.r2c or args.dct or args.dst or args.c2c or args.quick:
             # A selection of subtests was made - remove the other long ones
-            if not args.r2c:
+            if not args.r2c and not (args.quick or args.c2c):
                 del t.test_r2c
             if not args.dct:
                 del t.test_dct
             if not args.dst:
                 del t.test_dst
-            if not args.c2c:
+            if not args.c2c and not (args.quick or args.r2c):
                 del t.test_c2c
+            del t.test_squeeze
+        print("Starting the regular test\nWARNING: "
+              "this can take a long time (10s of minutes) to test "
+              "many configurations.\n"
+              "You can use instead 'pyvkfft-test --quick' if you just "
+              "want to make a more basic functionality test.\n")
         suite = unittest.defaultTestLoader.loadTestsFromTestCase(t)
         if t.verbose:
             res = unittest.TextTestRunner(verbosity=2).run(suite)

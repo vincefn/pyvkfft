@@ -134,6 +134,7 @@ class TestFFT(unittest.TestCase):
     colour = False
     opencl_platform = None
     vbackend = None
+    quick = False
 
     def setUp(self) -> None:
         if self.vbackend is None:
@@ -423,7 +424,7 @@ class TestFFT(unittest.TestCase):
                                     if not dry_run:
                                         d0 = d0.reshape(sh)  # needed for secondary_long_axis_size shape change
                                     vorder = ['C', 'F']
-                                    if dims == 1 or dims > 3:
+                                    if dims == 1 or dims > 3 or self.quick:
                                         vorder = ['C']
                                     if r2c:
                                         if ndim is not None:
@@ -560,32 +561,40 @@ class TestFFT(unittest.TestCase):
             vkwargs = []
             for dry_run in [True, False]:
                 vtype = (np.complex64, np.complex128)
-                if backend == "pyopencl" and not has_cl_fp64:
+                if (backend == "pyopencl" and not has_cl_fp64) or self.quick:
                     vtype = (np.complex64,)
                 v = self.verbose and not dry_run
+                dims_max = 2 if self.quick else 5
+                ndim_max = 2 if self.quick else 5
+                shuffle_axes = False if self.quick else True
                 if dry_run or self.nproc == 1:
-                    tmp = self.run_fft([backend], [15, 17], dims_max=5, ndim_max=5,
-                                       vtype=vtype, verbose=v, dry_run=dry_run, shuffle_axes=True)
+                    tmp = self.run_fft([backend], [15, 17],
+                                       dims_max=dims_max, ndim_max=ndim_max,
+                                       vtype=vtype, verbose=v, dry_run=dry_run,
+                                       shuffle_axes=shuffle_axes)
                     ct += tmp[0]
                     vkwargs += tmp[1]
                     # Avoid large array sizes for 30, 34
-                    tmp = self.run_fft([backend], [30, 34], dims_max=5, ndim_max=5,
-                                       vtype=vtype, verbose=v, dry_run=dry_run, shuffle_axes=True,
+                    tmp = self.run_fft([backend], [30, 34],
+                                       dims_max=dims_max, ndim_max=ndim_max,
+                                       vtype=vtype, verbose=v, dry_run=dry_run,
+                                       shuffle_axes=shuffle_axes,
                                        secondary_long_axis_size=3)
                     ct += tmp[0]
                     vkwargs += tmp[1]
-                    # Test larger sizes for 1D and 2D transforms
-                    # 2988 decomposes in a Sophie Germain safe prime, hence its inclusion.
-                    # Includes very long 1-2D transform - radix, Bluestein and Rader with 2 and 3 uploads
-                    # Use secondary_long_axis_size to avoid too large overall sizes, but still try
-                    # the transform up to ndim=2
-                    tmp = self.run_fft([backend],
-                                       [808, 2988, 4200, 8232, 8193, 8194,
-                                        8232 * 128, 8193 * 128, 8194 * 128, 131072],
-                                       vtype=vtype, dims_max=2, ndim_max=2, verbose=v,
-                                       dry_run=dry_run, shuffle_axes=True, secondary_long_axis_size=3)
-                    ct += tmp[0]
-                    vkwargs += tmp[1]
+                    if not self.quick:
+                        # Test larger sizes for 1D and 2D transforms
+                        # 2988 decomposes in a Sophie Germain safe prime, hence its inclusion.
+                        # Includes very long 1-2D transform - radix, Bluestein and Rader with 2 and 3 uploads
+                        # Use secondary_long_axis_size to avoid too large overall sizes, but still try
+                        # the transform up to ndim=2
+                        tmp = self.run_fft([backend],
+                                           [808, 2988, 4200, 8232, 8193, 8194,
+                                            8232 * 128, 8193 * 128, 8194 * 128, 131072],
+                                           vtype=vtype, dims_max=2, ndim_max=2, verbose=v,
+                                           dry_run=dry_run, shuffle_axes=True, secondary_long_axis_size=3)
+                        ct += tmp[0]
+                        vkwargs += tmp[1]
                 else:
                     self.run_fft_parallel(vkwargs)
                 if dry_run and self.verbose:
@@ -601,35 +610,41 @@ class TestFFT(unittest.TestCase):
             vkwargs = []
             for dry_run in [True, False]:
                 vtype = (np.float32, np.float64)
-                if backend == "pyopencl" and not has_cl_fp64:
+                if (backend == "pyopencl" and not has_cl_fp64) or self.quick:
                     vtype = (np.float32,)
                 v = self.verbose and not dry_run
+                dims_max = 2 if self.quick else 5
+                ndim_max = 2 if self.quick else 5
+                shuffle_axes = False if self.quick else True
                 if dry_run or self.nproc == 1:
-                    tmp = self.run_fft([backend], [15, 17], dims_max=4, ndim_max=3,
+                    tmp = self.run_fft([backend], [15, 17],
+                                       dims_max=dims_max, ndim_max=ndim_max,
                                        vtype=vtype, vr2c=(True,), verbose=v, dry_run=dry_run,
-                                       shuffle_axes=True)
+                                       shuffle_axes=shuffle_axes)
                     ct += tmp[0]
                     vkwargs += tmp[1]
                     # Avoid large array sizes for 30, 34
-                    tmp = self.run_fft([backend], [30, 34], dims_max=4, ndim_max=4,
+                    tmp = self.run_fft([backend], [30, 34],
+                                       dims_max=dims_max, ndim_max=ndim_max,
                                        vtype=vtype, vr2c=(True,), verbose=v, dry_run=dry_run,
-                                       shuffle_axes=True, secondary_long_axis_size=3)
+                                       shuffle_axes=shuffle_axes, secondary_long_axis_size=3)
                     ct += tmp[0]
                     vkwargs += tmp[1]
-                    # Test larger sizes for 1D and 2D transforms
-                    # 2988 decomposes in a Sophie Germain safe prime, hence its inclusion.
-                    # Includes very long 1-2D transform - radix, Bluestein and Rader with 2 and 3 uploads
-                    # Use secondary_long_axis_size to avoid too large overall sizes, but still try
-                    # the transform up to ndim=2
-                    tmp = self.run_fft([backend],
-                                       [808, 2988, 4200, 8232, 8193, 8194,
-                                        8232 * 128, 8193 * 128, 8194 * 128, 131072],
-                                       vtype=vtype, vr2c=(True,),
-                                       dims_max=2, ndim_max=2, verbose=v,
-                                       dry_run=dry_run, shuffle_axes=True,
-                                       secondary_long_axis_size=3)
-                    ct += tmp[0]
-                    vkwargs += tmp[1]
+                    if not self.quick:
+                        # Test larger sizes for 1D and 2D transforms
+                        # 2988 decomposes in a Sophie Germain safe prime, hence its inclusion.
+                        # Includes very long 1-2D transform - radix, Bluestein and Rader with 2 and 3 uploads
+                        # Use secondary_long_axis_size to avoid too large overall sizes, but still try
+                        # the transform up to ndim=2
+                        tmp = self.run_fft([backend],
+                                           [808, 2988, 4200, 8232, 8193, 8194,
+                                            8232 * 128, 8193 * 128, 8194 * 128, 131072],
+                                           vtype=vtype, vr2c=(True,),
+                                           dims_max=2, ndim_max=2, verbose=v,
+                                           dry_run=dry_run, shuffle_axes=True,
+                                           secondary_long_axis_size=3)
+                        ct += tmp[0]
+                        vkwargs += tmp[1]
                 else:
                     self.run_fft_parallel(vkwargs)
                 if dry_run and self.verbose:

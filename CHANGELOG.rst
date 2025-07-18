@@ -2,10 +2,11 @@ Version XXX
 -----------
 * Fix numpy >=2.0 on windows, fixes https://github.com/vincefn/pyvkfft/issues/40
   [@markushuelsbusch, https://github.com/vincefn/pyvkfft/pull/41]
+* Add 'pyvkfft-test --quick' for a much faster test of basic functions
 
 Version 2024.1.4 (2024-07-23)
 -----------------------------
-* support numpy >=2.0
+* support numpy >=2.0 [@alexfikl, https://github.com/vincefn/pyvkfft/pull/35]
 
 Version 2024.1.3 (2024-03-19)
 -----------------------------
