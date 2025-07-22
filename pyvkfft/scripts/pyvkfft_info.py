@@ -9,6 +9,7 @@
 # pyvkfft script with info about VkFFT version and CUDA/OpenCL support
 
 
+import numpy as np
 from pyvkfft.version import git_version, vkfft_git_version, __version__
 
 vkfft_ver = None
@@ -36,6 +37,8 @@ except (ImportError, OSError):
 def main():
     print(f"pyvkfft version: {__version__:12s} [git: {git_version()}]")
     print(f"VkFFT version:   {vkfft_ver:12s} [git: {vkfft_git_version()}]")
+    print(f"numpy version:   {np.__version__:12s}")
+
     print(f"\nCUDA support: {has_pycuda or has_cupy}")
     if has_cupy or has_pycuda:
         print(f"  CUDA driver version:  {cuda_driver_version()}")
