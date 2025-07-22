@@ -280,9 +280,9 @@ VkFFTApplication* init_app(const VkFFTConfiguration* config, int *res,
 int fft(VkFFTApplication* app, void *in, void *out)
 {
   VkFFTLaunchParams par = {};
-  par.buffer = (void* const*)&out;
-  if(in)par.inputBuffer = (void* const*)&in;
-  par.outputBuffer = (void* const*)&out;
+  par.buffer = (void**)&out;
+  if(in)par.inputBuffer = (void**)&in;
+  par.outputBuffer = (void**)&out;
 
   return VkFFTAppend(app, -1, &par);
 }
@@ -290,9 +290,9 @@ int fft(VkFFTApplication* app, void *in, void *out)
 int ifft(VkFFTApplication* app, void *in, void *out)
 {
   VkFFTLaunchParams par = {};
-  par.buffer = (void* const*)&out;
-  if(in)par.inputBuffer = (void* const*)&in;
-  par.outputBuffer = (void* const*)&out;
+  par.buffer = (void**)&out;
+  if(in)par.inputBuffer = (void**)&in;
+  par.outputBuffer = (void**)&out;
 
   return VkFFTAppend(app, 1, &par);
 }

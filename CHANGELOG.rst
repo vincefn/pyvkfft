@@ -1,3 +1,9 @@
+Version 2025.1.1
+----------------
+* Revert to VkFFT 1.3.4 instead of (tested) pre-release 1.3.5
+* Fixes https://github.com/vincefn/pyvkfft/issues/44, likely
+  due to some memory issues in VkFFT.
+
 Version 2025.1
 --------------
 * Fix numpy >=2.0 on windows, fixes https://github.com/vincefn/pyvkfft/issues/40
