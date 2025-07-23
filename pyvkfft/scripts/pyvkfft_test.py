@@ -509,11 +509,14 @@ def main():
             if not args.c2c and not (args.quick or args.r2c):
                 del t.test_c2c
             del t.test_squeeze
-        print("Starting the regular test\nWARNING: "
-              "this can take a long time (10s of minutes) to test "
-              "many configurations.\n"
-              "You can use instead 'pyvkfft-test --quick' if you just "
-              "want to make a more basic functionality test.\n")
+
+        print("Starting the regular test")
+        if not t.quick:
+            print("WARNING: "
+                  "this can take a long time (10s of minutes) to test "
+                  "many configurations.\n"
+                  "You can use instead 'pyvkfft-test --quick' if you just "
+                  "want to make a more basic functionality test.\n")
         suite = unittest.defaultTestLoader.loadTestsFromTestCase(t)
         if t.verbose:
             res = unittest.TextTestRunner(verbosity=2).run(suite)
