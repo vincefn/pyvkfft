@@ -22,14 +22,22 @@ from copy import copy
 import numpy as np
 
 try:
-    from scipy.datasets import ascent
+    from scipy.datasets import ascent as ascent0
 except ImportError:
     try:
-        from scipy.misc import ascent
+        from scipy.misc import ascent as ascent0
     except ImportError:
-        def ascent():
-            rng = np.random.default_rng(seed=None)
-            return rng.integers(0, 255, size=(512, 512))
+        pass
+
+
+def ascent():
+    try:
+        return ascent0()
+    except (ImportError, NameError):
+        # If pooch is not installed
+        rng = np.random.default_rng(seed=None)
+        return rng.integers(0, 255, size=(512, 512))
+
 
 from pyvkfft.version import __version__, vkfft_version, vkfft_git_version
 from pyvkfft.base import primes, radix_gen_n
