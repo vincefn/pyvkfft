@@ -577,7 +577,7 @@ def main():
                 html += ' (' + 'N,' * (t.ndim - 1) + 'N)'
             html += "</td>"
             if args.bluestein:
-                html += "<td>Bluestein</td>"
+                html += "<td>Bluestein/Rader</td>"
             elif args.radix is None:
                 html += "<td>-</td>"
             else:
